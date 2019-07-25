@@ -57,7 +57,7 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
-				if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
+				if ing.Letsencrypt || (ing.TLSCrt != "" && ing.TLSKey != "") {
 					secret := &apiv1.Secret{
 						ObjectMeta: app.GetObjectMeta(ing.TLSSecretName),
 						Data: map[string][]byte{

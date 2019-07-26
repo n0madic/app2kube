@@ -33,10 +33,6 @@ func (app *App) processContainers(source map[string]apiv1.Container) (containers
 				container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
 			}
 
-			if app.CommitHash != "" {
-				container.Env = append(container.Env, apiv1.EnvVar{Name: "COMMIT_HASH", Value: app.CommitHash})
-			}
-
 			if len(app.Secrets) > 0 {
 				container.EnvFrom = append(
 					container.EnvFrom,

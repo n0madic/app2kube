@@ -13,9 +13,8 @@ import (
 
 // App instance
 type App struct {
-	Branch     string `yaml:"branch"`
-	CommitHash string `yaml:"commitHash"`
-	Common     struct {
+	Branch string `yaml:"branch"`
+	Common struct {
 		CronjobSuspend     bool            `yaml:"cronjobSuspend"`
 		DNSPolicy          apiv1.DNSPolicy `yaml:"dnsPolicy"`
 		EnableServiceLinks bool            `yaml:"enableServiceLinks"`

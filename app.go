@@ -6,8 +6,8 @@ import (
 	"html/template"
 	"strings"
 
+	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
-	"github.com/n0madic/sprig"
 	appsv1 "k8s.io/api/apps/v1"
 	batch "k8s.io/api/batch/v1beta1"
 	apiv1 "k8s.io/api/core/v1"
@@ -142,7 +142,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		}
 	}
 
-	return rawVals, nil
+	return b.Bytes(), nil
 }
 
 // NewApp return App instance

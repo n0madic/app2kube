@@ -36,8 +36,8 @@ func main() {
 	f.StringArrayVar(&setStringVals, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	f.StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
-	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the merged YAML values as well")
-	f.StringVarP(&snapshot, "snapshot", "s", "", "Save the merged YAML values in the specified file for reuse")
+	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
+	f.StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
 	f.StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
 	f.StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
 

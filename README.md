@@ -25,9 +25,9 @@ Flags:
       --set stringArray          Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)
       --set-file stringArray     Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)
       --set-string stringArray   Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)
-  -s, --snapshot string          Save the merged YAML values in the specified file for reuse
+  -s, --snapshot string          Save the parsed YAML values in the specified file for reuse
   -f, --values valueFiles        Specify values in a YAML file or a URL (can specify multiple) (default [])
-  -v, --verbose                  Show the merged YAML values as well
+  -v, --verbose                  Show the parsed YAML values as well
 ```
 
 ## Usage

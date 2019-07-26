@@ -13,6 +13,7 @@ import (
 
 // App instance
 type App struct {
+	Branch     string `yaml:"branch"`
 	CommitHash string `yaml:"commitHash"`
 	Common     struct {
 		CronjobSuspend     bool            `yaml:"cronjobSuspend"`
@@ -38,7 +39,7 @@ type App struct {
 		Image                      string                     `yaml:"image"`
 		ImagePullPolicy            apiv1.PullPolicy           `yaml:"imagePullPolicy"`
 		Resources                  apiv1.ResourceRequirements `yaml:"resources"`
-		RestartPolicy              string                     `yaml:"restartPolicy"`
+		RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
 		Schedule                   string                     `yaml:"schedule"`
 		SuccessfulJobsHistoryLimit int32                      `yaml:"successfulJobsHistoryLimit"`
 		Suspend                    bool                       `yaml:"suspend"`
@@ -75,6 +76,7 @@ type App struct {
 	Name      string            `yaml:"name"`
 	Namespace string            `yaml:"namespace"`
 	Secrets   map[string]string `yaml:"secrets"`
+	Staging   string            `yaml:"staging"`
 	Volumes   map[string]struct {
 		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
 		MountPath string                          `yaml:"mountPath"`
@@ -88,6 +90,18 @@ func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 		Namespace: app.Namespace,
 		Labels:    app.Labels,
 	}
+}
+
+// GetReleaseName of App
+func (app *App) GetReleaseName() string {
+	releaseName := app.Name
+	if app.Staging != "" {
+		releaseName = app.Name + "-" + app.Staging
+		if app.Branch != "" {
+			releaseName = app.Name + "-" + app.Branch
+		}
+	}
+	return releaseName
 }
 
 // LoadValues for App
@@ -106,19 +120,29 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		return nil, errors.New("App name is required")
 	}
 
-	return rawVals, nil
-}
-
-// SetName of App
-func (app *App) SetName(name string) {
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
+	app.Labels["app.kubernetes.io/name"] = app.Name
+
+	if app.Staging != "" {
+		app.Deployment.RevisionHistoryLimit = 0
+		app.Staging = strings.ToLower(app.Staging)
+		app.Branch = strings.ToLower(app.Branch)
+		app.Labels["app.kubernetes.io/instance"] = app.Staging
+		if app.Branch != "" {
+			app.Labels["app.kubernetes.io/instance"] = app.Staging + "-" + app.Branch
+		}
+	}
+
+	return rawVals, nil
 }
 
 // NewApp return App instance
 func NewApp() *App {
 	app := &App{}
-	app.Labels = make(map[string]string)
 	// Default settings of App
+	app.Labels = map[string]string{
+		"app.kubernetes.io/instance": "production",
+	}
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
 	app.Deployment.Strategy.Type = appsv1.RecreateDeploymentStrategyType

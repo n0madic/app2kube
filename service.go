@@ -19,7 +19,9 @@ func (app *App) GetServices() (yaml string) {
 					svc.ExternalPort = svc.Port
 				}
 			}
-			serviceName := app.Name + "-" + strings.ToLower(svc.Name)
+
+			serviceName := app.GetReleaseName() + "-" + strings.ToLower(svc.Name)
+
 			service := &apiv1.Service{
 				ObjectMeta: app.GetObjectMeta(serviceName),
 				Spec: apiv1.ServiceSpec{
@@ -32,9 +34,11 @@ func (app *App) GetServices() (yaml string) {
 					Selector: app.Labels,
 				},
 			}
+
 			if svc.Type == apiv1.ServiceTypeNodePort {
 				service.Spec.Ports[0].NodePort = svc.ExternalPort
 			}
+
 			yaml = yaml + getYAML("Service: "+serviceName, service)
 		}
 	}

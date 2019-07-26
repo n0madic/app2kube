@@ -16,7 +16,6 @@ var (
 	fileValues     []string
 	valsFiles      app2kube.ValueFiles
 	flagVerbose    bool
-	suffix         string
 	namespace      string
 )
 
@@ -35,9 +34,8 @@ func main() {
 	f.StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
 	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the computed YAML values as well")
-	f.StringVarP(&suffix, "suffix", "s", "", "Suffix for release name")
 	f.StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
-	f.StringVarP(&namespace, "namespace", "n", "", "namespace")
+	f.StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
 
 	if err := cmd.Execute(); err != nil {
 		os.Exit(1)
@@ -57,20 +55,14 @@ func run(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagVerbose {
-		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s", rawVals)
+		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
 	}
 
 	if namespace != "" {
 		app.Namespace = namespace
 	}
 
-	app.Labels["app.kubernetes.io/name"] = app.Name
 	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
-
-	if suffix != "" {
-		app.SetName(app.Name + "-" + suffix)
-		app.Labels["app.kubernetes.io/instance"] = suffix
-	}
 
 	fmt.Print(app.GetPersistentVolumeClaims())
 	fmt.Print(app.GetSecret())

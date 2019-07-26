@@ -11,11 +11,13 @@ func (app *App) GetSecret() (yaml string) {
 		for key, value := range app.Secrets {
 			secretBytes[key] = []byte(value)
 		}
+
 		secret := &apiv1.Secret{
-			ObjectMeta: app.GetObjectMeta(app.Name),
+			ObjectMeta: app.GetObjectMeta(app.GetReleaseName()),
 			Data:       secretBytes,
 		}
-		yaml = getYAML("Secret: "+app.Name, secret)
+
+		yaml = getYAML("Secret: "+app.GetReleaseName(), secret)
 	}
 	return
 }

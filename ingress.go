@@ -1,6 +1,7 @@
 package app2kube
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -13,19 +14,32 @@ import (
 func (app *App) GetIngress(ingressClass string) (yaml string) {
 	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
 		for _, ing := range app.Deployment.Ingress {
+			if app.Staging != "" {
+				if strings.HasPrefix(ing.Host, "*") {
+					panic(fmt.Sprintf("Staging cannot be used with wildcard domain: %s\n", ing.Host))
+				}
+				ing.Host = app.Staging + "." + ing.Host
+				if app.Branch != "" {
+					ing.Host = app.Branch + "." + ing.Host
+				}
+			}
+
+			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
+
 			ingressAnnotations := make(map[string]string)
 			ingressAnnotations["kubernetes.io/ingress.class"] = ingressClass
-			ingressAnnotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(ing.SslRedirect)
 			if ing.Letsencrypt {
 				ingressAnnotations["kubernetes.io/tls-acme"] = "true"
 			}
 			for key, value := range ing.Annotations {
 				ingressAnnotations[key] = value
 			}
+
 			serviceName := ing.ServiceName
 			if serviceName == "" {
-				serviceName = app.Name + "-" + app.Deployment.Service[0].Name
+				serviceName = app.GetReleaseName() + "-" + app.Deployment.Service[0].Name
 			}
+
 			servicePort := ing.ServicePort
 			if servicePort == 0 {
 				if app.Deployment.Service[0].ExternalPort > 0 {
@@ -34,9 +48,11 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 					servicePort = app.Deployment.Service[0].Port
 				}
 			}
+
 			if ing.Path == "" {
 				ing.Path = "/"
 			}
+
 			ingressRuleValue := v1beta1.IngressRuleValue{
 				HTTP: &v1beta1.HTTPIngressRuleValue{
 					Paths: []v1beta1.HTTPIngressPath{v1beta1.HTTPIngressPath{
@@ -52,8 +68,10 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 				Host:             ing.Host,
 				IngressRuleValue: ingressRuleValue,
 			}}
+
 			ingressTLS := []v1beta1.IngressTLS{}
 			if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
+				ingressAnnotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(ing.SslRedirect)
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
@@ -73,18 +91,22 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 					SecretName: strings.ToLower(ing.TLSSecretName),
 				})
 			}
-			for _, alias := range ing.Aliases {
-				ingressRules = append(ingressRules, v1beta1.IngressRule{
-					Host:             alias,
-					IngressRuleValue: ingressRuleValue,
-				})
-				if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
-					ingressTLS[0].Hosts = append(ingressTLS[0].Hosts, alias)
+
+			if app.Staging == "" {
+				for _, alias := range ing.Aliases {
+					ingressRules = append(ingressRules, v1beta1.IngressRule{
+						Host:             alias,
+						IngressRuleValue: ingressRuleValue,
+					})
+					if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
+						ingressTLS[0].Hosts = append(ingressTLS[0].Hosts, alias)
+					}
 				}
 			}
-			ingressName := app.Name + "." + strings.Replace(ing.Host, "*", "wildcard", 1)
+
 			ingressMeta := app.GetObjectMeta(ingressName)
 			ingressMeta.Annotations = ingressAnnotations
+
 			ingress := &v1beta1.Ingress{
 				ObjectMeta: ingressMeta,
 				Spec: v1beta1.IngressSpec{

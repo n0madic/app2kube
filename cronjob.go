@@ -10,13 +10,16 @@ import (
 // GetCronJobs YAML
 func (app *App) GetCronJobs() (yaml string) {
 	for cronName, job := range app.Cronjob {
-		cronJobName := app.Name + "-" + cronName
+		cronJobName := app.GetReleaseName() + "-" + cronName
+
 		if job.Image == "" {
 			job.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
 		}
+
 		if job.ImagePullPolicy == "" {
 			job.ImagePullPolicy = app.Common.Image.PullPolicy
 		}
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
@@ -44,32 +47,41 @@ func (app *App) GetCronJobs() (yaml string) {
 									},
 								},
 								DNSPolicy:          app.Common.DNSPolicy,
+								RestartPolicy:      job.RestartPolicy,
 								EnableServiceLinks: &app.Common.EnableServiceLinks,
-								ImagePullSecrets: []apiv1.LocalObjectReference{
-									apiv1.LocalObjectReference{
-										Name: app.Common.Image.PullSecrets,
-									},
-								},
-								NodeSelector:                  app.Common.NodeSelector,
-								TerminationGracePeriodSeconds: &app.Common.GracePeriod,
-								Tolerations:                   app.Common.Tolerations,
+								NodeSelector:       app.Common.NodeSelector,
+								Tolerations:        app.Common.Tolerations,
 							},
 						},
 					},
 				},
 			},
 		}
+
+		if app.Common.Image.PullSecrets != "" {
+			cron.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{
+				apiv1.LocalObjectReference{
+					Name: app.Common.Image.PullSecrets,
+				},
+			}
+		}
+
+		if app.Common.GracePeriod > 0 {
+			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
+		}
+
 		for key, value := range app.Configmap {
 			cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Env = append(
 				cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Env,
 				apiv1.EnvVar{Name: key, Value: value},
 			)
 		}
+
 		if len(app.Secrets) > 0 {
 			cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].EnvFrom = append(
 				cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].EnvFrom,
 				apiv1.EnvFromSource{SecretRef: &apiv1.SecretEnvSource{LocalObjectReference: apiv1.LocalObjectReference{
-					Name: app.Name,
+					Name: app.GetReleaseName(),
 				}}},
 			)
 		}

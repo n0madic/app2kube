@@ -28,17 +28,14 @@ type App struct {
 		} `yaml:"image"`
 		MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
 		NodeSelector             map[string]string  `yaml:"nodeSelector"`
+		SharedData               string             `yaml:"sharedData"`
 		Tolerations              []apiv1.Toleration `yaml:"tolerations"`
 	} `yaml:"common"`
 	Configmap map[string]string `yaml:"configmap"`
 	Cronjob   map[string]struct {
-		Args                       []string                   `yaml:"args"`
-		Command                    []string                   `yaml:"command"`
 		ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
+		Containers                 map[string]apiv1.Container `yaml:"containers"`
 		FailedJobsHistoryLimit     int32                      `yaml:"failedJobsHistoryLimit"`
-		Image                      string                     `yaml:"image"`
-		ImagePullPolicy            apiv1.PullPolicy           `yaml:"imagePullPolicy"`
-		Resources                  apiv1.ResourceRequirements `yaml:"resources"`
 		RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
 		Schedule                   string                     `yaml:"schedule"`
 		SuccessfulJobsHistoryLimit int32                      `yaml:"successfulJobsHistoryLimit"`
@@ -69,8 +66,7 @@ type App struct {
 			Protocol     apiv1.Protocol    `yaml:"protocol"`
 			Type         apiv1.ServiceType `yaml:"type"`
 		} `yaml:"service"`
-		SharedData string                    `yaml:"sharedData"`
-		Strategy   appsv1.DeploymentStrategy `yaml:"strategy"`
+		Strategy appsv1.DeploymentStrategy `yaml:"strategy"`
 	} `yaml:"deployment"`
 	Labels    map[string]string `yaml:"labels"`
 	Name      string            `yaml:"name"`

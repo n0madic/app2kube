@@ -12,14 +12,6 @@ func (app *App) GetCronJobs() (yaml string) {
 	for cronName, job := range app.Cronjob {
 		cronJobName := app.GetReleaseName() + "-" + cronName
 
-		if job.Image == "" {
-			job.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
-		}
-
-		if job.ImagePullPolicy == "" {
-			job.ImagePullPolicy = app.Common.Image.PullPolicy
-		}
-
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
@@ -36,21 +28,12 @@ func (app *App) GetCronJobs() (yaml string) {
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
-								Containers: []apiv1.Container{
-									apiv1.Container{
-										Name:            cronName + "-job",
-										Command:         job.Command,
-										Args:            job.Args,
-										Image:           job.Image,
-										ImagePullPolicy: job.ImagePullPolicy,
-										Resources:       job.Resources,
-									},
-								},
-								DNSPolicy:          app.Common.DNSPolicy,
-								RestartPolicy:      job.RestartPolicy,
-								EnableServiceLinks: &app.Common.EnableServiceLinks,
-								NodeSelector:       app.Common.NodeSelector,
-								Tolerations:        app.Common.Tolerations,
+								Containers:                   app.processContainers(job.Containers),
+								DNSPolicy:                    app.Common.DNSPolicy,
+								RestartPolicy:                job.RestartPolicy,
+								EnableServiceLinks:           &app.Common.EnableServiceLinks,
+								NodeSelector:                 app.Common.NodeSelector,
+								Tolerations:                  app.Common.Tolerations,
 							},
 						},
 					},
@@ -70,21 +53,24 @@ func (app *App) GetCronJobs() (yaml string) {
 			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
 		}
 
-		for key, value := range app.Configmap {
-			cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Env = append(
-				cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].Env,
-				apiv1.EnvVar{Name: key, Value: value},
-			)
+		if app.Common.SharedData != "" {
+			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
+				Name:         "shared-data",
+				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
+			})
 		}
 
-		if len(app.Secrets) > 0 {
-			cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].EnvFrom = append(
-				cron.Spec.JobTemplate.Spec.Template.Spec.Containers[0].EnvFrom,
-				apiv1.EnvFromSource{SecretRef: &apiv1.SecretEnvSource{LocalObjectReference: apiv1.LocalObjectReference{
-					Name: app.GetReleaseName(),
-				}}},
-			)
+		for volName := range app.Volumes {
+			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
+				Name: volName,
+				VolumeSource: apiv1.VolumeSource{
+					PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
+						ClaimName: app.GetReleaseName() + "-" + volName,
+					},
+				},
+			})
 		}
+
 		yaml = yaml + getYAML("CronJob: "+cronJobName, cron)
 	}
 	return

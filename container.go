@@ -11,6 +11,7 @@ func (app *App) processContainers(source map[string]apiv1.Container) (containers
 	for name, container := range source {
 		container.Name = strings.ToLower(name)
 
+		thirdpartyImage := false
 		if container.Image == "" {
 			if app.Common.Image.Repository != "" {
 				container.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
@@ -22,38 +23,42 @@ func (app *App) processContainers(source map[string]apiv1.Container) (containers
 			imageParts := strings.Split(container.Image, ":")
 			if len(imageParts) == 2 && imageParts[0] == app.Common.Image.Repository {
 				container.Image = imageParts[0] + ":" + app.Common.Image.Tag
+			} else {
+				thirdpartyImage = true
 			}
 		}
 
-		for key, value := range app.Configmap {
-			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
-		}
+		if !thirdpartyImage {
+			for key, value := range app.Configmap {
+				container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
+			}
 
-		if app.CommitHash != "" {
-			container.Env = append(container.Env, apiv1.EnvVar{Name: "COMMIT_HASH", Value: app.CommitHash})
-		}
+			if app.CommitHash != "" {
+				container.Env = append(container.Env, apiv1.EnvVar{Name: "COMMIT_HASH", Value: app.CommitHash})
+			}
 
-		if len(app.Secrets) > 0 {
-			container.EnvFrom = append(
-				container.EnvFrom,
-				apiv1.EnvFromSource{SecretRef: &apiv1.SecretEnvSource{LocalObjectReference: apiv1.LocalObjectReference{
-					Name: app.GetReleaseName(),
-				}}},
-			)
-		}
+			if len(app.Secrets) > 0 {
+				container.EnvFrom = append(
+					container.EnvFrom,
+					apiv1.EnvFromSource{SecretRef: &apiv1.SecretEnvSource{LocalObjectReference: apiv1.LocalObjectReference{
+						Name: app.GetReleaseName(),
+					}}},
+				)
+			}
 
-		if app.Common.SharedData != "" && len(source) > 1 {
-			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
-				Name:      "shared-data",
-				MountPath: app.Common.SharedData,
-			})
-		}
+			if app.Common.SharedData != "" && len(source) > 1 {
+				container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
+					Name:      "shared-data",
+					MountPath: app.Common.SharedData,
+				})
+			}
 
-		for volName, volume := range app.Volumes {
-			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
-				Name:      volName,
-				MountPath: volume.MountPath,
-			})
+			for volName, volume := range app.Volumes {
+				container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
+					Name:      volName,
+					MountPath: volume.MountPath,
+				})
+			}
 		}
 
 		if app.Staging != "" {

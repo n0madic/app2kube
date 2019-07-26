@@ -57,6 +57,10 @@ func (app *App) processContainers(source map[string]apiv1.Container) (containers
 			}
 		}
 
+		if container.ImagePullPolicy == "" {
+			container.ImagePullPolicy = app.Common.Image.PullPolicy
+		}
+
 		if app.Staging != "" {
 			container.Resources = apiv1.ResourceRequirements{}
 		}

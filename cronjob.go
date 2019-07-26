@@ -53,7 +53,7 @@ func (app *App) GetCronJobs() (yaml string) {
 			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
 		}
 
-		if app.Common.SharedData != "" {
+		if app.Common.SharedData != "" && len(cron.Spec.JobTemplate.Spec.Template.Spec.Containers) > 1 {
 			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
 				Name:         "shared-data",
 				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},

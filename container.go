@@ -42,7 +42,7 @@ func (app *App) processContainers(source map[string]apiv1.Container) (containers
 			)
 		}
 
-		if app.Common.SharedData != "" {
+		if app.Common.SharedData != "" && len(source) > 1 {
 			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
 				Name:      "shared-data",
 				MountPath: app.Common.SharedData,

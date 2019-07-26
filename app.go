@@ -141,6 +141,5 @@ func NewApp() *App {
 	}
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
-	app.Deployment.Strategy.Type = appsv1.RecreateDeploymentStrategyType
 	return app
 }

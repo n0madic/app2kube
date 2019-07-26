@@ -3,7 +3,9 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"os"
+	"time"
 
 	"github.com/n0madic/app2kube"
 	"github.com/spf13/cobra"
@@ -16,6 +18,7 @@ var (
 	fileValues     []string
 	valsFiles      app2kube.ValueFiles
 	flagVerbose    bool
+	snapshot       string
 	namespace      string
 )
 
@@ -33,7 +36,8 @@ func main() {
 	f.StringArrayVar(&setStringVals, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	f.StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
-	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the computed YAML values as well")
+	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the merged YAML values as well")
+	f.StringVarP(&snapshot, "snapshot", "s", "", "Save the merged YAML values in the specified file for reuse")
 	f.StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
 	f.StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
 
@@ -70,6 +74,15 @@ func run(cmd *cobra.Command, args []string) error {
 	fmt.Print(app.GetDeployment())
 	fmt.Print(app.GetServices())
 	fmt.Print(app.GetIngress(defaultIngress))
+
+	if snapshot != "" {
+		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n", version, time.Now().Format("2006-01-02 15:04:05"))
+		err := ioutil.WriteFile(snapshot, []byte(header+string(rawVals)), 0660)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintln(os.Stderr, "Snapshot of values saved in", snapshot)
+	}
 
 	return nil
 }

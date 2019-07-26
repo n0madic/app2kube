@@ -12,6 +12,14 @@ func (app *App) GetCronJobs() (yaml string) {
 	for cronName, job := range app.Cronjob {
 		cronJobName := app.GetReleaseName() + "-" + cronName
 
+		if job.FailedJobsHistoryLimit == 0 {
+			job.FailedJobsHistoryLimit = 2
+		}
+
+		if job.SuccessfulJobsHistoryLimit == 0 {
+			job.SuccessfulJobsHistoryLimit = 2
+		}
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{

@@ -119,6 +119,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 	app.Labels["app.kubernetes.io/name"] = app.Name
 
 	if app.Staging != "" {
+		app.Common.Image.PullPolicy = apiv1.PullAlways
 		app.Deployment.RevisionHistoryLimit = 0
 		app.Staging = strings.ToLower(app.Staging)
 		app.Branch = strings.ToLower(app.Branch)

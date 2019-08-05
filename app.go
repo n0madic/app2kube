@@ -35,13 +35,13 @@ type App struct {
 	} `yaml:"common"`
 	Configmap map[string]string `yaml:"configmap"`
 	Cronjob   map[string]struct {
-		ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
-		Containers                 map[string]apiv1.Container `yaml:"containers"`
-		FailedJobsHistoryLimit     int32                      `yaml:"failedJobsHistoryLimit"`
-		RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
-		Schedule                   string                     `yaml:"schedule"`
-		SuccessfulJobsHistoryLimit int32                      `yaml:"successfulJobsHistoryLimit"`
-		Suspend                    bool                       `yaml:"suspend"`
+		ConcurrencyPolicy          batch.ConcurrencyPolicy `yaml:"concurrencyPolicy"`
+		Container                  apiv1.Container         `yaml:"container"`
+		FailedJobsHistoryLimit     int32                   `yaml:"failedJobsHistoryLimit"`
+		RestartPolicy              apiv1.RestartPolicy     `yaml:"restartPolicy"`
+		Schedule                   string                  `yaml:"schedule"`
+		SuccessfulJobsHistoryLimit int32                   `yaml:"successfulJobsHistoryLimit"`
+		Suspend                    bool                    `yaml:"suspend"`
 	} `yaml:"cronjob"`
 	Deployment struct {
 		Containers map[string]apiv1.Container `yaml:"containers"`

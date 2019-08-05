@@ -1,6 +1,8 @@
 package app2kube
 
 import (
+	"strings"
+
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +14,13 @@ func (app *App) GetDeployment() (yaml string) {
 		replicas := app.Deployment.ReplicaCount
 		if replicas < 1 || app.Staging != "" {
 			replicas = 1
+		}
+
+		var containers []apiv1.Container
+		for name, container := range app.Deployment.Containers {
+			container = app.processContainer(container)
+			container.Name = strings.ToLower(name)
+			containers = append(containers, container)
 		}
 
 		deployment := &appsv1.Deployment{
@@ -29,7 +38,7 @@ func (app *App) GetDeployment() (yaml string) {
 					},
 					Spec: apiv1.PodSpec{
 						AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
-						Containers:                   app.processContainers(app.Deployment.Containers),
+						Containers:                   containers,
 						DNSPolicy:                    app.Common.DNSPolicy,
 						EnableServiceLinks:           &app.Common.EnableServiceLinks,
 						NodeSelector:                 app.Common.NodeSelector,

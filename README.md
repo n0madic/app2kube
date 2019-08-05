@@ -93,16 +93,14 @@ common:
 cronjob:
   update:
     schedule: "0 */1 * * *"
-    containers:
-      update:
-        command: ["/usr/bin/curl"]
-        args: ["https://www.example.com/update"]
+    container:
+      command: ["/usr/bin/curl"]
+      args: ["https://www.example.com/update"]
   cleaning:
     schedule: "0 0 * * *"
-    containers:
-      cleaning:
-        command: ["/usr/bin/php"]
-        args: ["/var/www/cron.php", "--cleaning"]
+    container:
+      command: ["/usr/bin/php"]
+      args: ["/var/www/cron.php", "--cleaning"]
 deployment:
   containers:
     php-fpm:

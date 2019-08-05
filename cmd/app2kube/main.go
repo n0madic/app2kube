@@ -12,88 +12,74 @@ import (
 )
 
 var (
+	app            *app2kube.App
 	defaultIngress string
-	setVals        []string
-	setStringVals  []string
+	err            error
 	fileValues     []string
-	valsFiles      app2kube.ValueFiles
 	flagVerbose    bool
-	output         string
-	snapshot       string
 	namespace      string
+	output         string
+	rawVals        []byte
+	setStringVals  []string
+	setVals        []string
+	snapshot       string
+	valsFiles      app2kube.ValueFiles
 )
 
 var version = "DEV"
 
+var rootCmd = &cobra.Command{
+	Use:                "app2kube",
+	Short:              fmt.Sprintf("Kubernetes application deployment (app2kube %s)", version),
+	PersistentPreRunE:  preRun,
+	PersistentPostRunE: postRun,
+	Version:            version,
+}
+
+func init() {
+	rootCmd.PersistentFlags().StringArrayVar(&setVals, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
+	rootCmd.PersistentFlags().StringArrayVar(&setStringVals, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
+	rootCmd.PersistentFlags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
+	rootCmd.PersistentFlags().VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
+	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
+	rootCmd.PersistentFlags().StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
+	rootCmd.PersistentFlags().StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
+	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
+}
+
 func main() {
-	cmd := &cobra.Command{
-		Use:   "app2kube [flags]",
-		Short: fmt.Sprintf("Generate kubernetes manifests for an application (app2kube %s)", version),
-		RunE:  run,
-	}
-
-	f := cmd.Flags()
-	f.StringArrayVar(&setVals, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	f.StringArrayVar(&setStringVals, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	f.StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
-	f.VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
-	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
-	f.StringVarP(&output, "output", "o", "yaml", "Output format")
-	f.StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
-	f.StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
-	f.StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
-
-	if err := cmd.Execute(); err != nil {
+	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
 }
 
-func run(cmd *cobra.Command, args []string) error {
-	if len(valsFiles)+len(setVals)+len(setStringVals)+len(fileValues) == 0 {
-		return errors.New("Values are required")
+func preRun(cmd *cobra.Command, args []string) error {
+	if cmd.Use != "help [command]" {
+		if len(valsFiles)+len(setVals)+len(setStringVals)+len(fileValues) == 0 {
+			return errors.New("Values are required")
+		}
+
+		app = app2kube.NewApp()
+
+		rawVals, err = app.LoadValues(valsFiles, setVals, setStringVals, fileValues)
+		if err != nil {
+			return err
+		}
+
+		if flagVerbose {
+			fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
+		}
+
+		if namespace != "" {
+			app.Namespace = namespace
+		}
+
+		app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
 	}
+	return nil
+}
 
-	app := app2kube.NewApp()
-
-	rawVals, err := app.LoadValues(valsFiles, setVals, setStringVals, fileValues)
-	if err != nil {
-		return err
-	}
-
-	if flagVerbose {
-		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
-	}
-
-	if namespace != "" {
-		app.Namespace = namespace
-	}
-
-	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
-
-	for _, claim := range app.GetPersistentVolumeClaims() {
-		fmt.Print(app2kube.PrintObj(claim, output))
-	}
-
-	fmt.Print(app2kube.PrintObj(app.GetSecret(), output))
-
-	for _, cron := range app.GetCronJobs() {
-		fmt.Print(app2kube.PrintObj(cron, output))
-	}
-
-	fmt.Print(app2kube.PrintObj(app.GetDeployment(), output))
-
-	for _, service := range app.GetServices() {
-		fmt.Print(app2kube.PrintObj(service, output))
-	}
-
-	for _, ingressSecret := range app.GetIngressSecrets() {
-		fmt.Print(app2kube.PrintObj(ingressSecret, output))
-	}
-
-	for _, ingress := range app.GetIngress(defaultIngress) {
-		fmt.Print(app2kube.PrintObj(ingress, output))
-	}
-
+func postRun(cmd *cobra.Command, args []string) error {
 	if snapshot != "" {
 		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",
 			version,

@@ -16,7 +16,11 @@ go get -u github.com/n0madic/app2kube/cmd/app2kube
 
 ```
 Usage:
-  app2kube [flags]
+  app2kube [command]
+
+Available Commands:
+  help        Help about any command
+  manifest    Generate kubernetes manifests for an application
 
 Flags:
   -h, --help                     help for app2kube
@@ -28,6 +32,7 @@ Flags:
   -s, --snapshot string          Save the parsed YAML values in the specified file for reuse
   -f, --values valueFiles        Specify values in a YAML file or a URL (can specify multiple) (default [])
   -v, --verbose                  Show the parsed YAML values as well
+      --version                  version for app2kube
 ```
 
 ## Usage
@@ -36,7 +41,7 @@ Minimum required values for application deployment in kubernetes - `name` and `i
 
 
 ```shell
-app2kube --set name=example --set deployment.containers.example.image=example/image:latest
+app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
 
 OR
@@ -53,7 +58,7 @@ deployment:
 
 
 ```shell
-app2kube -f values.yaml | kubectl apply -f -
+app2kube manifest -f values.yaml | kubectl apply -f -
 ```
 
 ## Examples

@@ -5,7 +5,7 @@ import (
 )
 
 // GetPersistentVolumeClaims YAML
-func (app *App) GetPersistentVolumeClaims() (yaml string) {
+func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeClaim) {
 	for volName, volume := range app.Volumes {
 		claimName := app.GetReleaseName() + "-" + volName
 
@@ -14,7 +14,7 @@ func (app *App) GetPersistentVolumeClaims() (yaml string) {
 			Spec:       volume.Spec,
 		}
 
-		yaml = yaml + getYAML(claim)
+		claims = append(claims, claim)
 	}
 	return
 }

@@ -11,7 +11,7 @@ import (
 )
 
 // GetIngress YAML
-func (app *App) GetIngress(ingressClass string) (yaml string) {
+func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress) {
 	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
 		for _, ing := range app.Deployment.Ingress {
 			if app.Staging != "" {
@@ -75,17 +75,6 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
-				if ing.Letsencrypt || (ing.TLSCrt != "" && ing.TLSKey != "") {
-					secret := &apiv1.Secret{
-						ObjectMeta: app.GetObjectMeta(ing.TLSSecretName),
-						Data: map[string][]byte{
-							"tls.crt": []byte(ing.TLSCrt),
-							"tls.key": []byte(ing.TLSKey),
-						},
-						Type: apiv1.SecretTypeTLS,
-					}
-					yaml = yaml + getYAML(secret)
-				}
 				ingressTLS = append(ingressTLS, v1beta1.IngressTLS{
 					Hosts:      []string{ing.Host},
 					SecretName: strings.ToLower(ing.TLSSecretName),
@@ -107,14 +96,37 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 			ingressMeta := app.GetObjectMeta(ingressName)
 			ingressMeta.Annotations = ingressAnnotations
 
-			ingress := &v1beta1.Ingress{
+			ingressObj := &v1beta1.Ingress{
 				ObjectMeta: ingressMeta,
 				Spec: v1beta1.IngressSpec{
 					Rules: ingressRules,
 					TLS:   ingressTLS,
 				},
 			}
-			yaml = yaml + getYAML(ingress)
+			ingress = append(ingress, ingressObj)
+		}
+	}
+	return
+}
+
+// GetIngressSecrets return TLS secrets for ingress
+func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
+	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
+		for _, ingress := range app.Deployment.Ingress {
+			if ingress.Letsencrypt || (ingress.TLSCrt != "" && ingress.TLSKey != "") {
+				if ingress.TLSSecretName == "" {
+					ingress.TLSSecretName = "tls-" + strings.Replace(ingress.Host, "*", "wildcard", 1)
+				}
+				secret := &apiv1.Secret{
+					ObjectMeta: app.GetObjectMeta(ingress.TLSSecretName),
+					Data: map[string][]byte{
+						"tls.crt": []byte(ingress.TLSCrt),
+						"tls.key": []byte(ingress.TLSKey),
+					},
+					Type: apiv1.SecretTypeTLS,
+				}
+				secrets = append(secrets, secret)
+			}
 		}
 	}
 	return

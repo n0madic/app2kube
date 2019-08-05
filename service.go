@@ -8,7 +8,7 @@ import (
 )
 
 // GetServices YAML
-func (app *App) GetServices() (yaml string) {
+func (app *App) GetServices() (services []*apiv1.Service) {
 	if len(app.Deployment.Containers) > 0 {
 		for _, svc := range app.Deployment.Service {
 			if svc.Port > 0 {
@@ -39,7 +39,7 @@ func (app *App) GetServices() (yaml string) {
 				service.Spec.Ports[0].NodePort = svc.ExternalPort
 			}
 
-			yaml = yaml + getYAML(service)
+			services = append(services, service)
 		}
 	}
 	return

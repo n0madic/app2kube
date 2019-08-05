@@ -11,8 +11,13 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 )
 
-func getYAML(obj runtime.Object) string {
-	printFlags := genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme).WithDefaultOutput("yaml")
+// PrintObj return manifest from object
+func PrintObj(obj runtime.Object, output string) string {
+	if reflect.ValueOf(obj).IsNil() {
+		return ""
+	}
+
+	printFlags := genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme).WithDefaultOutput(output)
 
 	printer, err := printFlags.ToPrinter()
 	if err != nil {

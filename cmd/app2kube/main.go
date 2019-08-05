@@ -18,6 +18,7 @@ var (
 	fileValues     []string
 	valsFiles      app2kube.ValueFiles
 	flagVerbose    bool
+	output         string
 	snapshot       string
 	namespace      string
 )
@@ -37,6 +38,7 @@ func main() {
 	f.StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	f.VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
 	f.BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
+	f.StringVarP(&output, "output", "o", "yaml", "Output format")
 	f.StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
 	f.StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
 	f.StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
@@ -68,12 +70,29 @@ func run(cmd *cobra.Command, args []string) error {
 
 	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
 
-	fmt.Print(app.GetPersistentVolumeClaims())
-	fmt.Print(app.GetSecret())
-	fmt.Print(app.GetCronJobs())
-	fmt.Print(app.GetDeployment())
-	fmt.Print(app.GetServices())
-	fmt.Print(app.GetIngress(defaultIngress))
+	for _, claim := range app.GetPersistentVolumeClaims() {
+		fmt.Print(app2kube.PrintObj(claim, output))
+	}
+
+	fmt.Print(app2kube.PrintObj(app.GetSecret(), output))
+
+	for _, cron := range app.GetCronJobs() {
+		fmt.Print(app2kube.PrintObj(cron, output))
+	}
+
+	fmt.Print(app2kube.PrintObj(app.GetDeployment(), output))
+
+	for _, service := range app.GetServices() {
+		fmt.Print(app2kube.PrintObj(service, output))
+	}
+
+	for _, ingressSecret := range app.GetIngressSecrets() {
+		fmt.Print(app2kube.PrintObj(ingressSecret, output))
+	}
+
+	for _, ingress := range app.GetIngress(defaultIngress) {
+		fmt.Print(app2kube.PrintObj(ingress, output))
+	}
 
 	if snapshot != "" {
 		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",

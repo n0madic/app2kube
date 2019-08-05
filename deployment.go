@@ -9,7 +9,7 @@ import (
 )
 
 // GetDeployment YAML
-func (app *App) GetDeployment() (yaml string) {
+func (app *App) GetDeployment() (deployment *appsv1.Deployment) {
 	if len(app.Deployment.Containers) > 0 {
 		replicas := app.Deployment.ReplicaCount
 		if replicas < 1 || app.Staging != "" {
@@ -23,7 +23,7 @@ func (app *App) GetDeployment() (yaml string) {
 			containers = append(containers, container)
 		}
 
-		deployment := &appsv1.Deployment{
+		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetReleaseName()),
 			Spec: appsv1.DeploymentSpec{
 				Replicas:             &replicas,
@@ -77,8 +77,6 @@ func (app *App) GetDeployment() (yaml string) {
 				},
 			})
 		}
-
-		yaml = getYAML(deployment)
 	}
 	return
 }

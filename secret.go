@@ -5,19 +5,17 @@ import (
 )
 
 // GetSecret YAML
-func (app *App) GetSecret() (yaml string) {
+func (app *App) GetSecret() (secret *apiv1.Secret) {
 	if len(app.Secrets) > 0 {
 		secretBytes := make(map[string][]byte)
 		for key, value := range app.Secrets {
 			secretBytes[key] = []byte(value)
 		}
 
-		secret := &apiv1.Secret{
+		secret = &apiv1.Secret{
 			ObjectMeta: app.GetObjectMeta(app.GetReleaseName()),
 			Data:       secretBytes,
 		}
-
-		yaml = getYAML(secret)
 	}
 	return
 }

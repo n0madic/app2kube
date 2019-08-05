@@ -8,7 +8,7 @@ import (
 )
 
 // GetCronJobs YAML
-func (app *App) GetCronJobs() (yaml string) {
+func (app *App) GetCronJobs() (crons []*batch.CronJob) {
 	for cronName, job := range app.Cronjob {
 		cronJobName := app.GetReleaseName() + "-" + cronName
 
@@ -84,7 +84,7 @@ func (app *App) GetCronJobs() (yaml string) {
 			})
 		}
 
-		yaml = yaml + getYAML(cron)
+		crons = append(crons, cron)
 	}
 	return
 }

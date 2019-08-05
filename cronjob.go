@@ -84,7 +84,7 @@ func (app *App) GetCronJobs() (yaml string) {
 			})
 		}
 
-		yaml = yaml + getYAML("CronJob: "+cronJobName, cron)
+		yaml = yaml + getYAML(cron)
 	}
 	return
 }

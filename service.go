@@ -39,7 +39,7 @@ func (app *App) GetServices() (yaml string) {
 				service.Spec.Ports[0].NodePort = svc.ExternalPort
 			}
 
-			yaml = yaml + getYAML("Service: "+serviceName, service)
+			yaml = yaml + getYAML(service)
 		}
 	}
 	return

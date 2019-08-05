@@ -17,7 +17,7 @@ func (app *App) GetSecret() (yaml string) {
 			Data:       secretBytes,
 		}
 
-		yaml = getYAML("Secret: "+app.GetReleaseName(), secret)
+		yaml = getYAML(secret)
 	}
 	return
 }

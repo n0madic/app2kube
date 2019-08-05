@@ -84,7 +84,7 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 						},
 						Type: apiv1.SecretTypeTLS,
 					}
-					yaml = yaml + getYAML("Secret for TLS: "+ing.TLSSecretName, secret)
+					yaml = yaml + getYAML(secret)
 				}
 				ingressTLS = append(ingressTLS, v1beta1.IngressTLS{
 					Hosts:      []string{ing.Host},
@@ -114,7 +114,7 @@ func (app *App) GetIngress(ingressClass string) (yaml string) {
 					TLS:   ingressTLS,
 				},
 			}
-			yaml = yaml + getYAML("Ingress: "+ingressName, ingress)
+			yaml = yaml + getYAML(ingress)
 		}
 	}
 	return

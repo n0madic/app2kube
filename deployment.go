@@ -78,7 +78,7 @@ func (app *App) GetDeployment() (yaml string) {
 			})
 		}
 
-		yaml = getYAML("Deployment: "+app.GetReleaseName(), deployment)
+		yaml = getYAML(deployment)
 	}
 	return
 }

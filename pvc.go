@@ -14,7 +14,7 @@ func (app *App) GetPersistentVolumeClaims() (yaml string) {
 			Spec:       volume.Spec,
 		}
 
-		yaml = yaml + getYAML("PersistentVolumeClaim: "+claimName, claim)
+		yaml = yaml + getYAML(claim)
 	}
 	return
 }

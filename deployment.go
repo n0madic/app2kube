@@ -9,7 +9,7 @@ import (
 )
 
 // GetDeployment YAML
-func (app *App) GetDeployment() (deployment *appsv1.Deployment) {
+func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
 		replicas := app.Deployment.ReplicaCount
 		if replicas < 1 || app.Staging != "" {
@@ -18,7 +18,10 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment) {
 
 		var containers []apiv1.Container
 		for name, container := range app.Deployment.Containers {
-			container = app.processContainer(container)
+			container, err = app.processContainer(container)
+			if err != nil {
+				return
+			}
 			container.Name = strings.ToLower(name)
 			containers = append(containers, container)
 		}

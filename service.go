@@ -1,6 +1,7 @@
 package app2kube
 
 import (
+	"fmt"
 	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -8,7 +9,7 @@ import (
 )
 
 // GetServices YAML
-func (app *App) GetServices() (services []*apiv1.Service) {
+func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {
 		for _, svc := range app.Deployment.Service {
 			if svc.Port > 0 {
@@ -18,6 +19,10 @@ func (app *App) GetServices() (services []*apiv1.Service) {
 				if svc.ExternalPort == 0 {
 					svc.ExternalPort = svc.Port
 				}
+			}
+
+			if svc.InternalPort == 0 && svc.ExternalPort == 0 {
+				return services, fmt.Errorf("port required for service: %s", svc.Name)
 			}
 
 			serviceName := app.GetReleaseName() + "-" + strings.ToLower(svc.Name)

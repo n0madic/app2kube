@@ -19,28 +19,80 @@ func init() {
 }
 
 func manifest(cmd *cobra.Command, args []string) error {
-	for _, claim := range app.GetPersistentVolumeClaims() {
-		fmt.Print(app2kube.PrintObj(claim, output))
+	secret, err := app.GetSecret()
+	if err != nil {
+		return err
+	}
+	yml, err := app2kube.PrintObj(secret, output)
+	if err != nil {
+		return err
+	}
+	fmt.Print(yml)
+
+	claims, err := app.GetPersistentVolumeClaims()
+	if err != nil {
+		return err
+	}
+	for _, claim := range claims {
+		yml, err := app2kube.PrintObj(claim, output)
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml)
 	}
 
-	fmt.Print(app2kube.PrintObj(app.GetSecret(), output))
-
-	for _, cron := range app.GetCronJobs() {
-		fmt.Print(app2kube.PrintObj(cron, output))
+	jobs, err := app.GetCronJobs()
+	if err != nil {
+		return err
+	}
+	for _, cron := range jobs {
+		yml, err := app2kube.PrintObj(cron, output)
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml)
 	}
 
-	fmt.Print(app2kube.PrintObj(app.GetDeployment(), output))
+	deployment, err := app.GetDeployment()
+	if err != nil {
+		return err
+	}
+	yml, err = app2kube.PrintObj(deployment, output)
+	if err != nil {
+		return err
+	}
+	fmt.Print(yml)
 
-	for _, service := range app.GetServices() {
-		fmt.Print(app2kube.PrintObj(service, output))
+	services, err := app.GetServices()
+	if err != nil {
+		return err
+	}
+	for _, service := range services {
+		yml, err := app2kube.PrintObj(service, output)
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml)
 	}
 
 	for _, ingressSecret := range app.GetIngressSecrets() {
-		fmt.Print(app2kube.PrintObj(ingressSecret, output))
+		yml, err := app2kube.PrintObj(ingressSecret, output)
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml)
 	}
 
-	for _, ingress := range app.GetIngress(defaultIngress) {
-		fmt.Print(app2kube.PrintObj(ingress, output))
+	ingress, err := app.GetIngress(defaultIngress)
+	if err != nil {
+		return err
+	}
+	for _, ing := range ingress {
+		yml, err := app2kube.PrintObj(ing, output)
+		if err != nil {
+			return err
+		}
+		fmt.Print(yml)
 	}
 
 	return nil

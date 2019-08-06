@@ -12,21 +12,21 @@ import (
 )
 
 // PrintObj return manifest from object
-func PrintObj(obj runtime.Object, output string) string {
+func PrintObj(obj runtime.Object, output string) (string, error) {
 	if reflect.ValueOf(obj).IsNil() {
-		return ""
+		return "", nil
 	}
 
 	printFlags := genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme).WithDefaultOutput(output)
 
 	printer, err := printFlags.ToPrinter()
 	if err != nil {
-		panic(err)
+		return "", err
 	}
 
 	out := bytes.NewBuffer([]byte{})
 	if err := printer.PrintObj(obj, out); err != nil {
-		panic(err)
+		return "", err
 	}
 
 	name := ""
@@ -34,11 +34,13 @@ func PrintObj(obj runtime.Object, output string) string {
 		if n := acc.GetName(); len(n) > 0 {
 			name = n
 		}
+	} else {
+		return "", err
 	}
 
 	return fmt.Sprintf("---\n# %s: %s\n%s\n",
 		reflect.Indirect(reflect.ValueOf(obj)).Type().Name(),
 		name,
 		out,
-	)
+	), nil
 }

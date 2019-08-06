@@ -11,12 +11,12 @@ import (
 )
 
 // GetIngress YAML
-func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress) {
+func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
 		for _, ing := range app.Deployment.Ingress {
 			if app.Staging != "" {
 				if strings.HasPrefix(ing.Host, "*") {
-					panic(fmt.Sprintf("Staging cannot be used with wildcard domain: %s\n", ing.Host))
+					return ingress, fmt.Errorf("staging cannot be used with wildcard domain: %s", ing.Host)
 				}
 				ing.Host = app.Staging + "." + ing.Host
 				if app.Branch != "" {
@@ -106,7 +106,7 @@ func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress) {
 			ingress = append(ingress, ingressObj)
 		}
 	}
-	return
+	return ingress, nil
 }
 
 // GetIngressSecrets return TLS secrets for ingress

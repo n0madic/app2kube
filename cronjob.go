@@ -1,6 +1,8 @@
 package app2kube
 
 import (
+	"fmt"
+
 	batchv1 "k8s.io/api/batch/v1"
 	batch "k8s.io/api/batch/v1beta1"
 	apiv1 "k8s.io/api/core/v1"
@@ -8,9 +10,13 @@ import (
 )
 
 // GetCronJobs YAML
-func (app *App) GetCronJobs() (crons []*batch.CronJob) {
+func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 	for cronName, job := range app.Cronjob {
 		cronJobName := app.GetReleaseName() + "-" + cronName
+
+		if job.Schedule == "" {
+			return crons, fmt.Errorf("schedule required for cron: %s", cronName)
+		}
 
 		if job.FailedJobsHistoryLimit == 0 {
 			job.FailedJobsHistoryLimit = 2
@@ -20,7 +26,11 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob) {
 			job.SuccessfulJobsHistoryLimit = 2
 		}
 
-		container := app.processContainer(job.Container)
+		container, err := app.processContainer(job.Container)
+		if err != nil {
+			return crons, err
+		}
+
 		if container.Name == "" {
 			container.Name = cronName + "-job"
 		}
@@ -86,5 +96,5 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob) {
 
 		crons = append(crons, cron)
 	}
-	return
+	return crons, nil
 }

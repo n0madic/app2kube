@@ -28,7 +28,7 @@ func encrypt(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	for _, filePath := range valsFiles {
+	for _, filePath := range valueFiles {
 		m := make(map[interface{}]interface{})
 		modified := false
 

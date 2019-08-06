@@ -20,10 +20,10 @@ var (
 	namespace      string
 	output         string
 	rawVals        []byte
-	setStringVals  []string
-	setVals        []string
 	snapshot       string
-	valsFiles      app2kube.ValueFiles
+	stringValues   []string
+	valueFiles     app2kube.ValueFiles
+	values         []string
 )
 
 var version = "DEV"
@@ -37,14 +37,14 @@ var rootCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringArrayVar(&setVals, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	rootCmd.PersistentFlags().StringArrayVar(&setStringVals, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	rootCmd.PersistentFlags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
-	rootCmd.PersistentFlags().VarP(&valsFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
-	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
-	rootCmd.PersistentFlags().StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
 	rootCmd.PersistentFlags().StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
 	rootCmd.PersistentFlags().StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
+	rootCmd.PersistentFlags().StringArrayVar(&values, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
+	rootCmd.PersistentFlags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
+	rootCmd.PersistentFlags().StringArrayVar(&stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
+	rootCmd.PersistentFlags().StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
+	rootCmd.PersistentFlags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
+	rootCmd.PersistentFlags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
 }
 
 func main() {
@@ -55,13 +55,13 @@ func main() {
 
 func preRun(cmd *cobra.Command, args []string) error {
 	if cmd.Use != "help [command]" && cmd.Use != "encrypt" {
-		if len(valsFiles)+len(setVals)+len(setStringVals)+len(fileValues) == 0 {
+		if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {
 			return errors.New("Values are required")
 		}
 
 		app = app2kube.NewApp()
 
-		rawVals, err = app.LoadValues(valsFiles, setVals, setStringVals, fileValues)
+		rawVals, err = app.LoadValues(valueFiles, values, stringValues, fileValues)
 		if err != nil {
 			return err
 		}

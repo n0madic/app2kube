@@ -23,18 +23,11 @@ Available Commands:
   encrypt     Encrypt secret values in YAML file
   help        Help about any command
   manifest    Generate kubernetes manifests for an application
+  track       Track application resources in kubernetes
 
 Flags:
-  -h, --help                     help for app2kube
-  -i, --ingress string           Ingress class (default "nginx")
-  -n, --namespace string         Namespace used for manifests
-      --set stringArray          Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)
-      --set-file stringArray     Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)
-      --set-string stringArray   Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)
-  -s, --snapshot string          Save the parsed YAML values in the specified file for reuse
-  -f, --values valueFiles        Specify values in a YAML file or a URL (can specify multiple) (default [])
-  -v, --verbose                  Show the parsed YAML values as well
-      --version                  version for app2kube
+  -h, --help      help for app2kube
+      --version   version for app2kube
 ```
 
 ## Usage
@@ -60,6 +53,12 @@ deployment:
 
 ```shell
 app2kube manifest -f values.yaml | kubectl apply -f -
+```
+
+Track deployment till ready:
+
+```shell
+app2kube track ready -f values.yaml
 ```
 
 ## Examples

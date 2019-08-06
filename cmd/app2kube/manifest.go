@@ -14,11 +14,18 @@ var manifestCmd = &cobra.Command{
 }
 
 func init() {
+	manifestCmd.Flags().StringVarP(&defaultIngress, "ingress", "i", "nginx", "Ingress class")
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
+	initAppFlags(manifestCmd)
 	rootCmd.AddCommand(manifestCmd)
 }
 
 func manifest(cmd *cobra.Command, args []string) error {
+	err := initApp()
+	if err != nil {
+		return err
+	}
+
 	secret, err := app.GetSecret()
 	if err != nil {
 		return err

@@ -23,6 +23,10 @@ func init() {
 }
 
 func encrypt(cmd *cobra.Command, args []string) error {
+	if len(valueFiles) == 0 {
+		return fmt.Errorf("need to specify yaml files")
+	}
+
 	password, err := app2kube.GetPassword()
 	if err != nil {
 		return err

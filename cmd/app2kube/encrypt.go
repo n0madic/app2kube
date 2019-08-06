@@ -13,9 +13,11 @@ import (
 const dictKey = "secrets"
 
 var encryptCmd = &cobra.Command{
-	Use:   "encrypt",
-	Short: "Ecrypt secret values in YAML file",
-	RunE:  encrypt,
+	Use:     "encrypt",
+	Short:   "Encrypt secret values in YAML file",
+	Long:    "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
+	Example: "app2kube encrypt -f values.yaml",
+	RunE:    encrypt,
 }
 
 func init() {

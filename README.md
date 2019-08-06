@@ -14,11 +14,13 @@ go get -u github.com/n0madic/app2kube/cmd/app2kube
 
 ## Help
 
-```
+```help
 Usage:
   app2kube [command]
 
 Available Commands:
+  completion  Generates bash completion scripts
+  encrypt     Encrypt secret values in YAML file
   help        Help about any command
   manifest    Generate kubernetes manifests for an application
 
@@ -39,7 +41,6 @@ Flags:
 
 Minimum required values for application deployment in kubernetes - `name` and `image`.
 
-
 ```shell
 app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
@@ -47,6 +48,7 @@ app2kube manifest --set name=example --set deployment.containers.example.image=e
 OR
 
 `values.yaml`:
+
 ```yaml
 ---
 name: example
@@ -55,7 +57,6 @@ deployment:
     example:
       image: "example/image:latest"
 ```
-
 
 ```shell
 app2kube manifest -f values.yaml | kubectl apply -f -

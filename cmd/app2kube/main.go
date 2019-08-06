@@ -54,7 +54,7 @@ func main() {
 }
 
 func preRun(cmd *cobra.Command, args []string) error {
-	if cmd.Use != "help [command]" && cmd.Use != "encrypt" {
+	if cmd.Use == "manifest" {
 		if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {
 			return errors.New("Values are required")
 		}

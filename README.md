@@ -2,6 +2,21 @@
 
 The easiest way to create kubernetes manifests for an application
 
+## Features
+
+* Simple deployment to kubernetes without knowledge of manifest syntax
+* Understandable set of values for configuration in YAML
+* Supported Kubernetes resources:
+    * CronJob
+    * Deployment
+    * Ingress
+    * PersistentVolumeClaim
+    * Secret
+    * Service
+* Secret value encryption with AES-256 CBC
+* Support staging
+* Track application deployment in kubernetes
+
 ## Install
 
 Download binaries from [release](https://github.com/n0madic/app2kube/releases) page.
@@ -23,7 +38,7 @@ Available Commands:
   encrypt     Encrypt secret values in YAML file
   help        Help about any command
   manifest    Generate kubernetes manifests for an application
-  track       Track application resources in kubernetes
+  track       Track application deployment in kubernetes
 
 Flags:
   -h, --help      help for app2kube

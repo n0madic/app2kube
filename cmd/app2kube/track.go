@@ -90,7 +90,7 @@ func trackInit(cmd *cobra.Command, args []string) error {
 }
 
 func trackFollow(cmd *cobra.Command, args []string) error {
-	err := follow.TrackDeployment(
+	return follow.TrackDeployment(
 		app.GetReleaseName(),
 		app.Namespace,
 		kube.Kubernetes,
@@ -99,11 +99,6 @@ func trackFollow(cmd *cobra.Command, args []string) error {
 			Timeout:      time.Minute * time.Duration(timeout),
 		},
 	)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func trackReady(cmd *cobra.Command, args []string) error {

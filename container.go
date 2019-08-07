@@ -7,12 +7,12 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
-func (app *App) processContainer(container apiv1.Container) (apiv1.Container, error) {
+func (app *App) processContainer(container *apiv1.Container) error {
 	if container.Image == "" {
 		if app.Common.Image.Repository != "" {
 			container.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
 		} else {
-			return apiv1.Container{}, fmt.Errorf("image required for container %s", container.Name)
+			return fmt.Errorf("image required for container %s", container.Name)
 		}
 	}
 
@@ -72,5 +72,5 @@ func (app *App) processContainer(container apiv1.Container) (apiv1.Container, er
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
-	return container, nil
+	return nil
 }

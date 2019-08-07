@@ -18,7 +18,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 
 		var containers []apiv1.Container
 		for name, container := range app.Deployment.Containers {
-			container, err = app.processContainer(container)
+			err = app.processContainer(&container)
 			if err != nil {
 				return
 			}

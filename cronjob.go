@@ -26,13 +26,13 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.SuccessfulJobsHistoryLimit = 2
 		}
 
-		container, err := app.processContainer(job.Container)
+		err := app.processContainer(&job.Container)
 		if err != nil {
 			return crons, err
 		}
 
-		if container.Name == "" {
-			container.Name = cronName + "-job"
+		if job.Container.Name == "" {
+			job.Container.Name = cronName + "-job"
 		}
 
 		cron := &batch.CronJob{
@@ -51,7 +51,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
-								Containers:                   []apiv1.Container{container},
+								Containers:                   []apiv1.Container{job.Container},
 								DNSPolicy:                    app.Common.DNSPolicy,
 								RestartPolicy:                job.RestartPolicy,
 								EnableServiceLinks:           &app.Common.EnableServiceLinks,

@@ -36,6 +36,16 @@ func manifest(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Print(yml)
 
+	configmap, err := app.GetConfigMap()
+	if err != nil {
+		return err
+	}
+	yml, err = app2kube.PrintObj(configmap, output)
+	if err != nil {
+		return err
+	}
+	fmt.Print(yml)
+
 	claims, err := app.GetPersistentVolumeClaims()
 	if err != nil {
 		return err

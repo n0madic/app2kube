@@ -33,7 +33,8 @@ type App struct {
 		SharedData               string             `yaml:"sharedData"`
 		Tolerations              []apiv1.Toleration `yaml:"tolerations"`
 	} `yaml:"common"`
-	Cronjob map[string]struct {
+	ConfigMap map[string]string `yaml:"configmap"`
+	Cronjob   map[string]struct {
 		ConcurrencyPolicy          batch.ConcurrencyPolicy `yaml:"concurrencyPolicy"`
 		Container                  apiv1.Container         `yaml:"container"`
 		FailedJobsHistoryLimit     int32                   `yaml:"failedJobsHistoryLimit"`

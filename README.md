@@ -7,6 +7,7 @@ The easiest way to create kubernetes manifests for an application
 * Simple deployment to kubernetes without knowledge of manifest syntax
 * Understandable set of values for configuration in YAML
 * Supported Kubernetes resources:
+  * ConfigMap
   * CronJob
   * Deployment
   * Ingress

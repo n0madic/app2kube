@@ -31,6 +31,15 @@ func (app *App) processContainer(container apiv1.Container) (apiv1.Container, er
 			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
 		}
 
+		if len(app.ConfigMap) > 0 {
+			container.EnvFrom = append(
+				container.EnvFrom,
+				apiv1.EnvFromSource{ConfigMapRef: &apiv1.ConfigMapEnvSource{LocalObjectReference: apiv1.LocalObjectReference{
+					Name: app.GetReleaseName(),
+				}}},
+			)
+		}
+
 		if len(app.Secrets) > 0 {
 			container.EnvFrom = append(
 				container.EnvFrom,

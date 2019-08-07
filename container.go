@@ -27,7 +27,7 @@ func (app *App) processContainer(container apiv1.Container) (apiv1.Container, er
 	}
 
 	if !thirdpartyImage {
-		for key, value := range app.Configmap {
+		for key, value := range app.Env {
 			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
 		}
 

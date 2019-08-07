@@ -119,5 +119,27 @@ func trackReady(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	if len(app.Deployment.Ingress) > 0 {
+		fmt.Println()
+		fmt.Println("Try the application URL:")
+
+		for _, ingress := range app.Deployment.Ingress {
+			getURL := func(host string) string {
+				https := ""
+				if ingress.Letsencrypt || ingress.TLSSecretName != "" {
+					https = "s"
+				}
+				return fmt.Sprintf("http%s://%s", https, host)
+			}
+
+			fmt.Println("  ", getURL(ingress.Host))
+
+			for _, alias := range ingress.Aliases {
+				fmt.Println("  ", getURL(alias))
+			}
+		}
+	}
+
 	return nil
 }

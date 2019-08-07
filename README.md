@@ -78,10 +78,10 @@ app2kube track ready -f values.yaml
 
 ## Staging
 
-For a staging release, you must set the `staging` and optional `branch` parameters. 
+For a staging release, you must set the `staging` and optional `branch` parameters:
 
 ```shell
-app2kube manifest -f values.yaml --set staging=alpha --set branch=develop 
+app2kube manifest -f values.yaml --set staging=alpha --set branch=develop
 ```
 
 In this case, some values will be reset to more optimal for staging:

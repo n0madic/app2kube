@@ -7,12 +7,12 @@ The easiest way to create kubernetes manifests for an application
 * Simple deployment to kubernetes without knowledge of manifest syntax
 * Understandable set of values for configuration in YAML
 * Supported Kubernetes resources:
-    * CronJob
-    * Deployment
-    * Ingress
-    * PersistentVolumeClaim
-    * Secret
-    * Service
+  * CronJob
+  * Deployment
+  * Ingress
+  * PersistentVolumeClaim
+  * Secret
+  * Service
 * Secret value encryption with AES-256 CBC
 * Support staging
 * Track application deployment in kubernetes
@@ -75,6 +75,29 @@ Track deployment till ready:
 ```shell
 app2kube track ready -f values.yaml
 ```
+
+## Staging
+
+For a staging release, you must set the `staging` and optional `branch` parameters. 
+
+```shell
+app2kube manifest -f values.yaml --set staging=alpha --set branch=develop 
+```
+
+In this case, some values will be reset to more optimal for staging:
+
+```yaml
+common:
+  image:
+    pullPolicy: Always
+deployment:
+  replicaCount: 1
+  revisionHistoryLimit: 0
+```
+
+Also, aliases for ingress and resource requests for containers (for a denser filling of the staging environment) will not be used.
+
+For ingress domains, prefixes from the above values will be automatically added: `staging.example.com` or `branch.staging.example.com`
 
 ## Examples
 

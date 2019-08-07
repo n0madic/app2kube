@@ -10,7 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// GetIngress YAML
+// GetIngress resource
 func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
 		for _, ing := range app.Deployment.Ingress {

@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GetCronJobs YAML
+// GetCronJobs resource
 func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 	for cronName, job := range app.Cronjob {
 		cronJobName := app.GetReleaseName() + "-" + cronName

@@ -6,7 +6,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
-// GetSecret YAML
+// GetSecret resource
 func (app *App) GetSecret() (secret *apiv1.Secret, err error) {
 	if len(app.Secrets) > 0 {
 		secretBytes := make(map[string][]byte)

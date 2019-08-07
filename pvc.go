@@ -6,7 +6,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
-// GetPersistentVolumeClaims YAML
+// GetPersistentVolumeClaims resource
 func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeClaim, err error) {
 	for volName, volume := range app.Volumes {
 		if volume.MountPath == "" {

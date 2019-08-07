@@ -8,7 +8,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// GetDeployment YAML
+// GetDeployment resource
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
 		replicas := app.Deployment.ReplicaCount

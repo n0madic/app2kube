@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-// GetServices YAML
+// GetServices resource
 func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {
 		for _, svc := range app.Deployment.Service {

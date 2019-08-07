@@ -14,12 +14,11 @@ import (
 	"github.com/flant/kubedog/pkg/tracker"
 	"github.com/flant/kubedog/pkg/trackers/follow"
 	"github.com/flant/kubedog/pkg/trackers/rollout"
-	"github.com/flant/kubedog/pkg/trackers/rollout/multitrack"
 )
 
 var trackCmd = &cobra.Command{
 	Use:               "track",
-	Short:             "Track application resources in kubernetes",
+	Short:             "Track application deployment in kubernetes",
 	PersistentPreRunE: trackInit,
 }
 
@@ -49,12 +48,6 @@ func init() {
 		Use:   "ready",
 		Short: "Track Deployment till ready",
 		RunE:  trackReady,
-	})
-
-	trackCmd.AddCommand(&cobra.Command{
-		Use:   "multiple",
-		Short: "Track multiple resources (Deployment/CronJobs)",
-		RunE:  trackMulti,
 	})
 
 	for _, cmd := range trackCmd.Commands() {
@@ -126,51 +119,5 @@ func trackReady(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	return nil
-}
-
-func trackMulti(cmd *cobra.Command, args []string) error {
-	specs := multitrack.MultitrackSpecs{}
-
-	jobs, err := app.GetCronJobs()
-	if err != nil {
-		return err
-	}
-	for _, cron := range jobs {
-		specs.Jobs = append(specs.Jobs, multitrack.MultitrackSpec{
-			ResourceName: cron.Name,
-			Namespace:    cron.Namespace,
-		})
-	}
-
-	deployment, err := app.GetDeployment()
-	if err != nil {
-		return err
-	}
-	if deployment != nil {
-		specs.Deployments = []multitrack.MultitrackSpec{
-			multitrack.MultitrackSpec{
-				ResourceName: deployment.Name,
-				Namespace:    deployment.Namespace},
-		}
-	} else {
-		return fmt.Errorf("deployment not specified")
-	}
-
-	err = multitrack.Multitrack(
-		kube.Kubernetes,
-		specs,
-		multitrack.MultitrackOptions{
-			Options: tracker.Options{
-				LogsFromTime: logsFromTime,
-				Timeout:      time.Minute * time.Duration(timeout),
-			},
-		},
-	)
-
-	if err != nil {
-		return fmt.Errorf("resources are not reached ready state: %s", err)
-	}
-
 	return nil
 }

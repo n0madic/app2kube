@@ -50,7 +50,7 @@ func init() {
 	})
 
 	for _, cmd := range trackCmd.Commands() {
-		initAppFlags(cmd)
+		addAppFlags(cmd)
 	}
 
 	rootCmd.AddCommand(trackCmd)

@@ -61,12 +61,12 @@ func initApp() error {
 	return nil
 }
 
-func initAppFlags(cmd *cobra.Command) {
+func addAppFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
 	cmd.Flags().StringArrayVar(&values, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	cmd.Flags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	cmd.Flags().StringArrayVar(&stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	cmd.Flags().StringVarP(&snapshot, "snapshot", "s", "", "Save the parsed YAML values in the specified file for reuse")
+	cmd.Flags().StringVarP(&snapshot, "snapshot", "", "", "Save the parsed YAML values in the specified file for reuse")
 	cmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
 	cmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
 }

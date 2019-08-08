@@ -19,7 +19,7 @@ func init() {
 
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
 	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
-	initAppFlags(manifestCmd)
+	addAppFlags(manifestCmd)
 	rootCmd.AddCommand(manifestCmd)
 }
 

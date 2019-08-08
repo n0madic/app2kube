@@ -55,6 +55,15 @@ func manifest(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
+	if flagIncludeNamespace {
+		namespace, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputNamespace}, output)
+		if err != nil {
+			return err
+		}
+		manifest = namespace + manifest
+	}
+
 	fmt.Println(manifest)
 
 	return nil

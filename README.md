@@ -11,6 +11,7 @@ The easiest way to create kubernetes manifests for an application
   * CronJob
   * Deployment
   * Ingress
+  * Namespace
   * PersistentVolumeClaim
   * Secret
   * Service
@@ -38,7 +39,7 @@ Usage:
 Available Commands:
   apply       Apply a configuration to a resource in kubernetes
   completion  Generates bash completion scripts
-  delete      Delete resources in kubernetes
+  delete      Delete resources from kubernetes
   encrypt     Encrypt secret values in YAML file
   help        Help about any command
   manifest    Generate kubernetes manifests for an application

@@ -14,16 +14,17 @@ import (
 const defaultFile = ".app2kube.yml"
 
 var (
-	app          *app2kube.App
-	err          error
-	fileValues   []string
-	flagVerbose  bool
-	output       string
-	rawVals      []byte
-	snapshot     string
-	stringValues []string
-	valueFiles   app2kube.ValueFiles
-	values       []string
+	app                  *app2kube.App
+	err                  error
+	fileValues           []string
+	flagVerbose          bool
+	flagIncludeNamespace bool
+	output               string
+	rawVals              []byte
+	snapshot             string
+	stringValues         []string
+	valueFiles           app2kube.ValueFiles
+	values               []string
 )
 
 func initApp() error {
@@ -67,6 +68,7 @@ func initApp() error {
 }
 
 func addAppFlags(cmd *cobra.Command) {
+	cmd.Flags().BoolVarP(&flagIncludeNamespace, "include-namespace", "", false, "Include namespace manifest")
 	cmd.Flags().StringArrayVar(&values, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	cmd.Flags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	cmd.Flags().StringArrayVar(&stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")

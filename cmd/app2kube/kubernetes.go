@@ -36,6 +36,7 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			o.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 			o.Overwrite = true
+			o.PruneWhitelist = []string{"/v1/Namespace"}
 
 			if o.Namespace != "" {
 				o.EnforceNamespace = true
@@ -49,10 +50,18 @@ func init() {
 			if err != nil {
 				cmdutil.CheckErr(err)
 			}
-			o.Selector = getSelector(app.Labels)
+			if o.Prune {
+				o.Selector = getSelector(app.Labels)
+			}
 
 			manifest, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputAll}, "json")
 			cmdutil.CheckErr(err)
+
+			if flagIncludeNamespace {
+				namespace, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputNamespace}, "json")
+				cmdutil.CheckErr(err)
+				manifest = namespace + manifest
+			}
 
 			fake := fakeio.StdinBytes([]byte{})
 			defer fake.Restore()
@@ -70,7 +79,7 @@ func init() {
 
 	applyCmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it. Warning: --dry-run cannot accurately output the result of merging the local manifest and the server-side data. Use --server-dry-run to get the merged result instead.")
 	applyCmd.Flags().BoolVar(&o.ServerDryRun, "server-dry-run", o.ServerDryRun, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
-	applyCmd.Flags().BoolVar(&o.Prune, "prune", o.Prune, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply or create --save-config.")
+	applyCmd.Flags().BoolVar(&o.Prune, "prune", o.Prune, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 
 	rootCmd.AddCommand(applyCmd)
 
@@ -79,7 +88,7 @@ func init() {
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete",
-		Short: "Delete resources in kubernetes",
+		Short: "Delete resources from kubernetes",
 		Run: func(cmd *cobra.Command, args []string) {
 			o := deleteFlags.ToOptions(nil, ioStreams)
 			o.Filenames = []string{"-"}
@@ -93,6 +102,12 @@ func init() {
 
 			manifest, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputAll}, "json")
 			cmdutil.CheckErr(err)
+
+			if flagIncludeNamespace {
+				namespace, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputNamespace}, "json")
+				cmdutil.CheckErr(err)
+				manifest = namespace + manifest
+			}
 
 			fake := fakeio.StdinBytes([]byte{})
 			defer fake.Restore()

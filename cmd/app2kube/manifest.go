@@ -2,19 +2,23 @@ package main
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/n0madic/app2kube"
 	"github.com/spf13/cobra"
 )
 
-var manifestCmd = &cobra.Command{
-	Use:   "manifest",
-	Short: "Generate kubernetes manifests for an application",
-	RunE:  manifest,
-}
+var typeOutput []string
 
 func init() {
+	manifestCmd := &cobra.Command{
+		Use:   "manifest",
+		Short: "Generate kubernetes manifests for an application",
+		RunE:  manifest,
+	}
+
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
+	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
 	initAppFlags(manifestCmd)
 	rootCmd.AddCommand(manifestCmd)
 }
@@ -25,91 +29,33 @@ func manifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	secret, err := app.GetSecret()
-	if err != nil {
-		return err
-	}
-	yml, err := app2kube.PrintObj(secret, output)
-	if err != nil {
-		return err
-	}
-	fmt.Print(yml)
-
-	configmap, err := app.GetConfigMap()
-	if err != nil {
-		return err
-	}
-	yml, err = app2kube.PrintObj(configmap, output)
-	if err != nil {
-		return err
-	}
-	fmt.Print(yml)
-
-	claims, err := app.GetPersistentVolumeClaims()
-	if err != nil {
-		return err
-	}
-	for _, claim := range claims {
-		yml, err := app2kube.PrintObj(claim, output)
-		if err != nil {
-			return err
+	var outputTypes []app2kube.OutputResource
+	for _, outType := range typeOutput {
+		switch strings.ToLower(outType) {
+		case "all":
+			outputTypes = append(outputTypes, app2kube.OutputAll)
+		case "configmap":
+			outputTypes = append(outputTypes, app2kube.OutputConfigMap)
+		case "cronjob":
+			outputTypes = append(outputTypes, app2kube.OutputCronJob)
+		case "deployment":
+			outputTypes = append(outputTypes, app2kube.OutputDeployment)
+		case "ingress":
+			outputTypes = append(outputTypes, app2kube.OutputIngress)
+		case "pvc":
+			outputTypes = append(outputTypes, app2kube.OutputPersistentVolumeClaim)
+		case "secret":
+			outputTypes = append(outputTypes, app2kube.OutputSecret)
+		case "service":
+			outputTypes = append(outputTypes, app2kube.OutputService)
 		}
-		fmt.Print(yml)
 	}
 
-	jobs, err := app.GetCronJobs()
+	manifest, err := app.GetManifest(outputTypes, output)
 	if err != nil {
 		return err
 	}
-	for _, cron := range jobs {
-		yml, err := app2kube.PrintObj(cron, output)
-		if err != nil {
-			return err
-		}
-		fmt.Print(yml)
-	}
-
-	deployment, err := app.GetDeployment()
-	if err != nil {
-		return err
-	}
-	yml, err = app2kube.PrintObj(deployment, output)
-	if err != nil {
-		return err
-	}
-	fmt.Print(yml)
-
-	services, err := app.GetServices()
-	if err != nil {
-		return err
-	}
-	for _, service := range services {
-		yml, err := app2kube.PrintObj(service, output)
-		if err != nil {
-			return err
-		}
-		fmt.Print(yml)
-	}
-
-	for _, ingressSecret := range app.GetIngressSecrets() {
-		yml, err := app2kube.PrintObj(ingressSecret, output)
-		if err != nil {
-			return err
-		}
-		fmt.Print(yml)
-	}
-
-	ingress, err := app.GetIngress()
-	if err != nil {
-		return err
-	}
-	for _, ing := range ingress {
-		yml, err := app2kube.PrintObj(ing, output)
-		if err != nil {
-			return err
-		}
-		fmt.Print(yml)
-	}
+	fmt.Println(manifest)
 
 	return nil
 }

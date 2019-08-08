@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultFile = ".app2kube.yml"
+
 var (
 	app          *app2kube.App
 	err          error
@@ -25,6 +27,10 @@ var (
 )
 
 func initApp() error {
+	if _, err := os.Stat(defaultFile); !os.IsNotExist(err) {
+		valueFiles.Set(defaultFile)
+	}
+
 	if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {
 		return errors.New("Values are required")
 	}

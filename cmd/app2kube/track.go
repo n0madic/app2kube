@@ -4,13 +4,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
-	apiv1 "k8s.io/api/core/v1"
-
 	"github.com/flant/kubedog/pkg/kube"
 	"github.com/flant/kubedog/pkg/tracker"
 	"github.com/flant/kubedog/pkg/trackers/follow"
 	"github.com/flant/kubedog/pkg/trackers/rollout"
+	"github.com/n0madic/app2kube"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -55,7 +54,7 @@ func trackInit(cmd *cobra.Command, args []string) error {
 	}
 
 	if app.Namespace == "" {
-		app.Namespace = apiv1.NamespaceDefault
+		app.Namespace = app2kube.NamespaceDefault
 	}
 
 	cmd.SilenceUsage = true

@@ -4,6 +4,8 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
+const NamespaceDefault = apiv1.NamespaceDefault
+
 // GetNamespace resource
 func (app *App) GetNamespace() (namespace *apiv1.Namespace) {
 	if app.Namespace != "" {

@@ -16,12 +16,6 @@ import (
 	"github.com/flant/kubedog/pkg/trackers/rollout"
 )
 
-var trackCmd = &cobra.Command{
-	Use:               "track",
-	Short:             "Track application deployment in kubernetes",
-	PersistentPreRunE: trackInit,
-}
-
 var (
 	deployment   *appsv1.Deployment
 	jobs         []*batch.CronJob
@@ -33,6 +27,11 @@ var (
 )
 
 func init() {
+	trackCmd := &cobra.Command{
+		Use:               "track",
+		Short:             "Track application deployment in kubernetes",
+		PersistentPreRunE: trackInit,
+	}
 	trackCmd.PersistentFlags().StringVarP(&kubeConfig, "kubeconfig", "", os.Getenv("KUBECONFIG"), "Path to the kubeconfig file (can be set with $KUBECONFIG)")
 	trackCmd.PersistentFlags().StringVarP(&kubeContext, "context", "", os.Getenv("KUBECONTEXT"), "The name of the kubeconfig context to use (can be set with $KUBECONTEXT)")
 	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", "now", "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")

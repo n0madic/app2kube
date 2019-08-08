@@ -12,14 +12,13 @@ import (
 
 const dictKey = "secrets"
 
-var encryptCmd = &cobra.Command{
-	Use:   "encrypt",
-	Short: "Encrypt secret values in YAML file",
-	Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
-	RunE:  encrypt,
-}
-
 func init() {
+	encryptCmd := &cobra.Command{
+		Use:   "encrypt",
+		Short: "Encrypt secret values in YAML file",
+		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
+		RunE:  encrypt,
+	}
 	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
 	rootCmd.AddCommand(encryptCmd)
 }

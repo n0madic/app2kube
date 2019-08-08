@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	appsv1 "k8s.io/api/apps/v1"
-	batch "k8s.io/api/batch/v1beta1"
 	apiv1 "k8s.io/api/core/v1"
 
 	"github.com/flant/kubedog/pkg/kube"
@@ -16,8 +14,6 @@ import (
 )
 
 var (
-	deployment   *appsv1.Deployment
-	jobs         []*batch.CronJob
 	logsFromTime time.Time
 	logsSince    string
 	timeout      int

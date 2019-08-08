@@ -8,8 +8,9 @@ import (
 
 func init() {
 	rootCmd.AddCommand(&cobra.Command{
-		Use:   "completion",
-		Short: "Generates bash completion scripts",
+		Use:                   "completion",
+		DisableFlagsInUseLine: true,
+		Short:                 "Generates bash completion scripts",
 		Long: `To load completion run
 
 	. <(app2kube completion)

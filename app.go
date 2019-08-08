@@ -48,6 +48,7 @@ type App struct {
 		Ingress    []struct {
 			Aliases       []string          `yaml:"aliases"`
 			Annotations   map[string]string `yaml:"annotations"`
+			Class         string            `yaml:"class"`
 			Host          string            `yaml:"host"`
 			Letsencrypt   bool              `yaml:"letsencrypt"`
 			Path          string            `yaml:"path"`

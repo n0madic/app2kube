@@ -12,18 +12,17 @@ import (
 )
 
 var (
-	app            *app2kube.App
-	defaultIngress string
-	err            error
-	fileValues     []string
-	flagVerbose    bool
-	namespace      string
-	output         string
-	rawVals        []byte
-	snapshot       string
-	stringValues   []string
-	valueFiles     app2kube.ValueFiles
-	values         []string
+	app          *app2kube.App
+	err          error
+	fileValues   []string
+	flagVerbose  bool
+	namespace    string
+	output       string
+	rawVals      []byte
+	snapshot     string
+	stringValues []string
+	valueFiles   app2kube.ValueFiles
+	values       []string
 )
 
 func initApp() error {

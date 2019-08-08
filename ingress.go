@@ -11,7 +11,7 @@ import (
 )
 
 // GetIngress resource
-func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress, err error) {
+func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
 		for _, ing := range app.Deployment.Ingress {
 			if app.Staging != "" {
@@ -26,8 +26,12 @@ func (app *App) GetIngress(ingressClass string) (ingress []*v1beta1.Ingress, err
 
 			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 
+			if ing.Class == "" {
+				ing.Class = "nginx"
+			}
+
 			ingressAnnotations := make(map[string]string)
-			ingressAnnotations["kubernetes.io/ingress.class"] = ingressClass
+			ingressAnnotations["kubernetes.io/ingress.class"] = ing.Class
 			if ing.Letsencrypt {
 				ingressAnnotations["kubernetes.io/tls-acme"] = "true"
 			}

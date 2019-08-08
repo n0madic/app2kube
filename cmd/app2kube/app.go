@@ -16,7 +16,6 @@ var (
 	err          error
 	fileValues   []string
 	flagVerbose  bool
-	namespace    string
 	output       string
 	rawVals      []byte
 	snapshot     string
@@ -41,8 +40,8 @@ func initApp() error {
 		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
 	}
 
-	if namespace != "" {
-		app.Namespace = namespace
+	if *kubeConfigFlags.Namespace != "" {
+		app.Namespace = *kubeConfigFlags.Namespace
 	}
 
 	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
@@ -62,7 +61,6 @@ func initApp() error {
 }
 
 func addAppFlags(cmd *cobra.Command) {
-	cmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace used for manifests")
 	cmd.Flags().StringArrayVar(&values, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	cmd.Flags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	cmd.Flags().StringArrayVar(&stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")

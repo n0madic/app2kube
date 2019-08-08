@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -19,8 +18,6 @@ import (
 var (
 	deployment   *appsv1.Deployment
 	jobs         []*batch.CronJob
-	kubeContext  string
-	kubeConfig   string
 	logsFromTime time.Time
 	logsSince    string
 	timeout      int
@@ -32,8 +29,7 @@ func init() {
 		Short:             "Track application deployment in kubernetes",
 		PersistentPreRunE: trackInit,
 	}
-	trackCmd.PersistentFlags().StringVarP(&kubeConfig, "kubeconfig", "", os.Getenv("KUBECONFIG"), "Path to the kubeconfig file (can be set with $KUBECONFIG)")
-	trackCmd.PersistentFlags().StringVarP(&kubeContext, "context", "", os.Getenv("KUBECONTEXT"), "The name of the kubeconfig context to use (can be set with $KUBECONTEXT)")
+
 	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", "now", "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
 	trackCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 5, "Timeout of operation in minutes. 0 is wait forever")
 
@@ -68,7 +64,10 @@ func trackInit(cmd *cobra.Command, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	err = kube.Init(kube.InitOptions{KubeContext: kubeContext, KubeConfig: kubeConfig})
+	err = kube.Init(kube.InitOptions{
+		KubeContext: *kubeConfigFlags.Context,
+		KubeConfig:  *kubeConfigFlags.KubeConfig,
+	})
 	if err != nil {
 		return fmt.Errorf("unable to initialize kube: %s", err)
 	}

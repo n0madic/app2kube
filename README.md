@@ -144,18 +144,14 @@ deployment:
   containers:
     example:
       image: "example/image:latest"
-      livenessProbe:
-        tcpSocket:
-          port: 8080
+      ports:
+      - containerPort: 8080
+        name: http
       readinessProbe:
         httpGet:
-          port: 8080
           path: /healthz
-  service:
-  - name: http
-    port: 8080
-  ingress:
-  - host: "example.com"
+ingress:
+- host: "example.com"
 ```
 
 PHP-FPM application with web service (common image) and cron jobs, include memcached:
@@ -211,13 +207,13 @@ deployment:
       livenessProbe:
         tcpSocket:
           port: 11211
-  service:
-  - name: http
-    port: 80
-  ingress:
-  - host: "example.com"
-    aliases:
-    - "www.example.com"
-    letsencrypt: true
-    sslRedirect: true
+service:
+- name: http
+  port: 80
+ingress:
+- host: "example.com"
+  aliases:
+  - "www.example.com"
+  letsencrypt: true
+  sslRedirect: true
 ```

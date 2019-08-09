@@ -208,8 +208,8 @@ deployment:
         tcpSocket:
           port: 11211
 service:
-- name: http
-  port: 80
+  http:
+    port: 80
 ingress:
 - host: "example.com"
   aliases:

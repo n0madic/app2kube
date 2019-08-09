@@ -1,22 +1,15 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
+	"github.com/n0madic/app2kube/pkg/cmd"
 )
 
 var version = "DEV"
 
-var rootCmd = &cobra.Command{
-	Use:     "app2kube",
-	Short:   fmt.Sprintf("Kubernetes application deployment (app2kube %s)", version),
-	Version: version,
-}
-
 func main() {
-	if err := rootCmd.Execute(); err != nil {
+	if err := cmd.Execute(version); err != nil {
 		os.Exit(1)
 	}
 }

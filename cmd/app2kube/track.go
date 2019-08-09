@@ -108,11 +108,11 @@ func trackReady(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if len(app.Deployment.Ingress) > 0 {
+	if len(app.Ingress) > 0 {
 		fmt.Println()
 		fmt.Println("Try the application URL:")
 
-		for _, ingress := range app.Deployment.Ingress {
+		for _, ingress := range app.Ingress {
 			getURL := func(host string) string {
 				https := ""
 				if ingress.Letsencrypt || ingress.TLSSecretName != "" {

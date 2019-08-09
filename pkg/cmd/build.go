@@ -49,13 +49,19 @@ func build(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	imageName := app.Common.Image.Repository + ":" + app.Common.Image.Tag
+
 	if app.Common.Image.Repository == "" || app.Common.Image.Tag == "" {
-		return errors.New("Requires common application image values (repository and tag)")
+		if len(app.Deployment.Containers) == 1 {
+			for _, container := range app.Deployment.Containers {
+				imageName = container.Image
+			}
+		} else {
+			return errors.New("Requires common application image values (repository and tag)")
+		}
 	}
 
 	cmd.SilenceUsage = true
-
-	imageName := app.Common.Image.Repository + ":" + app.Common.Image.Tag
 
 	cli, err := client.NewClientWithOpts(client.FromEnv)
 	if err != nil {

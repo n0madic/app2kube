@@ -90,18 +90,35 @@ func (app *App) processContainer(container *apiv1.Container) error {
 				return fmt.Errorf("Named container port required to create service for container: %s", container.Name)
 			}
 		}
-		// Add LivenessProbe to container port if probe not specified
-		if reflect.ValueOf(container.LivenessProbe).IsNil() && len(container.Ports) == 1 {
-			container.LivenessProbe = &apiv1.Probe{
-				Handler: apiv1.Handler{
-					TCPSocket: &apiv1.TCPSocketAction{
-						Port: intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort},
-					},
-				},
-				InitialDelaySeconds: 5,
-			}
-		}
 
+		if len(container.Ports) == 1 {
+			containerPort := intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort}
+
+			// Add LivenessProbe to container port if probe not specified
+			if reflect.ValueOf(container.LivenessProbe).IsNil() {
+				container.LivenessProbe = &apiv1.Probe{
+					Handler: apiv1.Handler{
+						TCPSocket: &apiv1.TCPSocketAction{
+							Port: containerPort,
+						},
+					},
+					InitialDelaySeconds: 5,
+				}
+			} else {
+				// Add missing port to LivenessProbe
+				if !reflect.ValueOf(container.LivenessProbe.HTTPGet).IsNil() && container.LivenessProbe.HTTPGet.Port.IntVal == 0 {
+					container.LivenessProbe.HTTPGet.Port = containerPort
+				}
+			}
+
+			// Add missing port to ReadinessProbe
+			if !reflect.ValueOf(container.ReadinessProbe).IsNil() && !reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() {
+				if container.ReadinessProbe.HTTPGet.Port.IntVal == 0 {
+					container.ReadinessProbe.HTTPGet.Port = containerPort
+				}
+			}
+
+		}
 	}
 
 	return nil

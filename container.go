@@ -72,5 +72,21 @@ func (app *App) processContainer(container *apiv1.Container) error {
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
+	// Automatic creation of a service for ingress if one is not specified
+	if len(container.Ports) > 0 && len(app.Service) == 0 && len(app.Ingress) > 0 {
+		app.Service = map[string]Service{}
+		for _, port := range container.Ports {
+			if port.Name != "" {
+				app.Service[port.Name] = Service{
+					Port:     port.ContainerPort,
+					Protocol: port.Protocol,
+				}
+			}
+		}
+		if len(app.Service) == 0 {
+			return fmt.Errorf("Named container port required to create service for container: %s", container.Name)
+		}
+	}
+
 	return nil
 }

@@ -18,11 +18,11 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 
 		var containers []apiv1.Container
 		for name, container := range app.Deployment.Containers {
+			container.Name = strings.ToLower(name)
 			err = app.processContainer(&container)
 			if err != nil {
 				return
 			}
-			container.Name = strings.ToLower(name)
 			containers = append(containers, container)
 		}
 

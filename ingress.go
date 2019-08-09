@@ -41,15 +41,27 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 			serviceName := ing.ServiceName
 			if serviceName == "" {
-				serviceName = app.GetReleaseName() + "-" + app.Service[0].Name
+				if len(app.Service) == 1 {
+					for name := range app.Service {
+						serviceName = app.GetReleaseName() + "-" + name
+					}
+				} else {
+					return ingress, fmt.Errorf("You must specify a serviceName for the ingress %s", ing.Host)
+				}
 			}
 
 			servicePort := ing.ServicePort
 			if servicePort == 0 {
-				if app.Service[0].ExternalPort > 0 {
-					servicePort = app.Service[0].ExternalPort
+				if len(app.Service) == 1 {
+					for _, svc := range app.Service {
+						if svc.ExternalPort > 0 {
+							servicePort = svc.ExternalPort
+						} else {
+							servicePort = svc.Port
+						}
+					}
 				} else {
-					servicePort = app.Service[0].Port
+					return ingress, fmt.Errorf("You must specify a servicePort for the ingress %s", ing.Host)
 				}
 			}
 

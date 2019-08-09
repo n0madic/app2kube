@@ -11,7 +11,7 @@ import (
 // GetServices resource
 func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {
-		for _, svc := range app.Service {
+		for name, svc := range app.Service {
 			if svc.Port > 0 {
 				if svc.InternalPort == 0 {
 					svc.InternalPort = svc.Port
@@ -22,10 +22,17 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 			}
 
 			if svc.InternalPort == 0 && svc.ExternalPort == 0 {
-				return services, fmt.Errorf("port required for service: %s", svc.Name)
+				return services, fmt.Errorf("port required for service: %s", name)
 			}
 
-			serviceName := app.GetReleaseName() + "-" + strings.ToLower(svc.Name)
+			if svc.InternalPort != 0 && svc.ExternalPort == 0 {
+				svc.ExternalPort = svc.InternalPort
+			}
+			if svc.ExternalPort != 0 && svc.InternalPort == 0 {
+				svc.InternalPort = svc.ExternalPort
+			}
+
+			serviceName := app.GetReleaseName() + "-" + strings.ToLower(name)
 
 			service := &apiv1.Service{
 				ObjectMeta: app.GetObjectMeta(serviceName),

@@ -14,6 +14,31 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// Ingress specification
+type Ingress struct {
+	Aliases       []string          `yaml:"aliases"`
+	Annotations   map[string]string `yaml:"annotations"`
+	Class         string            `yaml:"class"`
+	Host          string            `yaml:"host"`
+	Letsencrypt   bool              `yaml:"letsencrypt"`
+	Path          string            `yaml:"path"`
+	ServiceName   string            `yaml:"serviceName"`
+	ServicePort   int32             `yaml:"servicePort"`
+	SslRedirect   bool              `yaml:"sslRedirect"`
+	TLSCrt        string            `yaml:"tlsCrt"`
+	TLSKey        string            `yaml:"tlsKey"`
+	TLSSecretName string            `yaml:"tlsSecretName"`
+}
+
+// Service specification
+type Service struct {
+	ExternalPort int32             `yaml:"externalPort"`
+	InternalPort int32             `yaml:"internalPort"`
+	Port         int32             `yaml:"port"`
+	Protocol     apiv1.Protocol    `yaml:"protocol"`
+	Type         apiv1.ServiceType `yaml:"type"`
+}
+
 // App instance
 type App struct {
 	Branch string `yaml:"branch"`
@@ -49,35 +74,15 @@ type App struct {
 		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
 		Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
 	} `yaml:"deployment"`
-	Env     map[string]string `yaml:"env"`
-	Ingress []struct {
-		Aliases       []string          `yaml:"aliases"`
-		Annotations   map[string]string `yaml:"annotations"`
-		Class         string            `yaml:"class"`
-		Host          string            `yaml:"host"`
-		Letsencrypt   bool              `yaml:"letsencrypt"`
-		Path          string            `yaml:"path"`
-		ServiceName   string            `yaml:"serviceName"`
-		ServicePort   int32             `yaml:"servicePort"`
-		SslRedirect   bool              `yaml:"sslRedirect"`
-		TLSCrt        string            `yaml:"tlsCrt"`
-		TLSKey        string            `yaml:"tlsKey"`
-		TLSSecretName string            `yaml:"tlsSecretName"`
-	} `yaml:"ingress"`
-	Labels    map[string]string `yaml:"labels"`
-	Name      string            `yaml:"name"`
-	Namespace string            `yaml:"namespace"`
-	Secrets   map[string]string `yaml:"secrets"`
-	Service   []struct {
-		ExternalPort int32             `yaml:"externalPort"`
-		InternalPort int32             `yaml:"internalPort"`
-		Port         int32             `yaml:"port"`
-		Name         string            `yaml:"name"`
-		Protocol     apiv1.Protocol    `yaml:"protocol"`
-		Type         apiv1.ServiceType `yaml:"type"`
-	} `yaml:"service"`
-	Staging string `yaml:"staging"`
-	Volumes map[string]struct {
+	Env       map[string]string  `yaml:"env"`
+	Ingress   []Ingress          `yaml:"ingress"`
+	Labels    map[string]string  `yaml:"labels"`
+	Name      string             `yaml:"name"`
+	Namespace string             `yaml:"namespace"`
+	Secrets   map[string]string  `yaml:"secrets"`
+	Service   map[string]Service `yaml:"service"`
+	Staging   string             `yaml:"staging"`
+	Volumes   map[string]struct {
 		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
 		MountPath string                          `yaml:"mountPath"`
 	} `yaml:"volumes"`

@@ -76,10 +76,13 @@ func (app *App) processContainer(container *apiv1.Container) error {
 
 	if len(container.Ports) > 0 {
 		// Automatic creation of a service for ingress if one is not specified
-		if len(app.Service) == 0 && len(app.Ingress) > 0 {
+		if len(app.Service) == 0 && len(app.Ingress) > 0 && len(app.Deployment.Containers) == 1 {
 			app.Service = map[string]Service{}
 			for _, port := range container.Ports {
 				if port.Name != "" {
+					if _, ok := app.Service[port.Name]; ok {
+						return fmt.Errorf("container port names must be different: %s", container.Name)
+					}
 					app.Service[port.Name] = Service{
 						Port:     port.ContainerPort,
 						Protocol: port.Protocol,

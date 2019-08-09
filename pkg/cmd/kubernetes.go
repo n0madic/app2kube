@@ -22,6 +22,10 @@ func init() {
 	kubeConfigFlags = genericclioptions.NewConfigFlags(true)
 	kubeConfigFlags.AddFlags(rootCmd.PersistentFlags())
 
+	rootCmd.PersistentFlags().MarkHidden("as")
+	rootCmd.PersistentFlags().MarkHidden("as-group")
+	rootCmd.PersistentFlags().MarkHidden("cache-dir")
+
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
 	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
 

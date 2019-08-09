@@ -42,6 +42,8 @@ func init() {
 
 	for _, cmd := range trackCmd.Commands() {
 		addAppFlags(cmd)
+		cmd.Flags().MarkHidden("include-namespace")
+		cmd.Flags().MarkHidden("snapshot")
 	}
 
 	rootCmd.AddCommand(trackCmd)

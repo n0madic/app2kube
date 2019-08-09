@@ -73,8 +73,6 @@ Minimum required values for application deployment in kubernetes - `name` and `i
 app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
 
-OR
-
 `values.yaml`:
 
 ```yaml
@@ -86,10 +84,30 @@ deployment:
       image: "example/image:latest"
 ```
 
+OR
+
+```yaml
+---
+name: example
+common:
+  image:
+    repository: "example/image"
+    tag: "latest"
+deployment:
+  containers:
+    example: {}
+```
+
 Get application manifest:
 
 ```shell
 app2kube manifest -f values.yaml
+```
+
+Build and push docker image:
+
+```shell
+app2kube build --push -f values.yaml
 ```
 
 Apply application manifest in kubernetes:

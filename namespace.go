@@ -4,6 +4,7 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 )
 
+// NamespaceDefault means the object is in the default namespace which is applied when not specified by clients
 const NamespaceDefault = apiv1.NamespaceDefault
 
 // GetNamespace resource

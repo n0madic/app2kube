@@ -2,9 +2,11 @@ package app2kube
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
 func (app *App) processContainer(container *apiv1.Container) error {
@@ -72,20 +74,34 @@ func (app *App) processContainer(container *apiv1.Container) error {
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
-	// Automatic creation of a service for ingress if one is not specified
-	if len(container.Ports) > 0 && len(app.Service) == 0 && len(app.Ingress) > 0 {
-		app.Service = map[string]Service{}
-		for _, port := range container.Ports {
-			if port.Name != "" {
-				app.Service[port.Name] = Service{
-					Port:     port.ContainerPort,
-					Protocol: port.Protocol,
+	if len(container.Ports) > 0 {
+		// Automatic creation of a service for ingress if one is not specified
+		if len(app.Service) == 0 && len(app.Ingress) > 0 {
+			app.Service = map[string]Service{}
+			for _, port := range container.Ports {
+				if port.Name != "" {
+					app.Service[port.Name] = Service{
+						Port:     port.ContainerPort,
+						Protocol: port.Protocol,
+					}
 				}
 			}
+			if len(app.Service) == 0 {
+				return fmt.Errorf("Named container port required to create service for container: %s", container.Name)
+			}
 		}
-		if len(app.Service) == 0 {
-			return fmt.Errorf("Named container port required to create service for container: %s", container.Name)
+		// Add LivenessProbe to container port if probe not specified
+		if reflect.ValueOf(container.LivenessProbe).IsNil() && len(container.Ports) == 1 {
+			container.LivenessProbe = &apiv1.Probe{
+				Handler: apiv1.Handler{
+					TCPSocket: &apiv1.TCPSocketAction{
+						Port: intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort},
+					},
+				},
+				InitialDelaySeconds: 5,
+			}
 		}
+
 	}
 
 	return nil

@@ -14,3 +14,5 @@
 *.bak
 *.yaml
 *.yml
+
+dist

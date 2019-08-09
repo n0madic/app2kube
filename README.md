@@ -17,8 +17,10 @@ The easiest way to create kubernetes manifests for an application
   * Service
 * Secret value encryption with AES-256 CBC
 * Support staging
+* Build and push docker image
+* Apply/delete a configuration to a resource in kubernetes
 * Track application deployment in kubernetes
-* Portable - `apply`/`delete` command ported from kubectl
+* Portable - `apply`/`delete` command ported from kubectl, `build` from docker-cli
 
 ## Install
 
@@ -38,6 +40,7 @@ Usage:
 
 Available Commands:
   apply       Apply a configuration to a resource in kubernetes
+  build       Build and push an image from a Dockerfile
   completion  Generates bash completion scripts
   delete      Delete resources from kubernetes
   encrypt     Encrypt secret values in YAML file

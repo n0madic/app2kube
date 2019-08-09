@@ -11,7 +11,7 @@ import (
 // GetServices resource
 func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {
-		for _, svc := range app.Deployment.Service {
+		for _, svc := range app.Service {
 			if svc.Port > 0 {
 				if svc.InternalPort == 0 {
 					svc.InternalPort = svc.Port

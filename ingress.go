@@ -12,8 +12,8 @@ import (
 
 // GetIngress resource
 func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
-	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
-		for _, ing := range app.Deployment.Ingress {
+	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
+		for _, ing := range app.Ingress {
 			if app.Staging != "" {
 				if strings.HasPrefix(ing.Host, "*") {
 					return ingress, fmt.Errorf("staging cannot be used with wildcard domain: %s", ing.Host)
@@ -41,15 +41,15 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 			serviceName := ing.ServiceName
 			if serviceName == "" {
-				serviceName = app.GetReleaseName() + "-" + app.Deployment.Service[0].Name
+				serviceName = app.GetReleaseName() + "-" + app.Service[0].Name
 			}
 
 			servicePort := ing.ServicePort
 			if servicePort == 0 {
-				if app.Deployment.Service[0].ExternalPort > 0 {
-					servicePort = app.Deployment.Service[0].ExternalPort
+				if app.Service[0].ExternalPort > 0 {
+					servicePort = app.Service[0].ExternalPort
 				} else {
-					servicePort = app.Deployment.Service[0].Port
+					servicePort = app.Service[0].Port
 				}
 			}
 
@@ -115,8 +115,8 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 // GetIngressSecrets return TLS secrets for ingress
 func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
-	if len(app.Deployment.Containers) > 0 && len(app.Deployment.Service) > 0 {
-		for _, ingress := range app.Deployment.Ingress {
+	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
+		for _, ingress := range app.Ingress {
 			if ingress.Letsencrypt || (ingress.TLSCrt != "" && ingress.TLSKey != "") {
 				if ingress.TLSSecretName == "" {
 					ingress.TLSSecretName = "tls-" + strings.Replace(ingress.Host, "*", "wildcard", 1)

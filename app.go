@@ -44,40 +44,40 @@ type App struct {
 		Suspend                    bool                    `yaml:"suspend"`
 	} `yaml:"cronjob"`
 	Deployment struct {
-		Containers map[string]apiv1.Container `yaml:"containers"`
-		Ingress    []struct {
-			Aliases       []string          `yaml:"aliases"`
-			Annotations   map[string]string `yaml:"annotations"`
-			Class         string            `yaml:"class"`
-			Host          string            `yaml:"host"`
-			Letsencrypt   bool              `yaml:"letsencrypt"`
-			Path          string            `yaml:"path"`
-			ServiceName   string            `yaml:"serviceName"`
-			ServicePort   int32             `yaml:"servicePort"`
-			SslRedirect   bool              `yaml:"sslRedirect"`
-			TLSCrt        string            `yaml:"tlsCrt"`
-			TLSKey        string            `yaml:"tlsKey"`
-			TLSSecretName string            `yaml:"tlsSecretName"`
-		} `yaml:"ingress"`
-		ReplicaCount         int32 `yaml:"replicaCount"`
-		RevisionHistoryLimit int32 `yaml:"revisionHistoryLimit"`
-		Service              []struct {
-			ExternalPort int32             `yaml:"externalPort"`
-			InternalPort int32             `yaml:"internalPort"`
-			Port         int32             `yaml:"port"`
-			Name         string            `yaml:"name"`
-			Protocol     apiv1.Protocol    `yaml:"protocol"`
-			Type         apiv1.ServiceType `yaml:"type"`
-		} `yaml:"service"`
-		Strategy appsv1.DeploymentStrategy `yaml:"strategy"`
+		Containers           map[string]apiv1.Container `yaml:"containers"`
+		ReplicaCount         int32                      `yaml:"replicaCount"`
+		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
+		Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
 	} `yaml:"deployment"`
-	Env       map[string]string `yaml:"env"`
+	Env     map[string]string `yaml:"env"`
+	Ingress []struct {
+		Aliases       []string          `yaml:"aliases"`
+		Annotations   map[string]string `yaml:"annotations"`
+		Class         string            `yaml:"class"`
+		Host          string            `yaml:"host"`
+		Letsencrypt   bool              `yaml:"letsencrypt"`
+		Path          string            `yaml:"path"`
+		ServiceName   string            `yaml:"serviceName"`
+		ServicePort   int32             `yaml:"servicePort"`
+		SslRedirect   bool              `yaml:"sslRedirect"`
+		TLSCrt        string            `yaml:"tlsCrt"`
+		TLSKey        string            `yaml:"tlsKey"`
+		TLSSecretName string            `yaml:"tlsSecretName"`
+	} `yaml:"ingress"`
 	Labels    map[string]string `yaml:"labels"`
 	Name      string            `yaml:"name"`
 	Namespace string            `yaml:"namespace"`
 	Secrets   map[string]string `yaml:"secrets"`
-	Staging   string            `yaml:"staging"`
-	Volumes   map[string]struct {
+	Service   []struct {
+		ExternalPort int32             `yaml:"externalPort"`
+		InternalPort int32             `yaml:"internalPort"`
+		Port         int32             `yaml:"port"`
+		Name         string            `yaml:"name"`
+		Protocol     apiv1.Protocol    `yaml:"protocol"`
+		Type         apiv1.ServiceType `yaml:"type"`
+	} `yaml:"service"`
+	Staging string `yaml:"staging"`
+	Volumes map[string]struct {
 		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
 		MountPath string                          `yaml:"mountPath"`
 	} `yaml:"volumes"`

@@ -8,11 +8,16 @@ require (
 	github.com/Masterminds/sprig v2.20.0+incompatible
 	github.com/Sirupsen/logrus v1.0.6
 	github.com/containerd/continuity v0.0.0-20190426062206-aaeac12a7ffc // indirect
+	github.com/docker/cli v0.0.0-20190808020202-432b76057f0d
+	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v0.7.3-0.20190327010347-be7ac8be2ae0
+	github.com/docker/docker-credential-helpers v0.6.3 // indirect
 	github.com/docker/go-connections v0.4.0 // indirect
+	github.com/docker/go-metrics v0.0.0-20181218153428-b84716841b82 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/flant/kubedog v0.3.3
 	github.com/ghodss/yaml v1.0.0
+	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/huandu/xstrings v1.2.0 // indirect
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect

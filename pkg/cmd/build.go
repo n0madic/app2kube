@@ -6,14 +6,19 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/cli/cli/config"
+	"github.com/docker/cli/opts"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
+	"github.com/docker/docker/pkg/idtools"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
 	"github.com/docker/docker/registry"
@@ -32,7 +37,7 @@ func init() {
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build and push an image from a Dockerfile",
-		RunE:  build,
+		RunE:  runBuild,
 	}
 
 	addAppFlags(buildCmd)
@@ -48,7 +53,7 @@ func init() {
 	rootCmd.AddCommand(buildCmd)
 }
 
-func build(cmd *cobra.Command, args []string) error {
+func runBuild(cmd *cobra.Command, args []string) error {
 	err := initApp()
 	if err != nil {
 		return err
@@ -83,6 +88,17 @@ func build(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	configFile, err := config.Load(config.Dir())
+	if err != nil {
+		return fmt.Errorf("error loading Docker config file: %v", err)
+	}
+
+	creds, _ := configFile.GetAllCredentials()
+	authConfigs := make(map[string]types.AuthConfig, len(creds))
+	for k, auth := range creds {
+		authConfigs[k] = types.AuthConfig(auth)
+	}
+
 	var registryAuth types.AuthConfig
 
 	username, ok := os.LookupEnv("APP2KUBE_DOCKER_USERNAME")
@@ -97,13 +113,9 @@ func build(cmd *cobra.Command, args []string) error {
 			Password:      password,
 			ServerAddress: info.Index.Name,
 		}
+		authConfigs[info.Index.Name] = types.AuthConfig(registryAuth)
 	} else {
 		authConfigKey := registry.GetAuthConfigKey(info.Index)
-
-		configFile, err := config.Load(config.Dir())
-		if err != nil {
-			return fmt.Errorf("error loading Docker config file: %v", err)
-		}
 
 		auth, err := configFile.GetAuthConfig(authConfigKey)
 		if err == nil {
@@ -111,20 +123,64 @@ func build(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	registryAuthBase64 := encodeAuthToBase64(registryAuth)
+	var dockerfileCtx io.ReadCloser
 
-	buildContext, err := archive.TarWithOptions(buildContext, &archive.TarOptions{})
-	if err != nil {
-		return fmt.Errorf("build context tar failed: %s", err)
+	contextDir, relDockerfile, err := build.GetContextFromLocalDir(buildContext, dockerfileName)
+	if err == nil && strings.HasPrefix(relDockerfile, ".."+string(filepath.Separator)) {
+		// Dockerfile is outside of build-context; read the Dockerfile and pass it as dockerfileCtx
+		dockerfileCtx, err = os.Open(dockerfileName)
+		if err != nil {
+			return fmt.Errorf("unable to open Dockerfile: %v", err)
+		}
+		defer dockerfileCtx.Close()
 	}
 
-	resp, err := cli.ImageBuild(context.Background(), buildContext, types.ImageBuildOptions{
-		BuildArgs:      listToMap(buildArgs),
-		Dockerfile:     dockerfileName,
+	if err != nil {
+		return fmt.Errorf("unable to prepare context: %s", err)
+	}
+
+	// read from a directory into tar archive
+	excludes, err := build.ReadDockerignore(contextDir)
+	if err != nil {
+		return err
+	}
+
+	// exclude git stuff
+	excludes = append(excludes, ".git*", "*/.git*")
+
+	if err := build.ValidateContextDirectory(contextDir, excludes); err != nil {
+		return fmt.Errorf("error checking context: '%s'", err)
+	}
+
+	// canonicalize dockerfile name to a platform-independent one
+	relDockerfile = archive.CanonicalTarNameForPath(relDockerfile)
+
+	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, false)
+	buildCtx, err := archive.TarWithOptions(contextDir, &archive.TarOptions{
+		ExcludePatterns: excludes,
+		ChownOpts:       &idtools.Identity{UID: 0, GID: 0},
+	})
+	if err != nil {
+		return err
+	}
+
+	// replace Dockerfile if it was added from stdin or a file outside the build-context, and there is archive context
+	if dockerfileCtx != nil && buildCtx != nil {
+		buildCtx, relDockerfile, err = build.AddDockerfileToBuildContext(dockerfileCtx, buildCtx)
+		if err != nil {
+			return err
+		}
+	}
+
+	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{
+		AuthConfigs:    authConfigs,
+		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs)),
+		Dockerfile:     relDockerfile,
 		PullParent:     flagPull,
 		Remove:         true,
 		SuppressOutput: false,
 		Tags:           []string{imageName},
+		Version:        types.BuilderV1,
 	})
 	if err != nil {
 		return fmt.Errorf("Docker image build error: %s", err)
@@ -140,8 +196,9 @@ func build(cmd *cobra.Command, args []string) error {
 
 	if flagPush {
 		fmt.Printf("\nPush image %s to registry\n", imageName)
+
 		res, err := cli.ImagePush(context.Background(), imageName, types.ImagePushOptions{
-			RegistryAuth: registryAuthBase64,
+			RegistryAuth: encodeAuthToBase64(registryAuth),
 		})
 		if err != nil {
 			return fmt.Errorf("Docker image push error: %s", err)
@@ -153,20 +210,6 @@ func build(cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
-}
-
-func listToMap(values []string) map[string]*string {
-	result := make(map[string]*string, len(values))
-	for _, value := range values {
-		kv := strings.SplitN(value, "=", 2)
-		if len(kv) == 1 {
-			env := os.Getenv(kv[0])
-			result[kv[0]] = &env
-		} else {
-			result[kv[0]] = &kv[1]
-		}
-	}
-	return result
 }
 
 func encodeAuthToBase64(authConfig types.AuthConfig) string {

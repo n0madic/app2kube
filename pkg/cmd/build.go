@@ -174,11 +174,19 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	tags := []string{imageName}
+	tags := opts.NewListOpts(func(rawRepo string) (string, error) {
+		_, err := reference.ParseNormalizedNamed(rawRepo)
+		if err != nil {
+			return "", err
+		}
+		return rawRepo, nil
+	})
+
+	tags.Set(imageName)
 
 	if flagLatest && !strings.HasSuffix(imageName, "latest") {
 		name := reference.FamiliarName(named) + ":latest"
-		tags = append(tags, name)
+		tags.Set(name)
 	}
 
 	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{
@@ -188,7 +196,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		PullParent:     flagPull,
 		Remove:         true,
 		SuppressOutput: false,
-		Tags:           tags,
+		Tags:           tags.GetAll(),
 		Version:        types.BuilderV1,
 	})
 	if err != nil {
@@ -204,7 +212,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagPush {
-		for _, tag := range tags {
+		for _, tag := range tags.GetAll() {
 			fmt.Printf("\nPush image %s to registry\n", tag)
 
 			res, err := cli.ImagePush(context.Background(), tag, types.ImagePushOptions{

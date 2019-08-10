@@ -2,16 +2,21 @@ package cmd
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"strings"
 
+	"github.com/docker/cli/cli/config"
+	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/jsonmessage"
 	"github.com/docker/docker/pkg/term"
+	"github.com/docker/docker/registry"
 	"github.com/spf13/cobra"
 )
 
@@ -68,6 +73,46 @@ func build(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	named, err := reference.ParseNormalizedNamed(imageName)
+	if err != nil {
+		return err
+	}
+
+	info, err := registry.ParseRepositoryInfo(named)
+	if err != nil {
+		return err
+	}
+
+	var registryAuth types.AuthConfig
+
+	username, ok := os.LookupEnv("APP2KUBE_DOCKER_USERNAME")
+	if ok {
+		password, ok := os.LookupEnv("APP2KUBE_DOCKER_PASSWORD")
+		if !ok {
+			return fmt.Errorf("not specified $APP2KUBE_DOCKER_PASSWORD")
+		}
+
+		registryAuth = types.AuthConfig{
+			Username:      username,
+			Password:      password,
+			ServerAddress: info.Index.Name,
+		}
+	} else {
+		authConfigKey := registry.GetAuthConfigKey(info.Index)
+
+		configFile, err := config.Load(config.Dir())
+		if err != nil {
+			return fmt.Errorf("error loading Docker config file: %v", err)
+		}
+
+		auth, err := configFile.GetAuthConfig(authConfigKey)
+		if err == nil {
+			registryAuth = types.AuthConfig(auth)
+		}
+	}
+
+	registryAuthBase64 := encodeAuthToBase64(registryAuth)
+
 	buildContext, err := archive.TarWithOptions(buildContext, &archive.TarOptions{})
 	if err != nil {
 		return fmt.Errorf("build context tar failed: %s", err)
@@ -94,8 +139,10 @@ func build(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagPush {
-		fmt.Printf("\nPush image to repository [%s]\n", imageName)
-		res, err := cli.ImagePush(context.Background(), imageName, types.ImagePushOptions{})
+		fmt.Printf("\nPush image %s to registry\n", imageName)
+		res, err := cli.ImagePush(context.Background(), imageName, types.ImagePushOptions{
+			RegistryAuth: registryAuthBase64,
+		})
 		if err != nil {
 			return fmt.Errorf("Docker image push error: %s", err)
 		}
@@ -120,4 +167,9 @@ func listToMap(values []string) map[string]*string {
 		}
 	}
 	return result
+}
+
+func encodeAuthToBase64(authConfig types.AuthConfig) string {
+	buf, _ := json.Marshal(authConfig)
+	return base64.URLEncoding.EncodeToString(buf)
 }

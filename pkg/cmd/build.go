@@ -204,18 +204,20 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if flagPush {
-		fmt.Printf("\nPush image %s to registry\n", imageName)
+		for _, tag := range tags {
+			fmt.Printf("\nPush image %s to registry\n", tag)
 
-		res, err := cli.ImagePush(context.Background(), imageName, types.ImagePushOptions{
-			RegistryAuth: encodeAuthToBase64(registryAuth),
-		})
-		if err != nil {
-			return fmt.Errorf("Docker image push error: %s", err)
-		}
+			res, err := cli.ImagePush(context.Background(), tag, types.ImagePushOptions{
+				RegistryAuth: encodeAuthToBase64(registryAuth),
+			})
+			if err != nil {
+				return fmt.Errorf("Docker image push error: %s", err)
+			}
 
-		err = jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)
-		if err != nil {
-			return err
+			err = jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	return nil

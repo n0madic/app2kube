@@ -29,6 +29,7 @@ var (
 	buildArgs      []string
 	buildContext   string
 	dockerfileName string
+	flagLatest     bool
 	flagPull       bool
 	flagPush       bool
 )
@@ -45,6 +46,7 @@ func init() {
 	buildCmd.Flags().StringArrayVar(&buildArgs, "build-arg", []string{}, "Set build-time variables")
 	buildCmd.Flags().StringVarP(&buildContext, "build-context", "", ".", "Path to the docker build context")
 	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
+	buildCmd.Flags().BoolVar(&flagLatest, "latest", false, "Also add the latest tag for the image")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
 
@@ -172,6 +174,13 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	tags := []string{imageName}
+
+	if flagLatest && !strings.HasSuffix(imageName, "latest") {
+		name := reference.FamiliarName(named) + ":latest"
+		tags = append(tags, name)
+	}
+
 	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{
 		AuthConfigs:    authConfigs,
 		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs)),
@@ -179,7 +188,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		PullParent:     flagPull,
 		Remove:         true,
 		SuppressOutput: false,
-		Tags:           []string{imageName},
+		Tags:           tags,
 		Version:        types.BuilderV1,
 	})
 	if err != nil {

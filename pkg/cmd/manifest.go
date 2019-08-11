@@ -10,7 +10,8 @@ import (
 
 var typeOutput []string
 
-func init() {
+// NewCmdManifest return manifest command
+func NewCmdManifest() *cobra.Command {
 	manifestCmd := &cobra.Command{
 		Use:   "manifest",
 		Short: "Generate kubernetes manifests for an application",
@@ -20,11 +21,12 @@ func init() {
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
 	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
 	addAppFlags(manifestCmd)
-	rootCmd.AddCommand(manifestCmd)
+
+	return manifestCmd
 }
 
 func manifest(cmd *cobra.Command, args []string) error {
-	err := initApp()
+	app, err := initApp()
 	if err != nil {
 		return err
 	}

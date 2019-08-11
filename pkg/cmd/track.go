@@ -18,11 +18,11 @@ var (
 	timeout      int
 )
 
-func init() {
+// NewCmdTrack return track command
+func NewCmdTrack() *cobra.Command {
 	trackCmd := &cobra.Command{
-		Use:               "track",
-		Short:             "Track application deployment in kubernetes",
-		PersistentPreRunE: trackInit,
+		Use:   "track",
+		Short: "Track application deployment in kubernetes",
 	}
 
 	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", "now", "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
@@ -46,27 +46,25 @@ func init() {
 		cmd.Flags().MarkHidden("snapshot")
 	}
 
-	rootCmd.AddCommand(trackCmd)
+	return trackCmd
 }
 
-func trackInit(cmd *cobra.Command, args []string) error {
-	err := initApp()
+func initAppTrack() (*app2kube.App, error) {
+	app, err := initApp()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if app.Namespace == "" {
 		app.Namespace = app2kube.NamespaceDefault
 	}
 
-	cmd.SilenceUsage = true
-
 	err = kube.Init(kube.InitOptions{
 		KubeContext: *kubeConfigFlags.Context,
 		KubeConfig:  *kubeConfigFlags.KubeConfig,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to initialize kube: %s", err)
+		return nil, fmt.Errorf("unable to initialize kube: %s", err)
 	}
 
 	logsFromTime = time.Now()
@@ -81,10 +79,17 @@ func trackInit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	return nil
+	return app, nil
 }
 
 func trackFollow(cmd *cobra.Command, args []string) error {
+	app, err := initAppTrack()
+	if err != nil {
+		return err
+	}
+
+	cmd.SilenceUsage = true
+
 	return follow.TrackDeployment(
 		app.GetReleaseName(),
 		app.Namespace,
@@ -97,7 +102,14 @@ func trackFollow(cmd *cobra.Command, args []string) error {
 }
 
 func trackReady(cmd *cobra.Command, args []string) error {
-	err := rollout.TrackDeploymentTillReady(
+	app, err := initAppTrack()
+	if err != nil {
+		return err
+	}
+
+	cmd.SilenceUsage = true
+
+	err = rollout.TrackDeploymentTillReady(
 		app.GetReleaseName(),
 		app.Namespace,
 		kube.Kubernetes,

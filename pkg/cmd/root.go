@@ -12,5 +12,14 @@ var rootCmd = &cobra.Command{Use: "app2kube"}
 func Execute(version string) error {
 	rootCmd.Version = version
 	rootCmd.Short = fmt.Sprintf("Kubernetes application deployment (app2kube %s)", rootCmd.Version)
+
+	rootCmd.AddCommand(NewCmdApply())
+	rootCmd.AddCommand(NewCmdBuild())
+	rootCmd.AddCommand(NewCmdCompletion())
+	rootCmd.AddCommand(NewCmdDelete())
+	rootCmd.AddCommand(NewCmdEncrypt())
+	rootCmd.AddCommand(NewCmdManifest())
+	rootCmd.AddCommand(NewCmdTrack())
+
 	return rootCmd.Execute()
 }

@@ -14,7 +14,6 @@ import (
 const defaultFile = ".app2kube.yml"
 
 var (
-	app                  *app2kube.App
 	err                  error
 	fileValues           []string
 	flagVerbose          bool
@@ -27,20 +26,20 @@ var (
 	values               []string
 )
 
-func initApp() error {
+func initApp() (*app2kube.App, error) {
 	if _, err := os.Stat(defaultFile); !os.IsNotExist(err) {
 		valueFiles.Set(defaultFile)
 	}
 
 	if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {
-		return errors.New("Values are required")
+		return nil, errors.New("Values are required")
 	}
 
-	app = app2kube.NewApp()
+	app := app2kube.NewApp()
 
 	rawVals, err = app.LoadValues(valueFiles, values, stringValues, fileValues)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if flagVerbose {
@@ -59,12 +58,12 @@ func initApp() error {
 			time.Now().Format("2006-01-02 15:04:05 MST"))
 		err := ioutil.WriteFile(snapshot, []byte(header+string(rawVals)), 0660)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		fmt.Fprintln(os.Stderr, "Snapshot of values saved in", snapshot)
 	}
 
-	return nil
+	return app, nil
 }
 
 func addAppFlags(cmd *cobra.Command) {

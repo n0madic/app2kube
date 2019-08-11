@@ -34,7 +34,8 @@ var (
 	flagPush       bool
 )
 
-func init() {
+// NewCmdBuild return build command
+func NewCmdBuild() *cobra.Command {
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build and push an image from a Dockerfile",
@@ -52,11 +53,11 @@ func init() {
 
 	buildCmd.Flags().MarkHidden("include-namespace")
 
-	rootCmd.AddCommand(buildCmd)
+	return buildCmd
 }
 
 func runBuild(cmd *cobra.Command, args []string) error {
-	err := initApp()
+	app, err := initApp()
 	if err != nil {
 		return err
 	}

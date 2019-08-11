@@ -6,8 +6,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func init() {
-	rootCmd.AddCommand(&cobra.Command{
+// NewCmdCompletion return completion command
+func NewCmdCompletion() *cobra.Command {
+	return &cobra.Command{
 		Use:                   "completion",
 		DisableFlagsInUseLine: true,
 		Short:                 "Generates bash completion scripts",
@@ -23,5 +24,5 @@ func init() {
 		Run: func(cmd *cobra.Command, args []string) {
 			rootCmd.GenBashCompletion(os.Stdout)
 		},
-	})
+	}
 }

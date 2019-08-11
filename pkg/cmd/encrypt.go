@@ -12,7 +12,8 @@ import (
 
 const dictKey = "secrets"
 
-func init() {
+// NewCmdEncrypt return encrypt command
+func NewCmdEncrypt() *cobra.Command {
 	encryptCmd := &cobra.Command{
 		Use:   "encrypt",
 		Short: "Encrypt secret values in YAML file",
@@ -20,7 +21,7 @@ func init() {
 		RunE:  encrypt,
 	}
 	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
-	rootCmd.AddCommand(encryptCmd)
+	return encryptCmd
 }
 
 func encrypt(cmd *cobra.Command, args []string) error {

@@ -26,7 +26,7 @@ func NewCmdDelete() *cobra.Command {
 
 			if flagIncludeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
-			} else if args[0] == "all" {
+			} else if len(args) == 1 && args[0] == "all" {
 				args = []string{"all,ingress,configmap,secret,pvc"}
 				o.LabelSelector = getSelector(app.Labels)
 			} else if len(args) == 0 {

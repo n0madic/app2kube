@@ -18,31 +18,31 @@ func NewCmdDelete() *cobra.Command {
 		Short: "Delete resources from kubernetes",
 		Run: func(cmd *cobra.Command, args []string) {
 			o := deleteFlags.ToOptions(nil, ioStreams)
-			o.Filenames = []string{"-"}
-
-			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))
 
 			app, err := initApp()
 			if err != nil {
 				cmdutil.CheckErr(err)
 			}
 
-			manifest, err := app.GetManifest("json", app2kube.OutputAll)
-			cmdutil.CheckErr(err)
-
-			if flagIncludeNamespace {
-				namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
+			if flagIncludeNamespace && app.Namespace != "" {
+				args = []string{"namespace", app.Namespace}
+			} else if args[0] == "all" {
+				args = []string{"all,ingress,configmap,secret,pvc"}
+				o.LabelSelector = getSelector(app.Labels)
+			} else if len(args) == 0 {
+				o.Filenames = []string{"-"}
+				manifest, err := app.GetManifest("json", app2kube.OutputAll)
 				cmdutil.CheckErr(err)
-				manifest = namespace + manifest
+
+				fake := fakeio.StdinBytes([]byte{})
+				defer fake.Restore()
+				go func() {
+					fake.StdinBytes([]byte(manifest))
+					fake.CloseStdin()
+				}()
 			}
 
-			fake := fakeio.StdinBytes([]byte{})
-			defer fake.Restore()
-			go func() {
-				fake.StdinBytes([]byte(manifest))
-				fake.CloseStdin()
-			}()
-
+			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))
 			cmdutil.CheckErr(o.RunDelete(kubeFactory))
 		},
 	}

@@ -53,13 +53,13 @@ func manifest(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	manifest, err := app.GetManifest(outputTypes, output)
+	manifest, err := app.GetManifest(output, outputTypes...)
 	if err != nil {
 		return err
 	}
 
 	if flagIncludeNamespace {
-		namespace, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputNamespace}, output)
+		namespace, err := app.GetManifest(output, app2kube.OutputNamespace)
 		if err != nil {
 			return err
 		}

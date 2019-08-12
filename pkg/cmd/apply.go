@@ -37,11 +37,11 @@ func NewCmdApply() *cobra.Command {
 				o.Selector = getSelector(app.Labels)
 			}
 
-			manifest, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputAll}, "json")
+			manifest, err := app.GetManifest("json", app2kube.OutputAll)
 			cmdutil.CheckErr(err)
 
 			if flagIncludeNamespace {
-				namespace, err := app.GetManifest([]app2kube.OutputResource{app2kube.OutputNamespace}, "json")
+				namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
 				cmdutil.CheckErr(err)
 				manifest = namespace + manifest
 			}

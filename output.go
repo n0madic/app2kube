@@ -25,7 +25,7 @@ const (
 )
 
 // GetManifest returns a manifest with the specified resource types
-func (app *App) GetManifest(typeOutput []OutputResource, outputFormat string) (manifest string, err error) {
+func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (manifest string, err error) {
 	for _, out := range typeOutput {
 		if out == OutputNamespace {
 			namespace := app.GetNamespace()

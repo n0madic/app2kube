@@ -35,6 +35,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.Container.Name = cronName + "-job"
 		}
 
+		if job.RestartPolicy == "" {
+			job.RestartPolicy = apiv1.RestartPolicyNever
+		}
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{

@@ -1,11 +1,11 @@
 # app2kube
 
-The easiest way to create kubernetes manifests for an application
+The easiest way to create and apply kubernetes manifests for an application
 
 ## Features
 
 * Simple deployment to kubernetes without knowledge of manifest syntax
-* No manifest templates at the core, only native kubernetes objects
+* There are no built-in manifest templates under the hood, only native kubernetes objects
 * Understandable set of values for configuration in YAML
 * Supported Kubernetes resources:
   * ConfigMap

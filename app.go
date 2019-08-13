@@ -1,12 +1,9 @@
 package app2kube
 
 import (
-	"bytes"
 	"errors"
-	"html/template"
 	"strings"
 
-	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
 	appsv1 "k8s.io/api/apps/v1"
 	batch "k8s.io/api/batch/v1beta1"
@@ -116,17 +113,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		return nil, err
 	}
 
-	tmpl, err := template.New("values").Funcs(sprig.FuncMap()).Parse(string(rawVals))
-	if err != nil {
-		return nil, err
-	}
-	var b bytes.Buffer
-	err = tmpl.Execute(&b, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	err = yaml.Unmarshal(b.Bytes(), &app)
+	err = yaml.Unmarshal(rawVals, &app)
 	if err != nil {
 		return nil, err
 	}
@@ -149,7 +136,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		}
 	}
 
-	return b.Bytes(), nil
+	return rawVals, nil
 }
 
 // NewApp return App instance

@@ -1,11 +1,14 @@
 package app2kube
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"io/ioutil"
 	"os"
 	"strings"
 
+	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
 	"k8s.io/helm/pkg/strvals"
 )
@@ -82,6 +85,12 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 			return []byte{}, err
 		}
 
+		// Apply template to file
+		bytes, err = templating(bytes)
+		if err != nil {
+			return []byte{}, err
+		}
+
 		if err := yaml.Unmarshal(bytes, &currentMap); err != nil {
 			return []byte{}, fmt.Errorf("failed to parse %s: %s", filePath, err)
 		}
@@ -115,4 +124,19 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	}
 
 	return yaml.Marshal(base)
+}
+
+func templating(raw []byte) ([]byte, error) {
+	tmpl, err := template.New("values").Funcs(sprig.FuncMap()).Parse(string(raw))
+	if err != nil {
+		return nil, err
+	}
+
+	var b bytes.Buffer
+	err = tmpl.Execute(&b, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return b.Bytes(), nil
 }

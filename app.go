@@ -103,7 +103,7 @@ func (app *App) GetReleaseName() string {
 			releaseName = app.Name + "-" + app.Branch
 		}
 	}
-	return releaseName
+	return strings.ToLower(releaseName)
 }
 
 // LoadValues for App

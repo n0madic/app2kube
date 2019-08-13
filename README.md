@@ -99,7 +99,7 @@ deployment:
     example: {}
 ```
 
-Get application manifest:
+Get kubernetes manifest:
 
 ```shell
 app2kube manifest -f values.yaml
@@ -183,11 +183,6 @@ common:
     repository: "example/php-nginx"
     tag: "7.3"
 cronjob:
-  update:
-    schedule: "0 */1 * * *"
-    container:
-      command: ["/usr/bin/curl"]
-      args: ["https://www.example.com/update"]
   cleaning:
     schedule: "0 0 * * *"
     container:

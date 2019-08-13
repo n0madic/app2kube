@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"net/http"
+	"net/url"
 	"os"
 	"strings"
 
@@ -78,7 +80,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 		if strings.TrimSpace(filePath) == "-" {
 			bytes, err = ioutil.ReadAll(os.Stdin)
 		} else {
-			bytes, err = ioutil.ReadFile(filePath)
+			bytes, err = readFile(filePath)
 		}
 
 		if err != nil {
@@ -126,6 +128,55 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	return yaml.Marshal(base)
 }
 
+// readFile load a file from the local directory or a remote file with a url.
+func readFile(filePath string) ([]byte, error) {
+	var allowMissing bool
+	if strings.HasSuffix(filePath, "?") {
+		allowMissing = true
+		filePath = strings.TrimSuffix(filePath, "?")
+	}
+
+	u, err := url.Parse(filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var bytes []byte
+	if strings.HasPrefix(u.Scheme, "http") {
+		resp, err := http.Get(filePath)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode == http.StatusOK {
+			bytes, err = ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			err = fmt.Errorf("%s loading error: %s", filePath, resp.Status)
+			if allowMissing {
+				fmt.Fprintf(os.Stderr, "WARNING: value URL missing: %s\n", err)
+			} else {
+				return nil, err
+			}
+		}
+	} else {
+		bytes, err = ioutil.ReadFile(filePath)
+		if err != nil {
+			if allowMissing {
+				fmt.Fprintf(os.Stderr, "WARNING: value file missing: %s\n", err)
+			} else {
+				return []byte{}, err
+			}
+		}
+	}
+
+	return bytes, err
+}
+
+// templating values
 func templating(raw []byte) ([]byte, error) {
 	tmpl, err := template.New("values").Funcs(sprig.FuncMap()).Parse(string(raw))
 	if err != nil {

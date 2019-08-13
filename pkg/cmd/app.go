@@ -72,6 +72,6 @@ func addAppFlags(cmd *cobra.Command) {
 	cmd.Flags().StringArrayVar(&fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	cmd.Flags().StringArrayVar(&stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	cmd.Flags().StringVarP(&snapshot, "snapshot", "", "", "Save the parsed YAML values in the specified file for reuse")
-	cmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
+	cmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple). Add the suffix '?' to the file name so that it can be skipped if it is not found")
 	cmd.Flags().BoolVarP(&flagVerbose, "verbose", "v", false, "Show the parsed YAML values as well")
 }

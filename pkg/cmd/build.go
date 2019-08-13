@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,6 +31,7 @@ var (
 	buildContext   string
 	dockerfileName string
 	flagLatest     bool
+	flagPassStdin  bool
 	flagPull       bool
 	flagPush       bool
 )
@@ -48,6 +50,7 @@ func NewCmdBuild() *cobra.Command {
 	buildCmd.Flags().StringVarP(&buildContext, "build-context", "", ".", "Path to the docker build context")
 	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
 	buildCmd.Flags().BoolVar(&flagLatest, "latest", false, "Also add the latest tag for the image")
+	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
 
@@ -103,14 +106,29 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var registryAuth types.AuthConfig
+	var password string
 
-	username, ok := os.LookupEnv("APP2KUBE_DOCKER_USERNAME")
-	if ok {
-		password, ok := os.LookupEnv("APP2KUBE_DOCKER_PASSWORD")
-		if !ok {
-			return fmt.Errorf("not specified $APP2KUBE_DOCKER_PASSWORD")
+	username := *kubeConfigFlags.AuthInfoName
+	if username == "" {
+		username = os.Getenv("APP2KUBE_DOCKER_USERNAME")
+	}
+
+	if username != "" {
+		if flagPassStdin {
+			bytes, err := ioutil.ReadAll(os.Stdin)
+			if err != nil {
+				return err
+			}
+			password = string(bytes)
+		} else {
+			password = os.Getenv("APP2KUBE_DOCKER_PASSWORD")
+			if password == "" {
+				return fmt.Errorf("not specified $APP2KUBE_DOCKER_PASSWORD")
+			}
 		}
+	}
 
+	if username != "" && password != "" {
 		registryAuth = types.AuthConfig{
 			Username:      username,
 			Password:      password,

@@ -28,7 +28,6 @@ import (
 
 var (
 	buildArgs      []string
-	buildContext   string
 	dockerfileName string
 	flagLatest     bool
 	flagPassStdin  bool
@@ -47,7 +46,6 @@ func NewCmdBuild() *cobra.Command {
 	addAppFlags(buildCmd)
 
 	buildCmd.Flags().StringArrayVar(&buildArgs, "build-arg", []string{}, "Set build-time variables")
-	buildCmd.Flags().StringVarP(&buildContext, "build-context", "", ".", "Path to the docker build context")
 	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
 	buildCmd.Flags().BoolVar(&flagLatest, "latest", false, "Also add the latest tag for the image")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
@@ -145,6 +143,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	var dockerfileCtx io.ReadCloser
+
+	buildContext := "."
+	if len(args) == 1 {
+		buildContext = args[0]
+	}
 
 	contextDir, relDockerfile, err := build.GetContextFromLocalDir(buildContext, dockerfileName)
 	if err == nil && strings.HasPrefix(relDockerfile, ".."+string(filepath.Separator)) {

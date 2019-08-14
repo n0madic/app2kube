@@ -7,6 +7,7 @@ The easiest way to create and apply kubernetes manifests for an application
 * Simple deployment to kubernetes without knowledge of manifest syntax
 * There are no built-in manifest templates under the hood, only native kubernetes objects
 * Understandable set of values for configuration in YAML
+* Templating values in YAML file with [sprig](http://masterminds.github.io/sprig/) functions
 * Supported Kubernetes resources:
   * ConfigMap
   * CronJob
@@ -74,7 +75,7 @@ Minimum required values for application deployment in kubernetes - `name` and `i
 app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
 
-`values.yaml`:
+By default, it tries to use the `.app2kube.yml` file in the current directory:
 
 ```yaml
 ---
@@ -102,31 +103,31 @@ deployment:
 Get kubernetes manifest:
 
 ```shell
-app2kube manifest -f values.yaml
+app2kube manifest
 ```
 
 Build and push docker image:
 
 ```shell
-app2kube build --push -f values.yaml
+app2kube build --push
 ```
 
 Apply application manifest in kubernetes:
 
 ```shell
-app2kube apply -f values.yaml
+app2kube apply
 ```
 
 Track deployment till ready:
 
 ```shell
-app2kube track ready -f values.yaml
+app2kube track ready
 ```
 
 Delete application manifest from kubernetes:
 
 ```shell
-app2kube delete -f values.yaml
+app2kube delete
 ```
 
 ## Staging
@@ -134,7 +135,7 @@ app2kube delete -f values.yaml
 For a staging release, you must set the `staging` and optional `branch` parameters:
 
 ```shell
-app2kube manifest -f values.yaml --set staging=alpha --set branch=develop
+app2kube manifest --set staging=alpha --set branch=develop
 ```
 
 In this case, some values will be reset to more optimal for staging:

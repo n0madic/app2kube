@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/n0madic/app2kube"
+	"github.com/spf13/cobra"
+
 	"github.com/flant/kubedog/pkg/kube"
 	"github.com/flant/kubedog/pkg/tracker"
 	"github.com/flant/kubedog/pkg/trackers/follow"
 	"github.com/flant/kubedog/pkg/trackers/rollout"
-	"github.com/n0madic/app2kube"
-	"github.com/spf13/cobra"
 )
 
 var (
@@ -137,8 +138,10 @@ func trackReady(cmd *cobra.Command, args []string) error {
 
 			fmt.Println("  ", getURL(ingress.Host))
 
-			for _, alias := range ingress.Aliases {
-				fmt.Println("  ", getURL(alias))
+			if app.Staging == "" {
+				for _, alias := range ingress.Aliases {
+					fmt.Println("  ", getURL(alias))
+				}
 			}
 		}
 	}

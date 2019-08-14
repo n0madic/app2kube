@@ -14,16 +14,6 @@ import (
 func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
-			if app.Staging != "" {
-				if strings.HasPrefix(ing.Host, "*") {
-					return ingress, fmt.Errorf("staging cannot be used with wildcard domain: %s", ing.Host)
-				}
-				ing.Host = app.Staging + "." + ing.Host
-				if app.Branch != "" {
-					ing.Host = app.Branch + "." + ing.Host
-				}
-			}
-
 			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 
 			if ing.Class == "" {

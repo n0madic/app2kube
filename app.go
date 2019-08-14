@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/ghodss/yaml"
@@ -130,9 +131,21 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		app.Deployment.RevisionHistoryLimit = 0
 		app.Staging = strings.ToLower(app.Staging)
 		app.Branch = strings.ToLower(app.Branch)
+
 		app.Labels["app.kubernetes.io/instance"] = app.Staging
 		if app.Branch != "" {
 			app.Labels["app.kubernetes.io/instance"] = app.Staging + "-" + app.Branch
+		}
+
+		for i, ingress := range app.Ingress {
+			if strings.HasPrefix(ingress.Host, "*") {
+				return nil, fmt.Errorf("staging cannot be used with wildcard domain: %s", ingress.Host)
+			}
+			ingress.Host = app.Staging + "." + ingress.Host
+			if app.Branch != "" {
+				ingress.Host = app.Branch + "." + ingress.Host
+			}
+			app.Ingress[i].Host = ingress.Host
 		}
 	}
 

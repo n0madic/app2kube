@@ -3,6 +3,7 @@ package app2kube
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"reflect"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -171,6 +172,22 @@ func PrintObj(obj runtime.Object, output string) (string, error) {
 		return "", err
 	}
 
+	// remove 'creationTimestamp: null' from manifest
+	filtered := bytes.NewBuffer([]byte{})
+	for {
+		line, err := out.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				return "", err
+			}
+		}
+		if !bytes.Contains(line, []byte("creationTimestamp")) {
+			filtered.Write(line)
+		}
+	}
+
 	name := ""
 	if acc, err := meta.Accessor(obj); err == nil {
 		if n := acc.GetName(); len(n) > 0 {
@@ -183,6 +200,6 @@ func PrintObj(obj runtime.Object, output string) (string, error) {
 	return fmt.Sprintf("---\n# %s: %s\n%s\n",
 		reflect.Indirect(reflect.ValueOf(obj)).Type().Name(),
 		name,
-		out,
+		filtered,
 	), nil
 }

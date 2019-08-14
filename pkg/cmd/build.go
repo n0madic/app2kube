@@ -77,7 +77,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	cli, err := client.NewClientWithOpts(client.WithVersion("1.39"), client.FromEnv)
+	cli, err := client.NewClientWithOpts(client.WithVersion("1.27"), client.FromEnv)
 	if err != nil {
 		return err
 	}

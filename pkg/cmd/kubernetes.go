@@ -23,6 +23,10 @@ func init() {
 
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
 	kubeFactory = cmdutil.NewFactory(matchVersionKubeConfigFlags)
+
+	if *kubeConfigFlags.Context == "" && os.Getenv("KUBECONTEXT") != "" {
+		*kubeConfigFlags.Context = os.Getenv("KUBECONTEXT")
+	}
 }
 
 func getSelector(labels map[string]string) string {

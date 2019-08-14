@@ -46,7 +46,9 @@ func initApp() (*app2kube.App, error) {
 		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
 	}
 
-	if *kubeConfigFlags.Namespace != "" {
+	if *kubeConfigFlags.Namespace == "" && app.Namespace != "" {
+		*kubeConfigFlags.Namespace = app.Namespace
+	} else if *kubeConfigFlags.Namespace != "" {
 		app.Namespace = *kubeConfigFlags.Namespace
 	}
 

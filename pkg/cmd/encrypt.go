@@ -23,7 +23,7 @@ func NewCmdEncrypt() *cobra.Command {
 		RunE:  encrypt,
 	}
 	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
-	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Specify values in a YAML file or a URL (can specify multiple)")
+	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
 	return encryptCmd
 }
 

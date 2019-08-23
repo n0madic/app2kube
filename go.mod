@@ -6,7 +6,6 @@ require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/semver v1.4.2 // indirect
 	github.com/Masterminds/sprig v2.20.0+incompatible
-	github.com/Sirupsen/logrus v1.0.6
 	github.com/containerd/continuity v0.0.0-20190822154759-403b5be3d72b // indirect
 	github.com/docker/cli v0.0.0-20190808020202-432b76057f0d
 	github.com/docker/distribution v2.7.1+incompatible
@@ -25,11 +24,9 @@ require (
 	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v0.0.5
 	google.golang.org/grpc v1.23.0 // indirect
-	gopkg.in/yaml.v2 v2.2.2
 	k8s.io/api v0.0.0-20190820101204-3efd428ce51b
 	k8s.io/apimachinery v0.0.0-20190821142400-bb534aad565e
 	k8s.io/cli-runtime v0.0.0-20190821142400-76d9c1626b8b
-	k8s.io/client-go v0.0.0-20190821142400-e484c9e80a37
 	k8s.io/helm v2.14.3+incompatible
 	k8s.io/kubectl v0.0.0-20190821142400-8730a7adb5aa
 )

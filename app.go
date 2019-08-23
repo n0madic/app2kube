@@ -12,20 +12,25 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// IngressCommon specification
+type IngressCommon struct {
+	Annotations map[string]string `yaml:"annotations"`
+	Class       string            `yaml:"class"`
+	ServiceName string            `yaml:"serviceName"`
+	ServicePort int32             `yaml:"servicePort"`
+}
+
 // Ingress specification
 type Ingress struct {
-	Aliases       []string          `yaml:"aliases"`
-	Annotations   map[string]string `yaml:"annotations"`
-	Class         string            `yaml:"class"`
-	Host          string            `yaml:"host"`
-	Letsencrypt   bool              `yaml:"letsencrypt"`
-	Path          string            `yaml:"path"`
-	ServiceName   string            `yaml:"serviceName"`
-	ServicePort   int32             `yaml:"servicePort"`
-	SslRedirect   bool              `yaml:"sslRedirect"`
-	TLSCrt        string            `yaml:"tlsCrt"`
-	TLSKey        string            `yaml:"tlsKey"`
-	TLSSecretName string            `yaml:"tlsSecretName"`
+	IngressCommon
+	Aliases       []string `yaml:"aliases"`
+	Host          string   `yaml:"host"`
+	Letsencrypt   bool     `yaml:"letsencrypt"`
+	Path          string   `yaml:"path"`
+	SslRedirect   bool     `yaml:"sslRedirect"`
+	TLSCrt        string   `yaml:"tlsCrt"`
+	TLSKey        string   `yaml:"tlsKey"`
+	TLSSecretName string   `yaml:"tlsSecretName"`
 }
 
 // Service specification
@@ -51,6 +56,9 @@ type App struct {
 			Repository  string           `yaml:"repository"`
 			Tag         string           `yaml:"tag"`
 		} `yaml:"image"`
+		Ingress struct {
+			IngressCommon
+		} `yaml:"ingress"`
 		MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
 		NodeSelector             map[string]string  `yaml:"nodeSelector"`
 		SharedData               string             `yaml:"sharedData"`

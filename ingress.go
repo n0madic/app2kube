@@ -17,7 +17,11 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 
 			if ing.Class == "" {
-				ing.Class = "nginx"
+				if app.Common.Ingress.Class != "" {
+					ing.Class = app.Common.Ingress.Class
+				} else {
+					ing.Class = "nginx"
+				}
 			}
 
 			ingressAnnotations := make(map[string]string)
@@ -25,13 +29,18 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 			if ing.Letsencrypt {
 				ingressAnnotations["kubernetes.io/tls-acme"] = "true"
 			}
+			for key, value := range app.Common.Ingress.Annotations {
+				ingressAnnotations[key] = value
+			}
 			for key, value := range ing.Annotations {
 				ingressAnnotations[key] = value
 			}
 
 			serviceName := ing.ServiceName
 			if serviceName == "" {
-				if len(app.Service) == 1 {
+				if app.Common.Ingress.ServiceName != "" {
+					serviceName = app.Common.Ingress.ServiceName
+				} else if len(app.Service) == 1 {
 					for name := range app.Service {
 						serviceName = app.GetReleaseName() + "-" + name
 					}
@@ -42,7 +51,9 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 			servicePort := ing.ServicePort
 			if servicePort == 0 {
-				if len(app.Service) == 1 {
+				if app.Common.Ingress.ServicePort > 0 {
+					servicePort = app.Common.Ingress.ServicePort
+				} else if len(app.Service) == 1 {
 					for _, svc := range app.Service {
 						if svc.ExternalPort > 0 {
 							servicePort = svc.ExternalPort

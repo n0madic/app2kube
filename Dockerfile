@@ -8,8 +8,7 @@ ADD . .
 
 ENV GO111MODULE=on
 
-RUN cd cmd/app2kube/ && \
-    go install -ldflags="-s -w"
+RUN go install -ldflags="-s -w"
 
 
 FROM alpine

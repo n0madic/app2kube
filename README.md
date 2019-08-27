@@ -31,7 +31,7 @@ Download binaries from [release](https://github.com/n0madic/app2kube/releases) p
 Or install from source:
 
 ```shell
-go get -u github.com/n0madic/app2kube/cmd/app2kube
+go get -u github.com/n0madic/app2kube
 ```
 
 ## Help

@@ -1,7 +1,7 @@
 package cmd
 
 import (
-	"github.com/n0madic/app2kube"
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
 

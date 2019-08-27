@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/n0madic/app2kube"
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 )
 

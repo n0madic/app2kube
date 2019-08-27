@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	logsFromTime time.Time
-	logsSince    string
-	timeout      int
+	logsFromTime = time.Now()
+	logsSince    = "now"
+	timeout      = 5
 )
 
 // NewCmdTrack return track command
@@ -26,8 +26,8 @@ func NewCmdTrack() *cobra.Command {
 		Short: "Track application deployment in kubernetes",
 	}
 
-	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", "now", "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
-	trackCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", 5, "Timeout of operation in minutes. 0 is wait forever")
+	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", logsSince, "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
+	trackCmd.PersistentFlags().IntVarP(&timeout, "timeout", "t", timeout, "Timeout of operation in minutes. 0 is wait forever")
 
 	trackCmd.AddCommand(&cobra.Command{
 		Use:   "follow",
@@ -68,7 +68,6 @@ func initAppTrack() (*app2kube.App, error) {
 		return nil, fmt.Errorf("unable to initialize kube: %s", err)
 	}
 
-	logsFromTime = time.Now()
 	if logsSince != "now" {
 		if logsSince == "all" {
 			logsFromTime = time.Time{}

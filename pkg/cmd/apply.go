@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
@@ -9,6 +12,8 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
+var applyWithTrack string
+
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
 	o := apply.NewApplyOptions(ioStreams)
@@ -16,7 +21,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a configuration to a resource in kubernetes",
-		Run: func(cmd *cobra.Command, args []string) {
+		RunE: func(cmd *cobra.Command, args []string) error {
 			o.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 			o.Overwrite = true
 			o.PruneWhitelist = []string{"/v1/Namespace"}
@@ -54,6 +59,16 @@ func NewCmdApply() *cobra.Command {
 			}()
 
 			cmdutil.CheckErr(o.Run())
+
+			switch strings.ToLower(applyWithTrack) {
+			case "follow":
+				trackFollow(cmd, args)
+			case "ready":
+				trackReady(cmd, args)
+			default:
+				return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
+			}
+			return nil
 		},
 	}
 
@@ -63,6 +78,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it. Warning: --dry-run cannot accurately output the result of merging the local manifest and the server-side data. Use --server-dry-run to get the merged result instead.")
 	applyCmd.Flags().BoolVar(&o.ServerDryRun, "server-dry-run", o.ServerDryRun, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
 	applyCmd.Flags().BoolVar(&o.Prune, "prune", o.Prune, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
+	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
 
 	return applyCmd
 }

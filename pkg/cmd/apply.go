@@ -60,14 +60,17 @@ func NewCmdApply() *cobra.Command {
 
 			cmdutil.CheckErr(o.Run())
 
-			switch strings.ToLower(applyWithTrack) {
-			case "follow":
-				return trackFollow(cmd, args)
-			case "ready":
-				return trackReady(cmd, args)
-			default:
-				return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
+			if applyWithTrack != "" {
+				switch strings.ToLower(applyWithTrack) {
+				case "follow":
+					return trackFollow(cmd, args)
+				case "ready":
+					return trackReady(cmd, args)
+				default:
+					return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
+				}
 			}
+			return nil
 		},
 	}
 

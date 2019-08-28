@@ -56,10 +56,6 @@ func initAppTrack() (*app2kube.App, error) {
 		return nil, err
 	}
 
-	if app.Namespace == "" {
-		app.Namespace = app2kube.NamespaceDefault
-	}
-
 	err = kube.Init(kube.InitOptions{
 		KubeContext: *kubeConfigFlags.Context,
 		KubeConfig:  *kubeConfigFlags.KubeConfig,
@@ -143,6 +139,30 @@ func trackReady(cmd *cobra.Command, args []string) error {
 				}
 			}
 		}
+	}
+
+	return nil
+}
+
+func trackDeploymentTillReady(name, namespace string) error {
+	err = kube.Init(kube.InitOptions{
+		KubeContext: *kubeConfigFlags.Context,
+		KubeConfig:  *kubeConfigFlags.KubeConfig,
+	})
+	if err != nil {
+		return fmt.Errorf("unable to initialize kube: %s", err)
+	}
+
+	err = rollout.TrackDeploymentTillReady(
+		name,
+		namespace,
+		kube.Kubernetes,
+		tracker.Options{
+			Timeout: time.Minute * time.Duration(timeout),
+		},
+	)
+	if err != nil {
+		return err
 	}
 
 	return nil

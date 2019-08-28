@@ -18,6 +18,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/gorilla/mux v1.7.3 // indirect
 	github.com/huandu/xstrings v1.2.0 // indirect
+	github.com/logrusorgru/aurora v0.0.0-20190803045625-94edacc10f9b
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.1.1 // indirect

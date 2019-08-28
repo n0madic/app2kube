@@ -32,12 +32,12 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Replicas:             &replicas,
 				RevisionHistoryLimit: &app.Deployment.RevisionHistoryLimit,
 				Selector: &metav1.LabelSelector{
-					MatchLabels: app.Labels,
+					MatchLabels: app.GetColorLabels(),
 				},
 				Strategy: app.Deployment.Strategy,
 				Template: apiv1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: app.Labels,
+						Labels: app.GetColorLabels(),
 					},
 					Spec: apiv1.PodSpec{
 						AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
@@ -49,6 +49,11 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 					},
 				},
 			},
+		}
+
+		if app.Deployment.BlueGreenColor != "" {
+			deployment.ObjectMeta.Name = app.GetReleaseName() + "-" + app.Deployment.BlueGreenColor
+			deployment.ObjectMeta.Labels = app.GetColorLabels()
 		}
 
 		if app.Common.Image.PullSecrets != "" {

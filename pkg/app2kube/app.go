@@ -75,6 +75,7 @@ type App struct {
 		Suspend                    bool                    `yaml:"suspend"`
 	} `yaml:"cronjob"`
 	Deployment struct {
+		BlueGreenColor       string                     `yaml:"blueGreenColor"`
 		Containers           map[string]apiv1.Container `yaml:"containers"`
 		ReplicaCount         int32                      `yaml:"replicaCount"`
 		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
@@ -115,6 +116,18 @@ func (app *App) GetReleaseName() string {
 	return strings.ToLower(releaseName)
 }
 
+// GetColorLabels return labels for blue/green deployment
+func (app *App) GetColorLabels() map[string]string {
+	labels := make(map[string]string, len(app.Labels))
+	for k, v := range app.Labels {
+		labels[k] = v
+	}
+	if app.Deployment.BlueGreenColor != "" {
+		labels["app.kubernetes.io/color"] = app.Deployment.BlueGreenColor
+	}
+	return labels
+}
+
 // LoadValues for App
 func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]byte, error) {
 	rawVals, err := vals(valueFiles, values, stringValues, fileValues)
@@ -136,6 +149,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 
 	if app.Staging != "" {
 		app.Common.Image.PullPolicy = apiv1.PullAlways
+		app.Deployment.BlueGreenColor = ""
 		app.Deployment.RevisionHistoryLimit = 0
 		app.Staging = strings.ToLower(app.Staging)
 		app.Branch = strings.ToLower(app.Branch)
@@ -155,6 +169,8 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 			}
 			app.Ingress[i].Host = ingress.Host
 		}
+	} else {
+		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
 	}
 
 	return rawVals, nil

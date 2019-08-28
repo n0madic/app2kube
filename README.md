@@ -22,6 +22,7 @@ The easiest way to create and apply kubernetes manifests for an application
 * Build and push docker image
 * Apply/delete a configuration to a resource in kubernetes
 * Track application deployment in kubernetes
+* Blue/green deployment
 * Portable - `apply`/`delete` command ported from kubectl, `build` from docker-cli
 
 ## Install
@@ -145,6 +146,7 @@ common:
   image:
     pullPolicy: Always
 deployment:
+  blueGreenColor: ""
   replicaCount: 1
   revisionHistoryLimit: 0
 ```

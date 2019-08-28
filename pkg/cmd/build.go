@@ -29,10 +29,10 @@ import (
 var (
 	buildArgs      []string
 	dockerfileName string
-	flagLatest     bool
 	flagPassStdin  bool
 	flagPull       bool
 	flagPush       bool
+	tags           opts.ListOpts
 )
 
 // NewCmdBuild return build command
@@ -45,12 +45,20 @@ func NewCmdBuild() *cobra.Command {
 
 	addAppFlags(buildCmd)
 
+	tags = opts.NewListOpts(func(rawRepo string) (string, error) {
+		_, err := reference.ParseNormalizedNamed(rawRepo)
+		if err != nil {
+			return "", err
+		}
+		return rawRepo, nil
+	})
+
 	buildCmd.Flags().StringArrayVar(&buildArgs, "build-arg", []string{}, "Set build-time variables")
 	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
-	buildCmd.Flags().BoolVar(&flagLatest, "latest", false, "Also add the latest tag for the image")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
+	buildCmd.Flags().VarP(&tags, "tag", "t", "Additional name and optionally a tag in the 'name:tag' format")
 
 	buildCmd.Flags().MarkHidden("include-namespace")
 
@@ -196,19 +204,9 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	tags := opts.NewListOpts(func(rawRepo string) (string, error) {
-		_, err := reference.ParseNormalizedNamed(rawRepo)
-		if err != nil {
-			return "", err
-		}
-		return rawRepo, nil
-	})
-
-	tags.Set(imageName)
-
-	if flagLatest && !strings.HasSuffix(imageName, "latest") {
-		name := reference.FamiliarName(named) + ":latest"
-		tags.Set(name)
+	err = tags.Set(imageName)
+	if err != nil {
+		return err
 	}
 
 	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{

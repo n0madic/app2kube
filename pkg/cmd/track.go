@@ -24,6 +24,18 @@ func NewCmdTrack() *cobra.Command {
 	trackCmd := &cobra.Command{
 		Use:   "track",
 		Short: "Track application deployment in kubernetes",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			if logsSince != "now" {
+				if logsSince == "all" {
+					logsFromTime = time.Time{}
+				} else {
+					since, err := time.ParseDuration(logsSince)
+					if err == nil {
+						logsFromTime = time.Now().Add(-since)
+					}
+				}
+			}
+		},
 	}
 
 	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", logsSince, "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
@@ -32,13 +44,27 @@ func NewCmdTrack() *cobra.Command {
 	trackCmd.AddCommand(&cobra.Command{
 		Use:   "follow",
 		Short: "Follow Deployment",
-		RunE:  trackFollow,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true
+			return trackFollow(app)
+		},
 	})
 
 	trackCmd.AddCommand(&cobra.Command{
 		Use:   "ready",
 		Short: "Track Deployment till ready",
-		RunE:  trackReady,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true
+			return trackReady(app)
+		},
 	})
 
 	for _, cmd := range trackCmd.Commands() {
@@ -51,45 +77,18 @@ func NewCmdTrack() *cobra.Command {
 	return trackCmd
 }
 
-func initAppTrack() (*app2kube.App, error) {
-	app, err := initApp()
+func trackFollow(app *app2kube.App) error {
+	err := kube.Init(kube.InitOptions{
+		KubeContext: *kubeConfigFlags.Context,
+		KubeConfig:  *kubeConfigFlags.KubeConfig,
+	})
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
 
 	if app.Namespace == "" {
 		app.Namespace = app2kube.NamespaceDefault
 	}
-
-	err = kube.Init(kube.InitOptions{
-		KubeContext: *kubeConfigFlags.Context,
-		KubeConfig:  *kubeConfigFlags.KubeConfig,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("unable to initialize kube: %s", err)
-	}
-
-	if logsSince != "now" {
-		if logsSince == "all" {
-			logsFromTime = time.Time{}
-		} else {
-			since, err := time.ParseDuration(logsSince)
-			if err == nil {
-				logsFromTime = time.Now().Add(-since)
-			}
-		}
-	}
-
-	return app, nil
-}
-
-func trackFollow(cmd *cobra.Command, args []string) error {
-	app, err := initAppTrack()
-	if err != nil {
-		return err
-	}
-
-	cmd.SilenceUsage = true
 
 	return follow.TrackDeployment(
 		app.GetDeploymentName(),
@@ -102,14 +101,7 @@ func trackFollow(cmd *cobra.Command, args []string) error {
 	)
 }
 
-func trackReady(cmd *cobra.Command, args []string) error {
-	app, err := initAppTrack()
-	if err != nil {
-		return err
-	}
-
-	cmd.SilenceUsage = true
-
+func trackReady(app *app2kube.App) error {
 	err = trackDeploymentTillReady(app.GetDeploymentName(), app.Namespace)
 	if err != nil {
 		return err
@@ -147,7 +139,7 @@ func trackDeploymentTillReady(name, namespace string) error {
 		KubeConfig:  *kubeConfigFlags.KubeConfig,
 	})
 	if err != nil {
-		return fmt.Errorf("unable to initialize kube: %s", err)
+		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
 
 	if namespace == "" {

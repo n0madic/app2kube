@@ -107,9 +107,9 @@ func NewCmdApply() *cobra.Command {
 			if applyWithTrack != "" {
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
-					return trackFollow(cmd, args)
+					return trackFollow(app)
 				case "ready":
-					return trackReady(cmd, args)
+					return trackReady(app)
 				default:
 					return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
 				}

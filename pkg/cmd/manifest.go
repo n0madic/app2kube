@@ -32,6 +32,10 @@ func manifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	if app.Namespace == app2kube.NamespaceDefault {
+		app.Namespace = ""
+	}
+
 	var outputTypes []app2kube.OutputResource
 	for _, outType := range typeOutput {
 		switch strings.ToLower(outType) {
@@ -59,7 +63,7 @@ func manifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if flagIncludeNamespace {
+	if app.Namespace != "" && flagIncludeNamespace {
 		namespace, err := app.GetManifest(output, app2kube.OutputNamespace)
 		if err != nil {
 			return err

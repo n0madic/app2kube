@@ -86,10 +86,6 @@ func trackFollow(app *app2kube.App) error {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
 
-	if app.Namespace == "" {
-		app.Namespace = app2kube.NamespaceDefault
-	}
-
 	return follow.TrackDeployment(
 		app.GetDeploymentName(),
 		app.Namespace,
@@ -140,10 +136,6 @@ func trackDeploymentTillReady(name, namespace string) error {
 	})
 	if err != nil {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
-	}
-
-	if namespace == "" {
-		namespace = app2kube.NamespaceDefault
 	}
 
 	err = rollout.TrackDeploymentTillReady(

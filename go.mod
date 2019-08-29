@@ -17,7 +17,10 @@ require (
 	github.com/flant/kubedog v0.3.3
 	github.com/ghodss/yaml v1.0.0
 	github.com/gorilla/mux v1.7.3 // indirect
+	github.com/gosuri/uitable v0.0.3
 	github.com/huandu/xstrings v1.2.0 // indirect
+	github.com/logrusorgru/aurora v0.0.0-20190803045625-94edacc10f9b
+	github.com/mattn/go-runewidth v0.0.4 // indirect
 	github.com/morikuni/aec v0.0.0-20170113033406-39771216ff4c // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.1.1 // indirect
@@ -27,6 +30,7 @@ require (
 	k8s.io/api v0.0.0-20190820101204-3efd428ce51b
 	k8s.io/apimachinery v0.0.0-20190821142400-bb534aad565e
 	k8s.io/cli-runtime v0.0.0-20190821142400-76d9c1626b8b
+	k8s.io/client-go v0.0.0-20190821142400-e484c9e80a37
 	k8s.io/helm v2.14.3+incompatible
 	k8s.io/kubectl v0.0.0-20190821142400-8730a7adb5aa
 )

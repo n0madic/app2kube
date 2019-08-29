@@ -14,6 +14,7 @@ func Execute(version string) error {
 	rootCmd.Short = fmt.Sprintf("Kubernetes application deployment (app2kube %s)", rootCmd.Version)
 
 	rootCmd.AddCommand(NewCmdApply())
+	rootCmd.AddCommand(NewCmdBlueGreen())
 	rootCmd.AddCommand(NewCmdBuild())
 	rootCmd.AddCommand(NewCmdCompletion())
 	rootCmd.AddCommand(NewCmdDelete())

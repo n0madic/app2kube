@@ -18,6 +18,8 @@ type OutputResource int
 const (
 	// OutputAll for all resources (except namespace)
 	OutputAll OutputResource = iota
+	// OutputAllForDeployment is all the resources needed to run Deployment
+	OutputAllForDeployment
 	// OutputConfigMap only
 	OutputConfigMap
 	// OutputCronJob only
@@ -48,7 +50,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			manifest += yml
 		}
 
-		if out == OutputAll || out == OutputSecret {
+		if out == OutputAll || out == OutputAllForDeployment || out == OutputSecret {
 			secret, err := app.GetSecret()
 			if err != nil {
 				return "", err
@@ -60,7 +62,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			manifest += yml
 		}
 
-		if out == OutputAll || out == OutputConfigMap {
+		if out == OutputAll || out == OutputAllForDeployment || out == OutputConfigMap {
 			configmap, err := app.GetConfigMap()
 			if err != nil {
 				return "", err
@@ -72,7 +74,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			manifest += yml
 		}
 
-		if out == OutputAll || out == OutputPersistentVolumeClaim {
+		if out == OutputAll || out == OutputAllForDeployment || out == OutputPersistentVolumeClaim {
 			claims, err := app.GetPersistentVolumeClaims()
 			if err != nil {
 				return "", err
@@ -100,7 +102,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			}
 		}
 
-		if out == OutputAll || out == OutputDeployment {
+		if out == OutputAll || out == OutputAllForDeployment || out == OutputDeployment {
 			deployment, err := app.GetDeployment()
 			if err != nil {
 				return "", err

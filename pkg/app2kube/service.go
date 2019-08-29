@@ -43,7 +43,7 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 						TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: svc.InternalPort},
 					}},
 					Type:     svc.Type,
-					Selector: app.Labels,
+					Selector: app.GetColorLabels(),
 				},
 			}
 

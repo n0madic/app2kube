@@ -48,6 +48,7 @@ func NewCmdDelete() *cobra.Command {
 	}
 
 	addAppFlags(deleteCmd)
+	addBlueGreenFlag(deleteCmd)
 	deleteCmd.Flags().BoolVar(deleteFlags.IgnoreNotFound, "ignore-not-found", *deleteFlags.IgnoreNotFound, "Treat \"resource not found\" as a successful delete.")
 	deleteCmd.Flags().BoolVar(deleteFlags.Wait, "wait", *deleteFlags.Wait, "If true, wait for resources to be gone before returning. This waits for finalizers.")
 

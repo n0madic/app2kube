@@ -21,6 +21,7 @@ func NewCmdManifest() *cobra.Command {
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
 	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
 	addAppFlags(manifestCmd)
+	addBlueGreenFlag(manifestCmd)
 
 	return manifestCmd
 }
@@ -29,6 +30,10 @@ func manifest(cmd *cobra.Command, args []string) error {
 	app, err := initApp()
 	if err != nil {
 		return err
+	}
+
+	if app.Namespace == app2kube.NamespaceDefault {
+		app.Namespace = ""
 	}
 
 	var outputTypes []app2kube.OutputResource
@@ -58,7 +63,7 @@ func manifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if flagIncludeNamespace {
+	if app.Namespace != "" && flagIncludeNamespace {
 		namespace, err := app.GetManifest(output, app2kube.OutputNamespace)
 		if err != nil {
 			return err

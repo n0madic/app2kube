@@ -27,6 +27,27 @@ func NewCmdBlueGreen() *cobra.Command {
 	}
 
 	blueGreenCmd.AddCommand(&cobra.Command{
+		Use:   "color",
+		Short: "Get current Deployment color",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+
+			cmd.SilenceUsage = true
+
+			currentColor, err := getCurrentBlueGreenColor(app.Namespace, app.Labels)
+			if err != nil {
+				return err
+			}
+			fmt.Println(colorize(currentColor))
+
+			return nil
+		},
+	})
+
+	blueGreenCmd.AddCommand(&cobra.Command{
 		Use:   "rollback",
 		Short: "Rollback Deployment to previous color",
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -125,10 +146,18 @@ func colorize(s ...string) string {
 	return aurora.Green(str).String()
 }
 
-// getBlueGreenColor return the color for deployment
-func getBlueGreenColor(namespace string, labels map[string]string) (string, error) {
+// getTargetBlueGreenColor return the color for target deployment
+func getTargetBlueGreenColor(namespace string, labels map[string]string) (string, error) {
 	color := "blue"
+	currentColor, _ := getCurrentBlueGreenColor(namespace, labels)
+	if currentColor == "blue" {
+		color = "green"
+	}
+	return color, nil
+}
 
+// getCurrentBlueGreenColor return the color for current deployment
+func getCurrentBlueGreenColor(namespace string, labels map[string]string) (string, error) {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return "", err
@@ -139,11 +168,8 @@ func getBlueGreenColor(namespace string, labels map[string]string) (string, erro
 	})
 	if err == nil && len(svc.Items) > 0 {
 		if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
-			if currentColor == "blue" {
-				color = "green"
-			}
+			return currentColor, nil
 		}
 	}
-
-	return color, nil
+	return "", fmt.Errorf("color not found")
 }

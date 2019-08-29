@@ -43,6 +43,7 @@ Usage:
 
 Available Commands:
   apply       Apply a configuration to a resource in kubernetes
+  blue-green  Commands for blue-green deployment
   build       Build and push an image from a Dockerfile
   completion  Generates bash completion scripts
   delete      Delete resources from kubernetes

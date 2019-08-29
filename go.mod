@@ -28,6 +28,7 @@ require (
 	k8s.io/api v0.0.0-20190820101204-3efd428ce51b
 	k8s.io/apimachinery v0.0.0-20190821142400-bb534aad565e
 	k8s.io/cli-runtime v0.0.0-20190821142400-76d9c1626b8b
+	k8s.io/client-go v0.0.0-20190821142400-e484c9e80a37
 	k8s.io/helm v2.14.3+incompatible
 	k8s.io/kubectl v0.0.0-20190821142400-8730a7adb5aa
 )

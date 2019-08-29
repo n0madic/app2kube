@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/logrusorgru/aurora"
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
@@ -66,7 +65,7 @@ func NewCmdApply() *cobra.Command {
 				if err != nil {
 					return "", err
 				}
-				if flagIncludeNamespace {
+				if app.Namespace != app2kube.NamespaceDefault && flagIncludeNamespace {
 					namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
 					if err != nil {
 						return "", err
@@ -80,14 +79,7 @@ func NewCmdApply() *cobra.Command {
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
 				cmdutil.CheckErr(err)
 
-				colourize := func(str string) string {
-					if app.Deployment.BlueGreenColor == "blue" {
-						return aurora.BrightBlue(str).String()
-					}
-					return aurora.Green(str).String()
-				}
-
-				fmt.Println(colourize(fmt.Sprintf("• Pre-deploy for [%s]:", app.Deployment.BlueGreenColor)))
+				fmt.Printf("• Pre-deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 
 				cmdutil.CheckErr(applyManifest(manifest, false))
 
@@ -96,7 +88,7 @@ func NewCmdApply() *cobra.Command {
 					return err
 				}
 
-				fmt.Println(colourize(fmt.Sprintf("• Final deploy for [%s]:", app.Deployment.BlueGreenColor)))
+				fmt.Printf("• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 			}
 
 			manifest, err := getManifest(app2kube.OutputAll)

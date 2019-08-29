@@ -3,11 +3,14 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/gosuri/uitable"
 	"github.com/logrusorgru/aurora"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/duration"
 )
 
 var blueGreenDeploy bool
@@ -126,6 +129,60 @@ func NewCmdBlueGreen() *cobra.Command {
 		},
 	})
 
+	blueGreenCmd.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Current blue-green deployment status",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+
+			cmd.SilenceUsage = true
+
+			kcs, err := kubeFactory.KubernetesClientSet()
+			if err != nil {
+				return err
+			}
+
+			serviceColor, err := getCurrentBlueGreenColor(app.Namespace, app.Labels)
+			if err != nil {
+				return err
+			}
+
+			list, err := kcs.AppsV1().Deployments(app.Namespace).List(metav1.ListOptions{
+				LabelSelector: getSelector(app.Labels),
+			})
+			if err != nil {
+				return err
+			}
+
+			table := uitable.New()
+			table.MaxColWidth = 63
+			table.AddRow("ACTIVE", "NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE")
+			for _, deployment := range list.Items {
+				if currentColor, ok := deployment.Spec.Selector.MatchLabels["app.kubernetes.io/color"]; ok {
+					activeMark := ""
+					if currentColor == serviceColor {
+						activeMark = "  ->"
+					}
+					ready := fmt.Sprintf("%d/%d", deployment.Status.ReadyReplicas, deployment.Status.Replicas)
+					table.AddRow(
+						activeMark,
+						colorize(currentColor, deployment.Name),
+						ready,
+						deployment.Status.UpdatedReplicas,
+						deployment.Status.AvailableReplicas,
+						duration.HumanDuration(time.Since(deployment.CreationTimestamp.Time)),
+					)
+				}
+			}
+			fmt.Println(table)
+
+			return nil
+		},
+	})
+
 	for _, cmd := range blueGreenCmd.Commands() {
 		addAppFlags(cmd)
 		cmd.Flags().MarkHidden("include-namespace")
@@ -166,10 +223,11 @@ func getCurrentBlueGreenColor(namespace string, labels map[string]string) (strin
 	svc, err := kcs.CoreV1().Services(namespace).List(metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
-	if err == nil && len(svc.Items) > 0 {
-		if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
-			return currentColor, nil
-		}
+	if err != nil || len(svc.Items) == 0 {
+		return "", fmt.Errorf("service not found")
+	}
+	if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
+		return currentColor, nil
 	}
 	return "", fmt.Errorf("color not found")
 }

@@ -21,6 +21,7 @@ func NewCmdManifest() *cobra.Command {
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
 	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
 	addAppFlags(manifestCmd)
+	addBlueGreenFlag(manifestCmd)
 
 	return manifestCmd
 }

@@ -9,15 +9,11 @@ import (
 	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubectl/pkg/cmd/apply"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-var (
-	applyWithTrack  string
-	blueGreenDeploy bool
-)
+var applyWithTrack string
 
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
@@ -65,31 +61,24 @@ func NewCmdApply() *cobra.Command {
 				return nil
 			}
 
-			if blueGreenDeploy {
-				app.Deployment.BlueGreenColor = "blue"
-				kcs, err := kubeFactory.KubernetesClientSet()
+			getManifest := func(output app2kube.OutputResource) (string, error) {
+				manifest, err := app.GetManifest("json", output)
 				if err != nil {
-					return err
+					return "", err
 				}
-				svc, err := kcs.CoreV1().Services(app.Namespace).List(metav1.ListOptions{
-					LabelSelector: getSelector(app.Labels),
-				})
-				if err == nil && len(svc.Items) > 0 {
-					if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
-						if currentColor == "blue" {
-							app.Deployment.BlueGreenColor = "green"
-						}
-					}
-				}
-
-				manifest, err := app.GetManifest("json", app2kube.OutputAllForDeployment)
-				cmdutil.CheckErr(err)
-
 				if flagIncludeNamespace {
 					namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
-					cmdutil.CheckErr(err)
+					if err != nil {
+						return "", err
+					}
 					manifest = namespace + manifest
 				}
+				return manifest, nil
+			}
+
+			if blueGreenDeploy {
+				manifest, err := getManifest(app2kube.OutputAllForDeployment)
+				cmdutil.CheckErr(err)
 
 				colourize := func(str string) string {
 					if app.Deployment.BlueGreenColor == "blue" {
@@ -102,7 +91,7 @@ func NewCmdApply() *cobra.Command {
 
 				cmdutil.CheckErr(applyManifest(manifest, false))
 
-				err = trackDeploymentTillReady(app.GetReleaseName()+"-"+app.Deployment.BlueGreenColor, app.Namespace)
+				err = trackDeploymentTillReady(app.GetDeploymentName(), app.Namespace)
 				if err != nil {
 					return err
 				}
@@ -110,14 +99,8 @@ func NewCmdApply() *cobra.Command {
 				fmt.Println(colourize(fmt.Sprintf("• Final deploy for [%s]:", app.Deployment.BlueGreenColor)))
 			}
 
-			manifest, err := app.GetManifest("json", app2kube.OutputAll)
+			manifest, err := getManifest(app2kube.OutputAll)
 			cmdutil.CheckErr(err)
-
-			if flagIncludeNamespace {
-				namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
-				cmdutil.CheckErr(err)
-				manifest = namespace + manifest
-			}
 
 			cmdutil.CheckErr(applyManifest(manifest, oCmd.Prune))
 
@@ -136,13 +119,13 @@ func NewCmdApply() *cobra.Command {
 	}
 
 	addAppFlags(applyCmd)
+	addBlueGreenFlag(applyCmd)
 	oCmd.PrintFlags.AddFlags(applyCmd)
 
 	applyCmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it. Warning: --dry-run cannot accurately output the result of merging the local manifest and the server-side data. Use --server-dry-run to get the merged result instead.")
 	applyCmd.Flags().BoolVar(&oCmd.ServerDryRun, "server-dry-run", false, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
 	applyCmd.Flags().BoolVar(&oCmd.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
-	applyCmd.Flags().BoolVar(&blueGreenDeploy, "blue-green", false, "Enable blue-green deployment")
 
 	return applyCmd
 }

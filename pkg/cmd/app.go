@@ -52,11 +52,14 @@ func initApp() (*app2kube.App, error) {
 		app.Namespace = *kubeConfigFlags.Namespace
 	}
 
-	if app.Namespace == "" {
-		app.Namespace = app2kube.NamespaceDefault
-	}
-
 	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
+
+	if blueGreenDeploy {
+		app.Deployment.BlueGreenColor, err = getBlueGreenColor(app.Namespace, app.Labels)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if snapshot != "" {
 		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",

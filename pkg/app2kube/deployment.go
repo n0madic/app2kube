@@ -27,7 +27,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		}
 
 		deployment = &appsv1.Deployment{
-			ObjectMeta: app.GetObjectMeta(app.GetReleaseName()),
+			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
 				Replicas:             &replicas,
 				RevisionHistoryLimit: &app.Deployment.RevisionHistoryLimit,
@@ -52,7 +52,6 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		}
 
 		if app.Deployment.BlueGreenColor != "" {
-			deployment.ObjectMeta.Name = app.GetReleaseName() + "-" + app.Deployment.BlueGreenColor
 			deployment.ObjectMeta.Labels = app.GetColorLabels()
 		}
 

@@ -43,6 +43,7 @@ func NewCmdTrack() *cobra.Command {
 
 	for _, cmd := range trackCmd.Commands() {
 		addAppFlags(cmd)
+		addBlueGreenFlag(cmd)
 		cmd.Flags().MarkHidden("include-namespace")
 		cmd.Flags().MarkHidden("snapshot")
 	}
@@ -54,6 +55,10 @@ func initAppTrack() (*app2kube.App, error) {
 	app, err := initApp()
 	if err != nil {
 		return nil, err
+	}
+
+	if app.Namespace == "" {
+		app.Namespace = app2kube.NamespaceDefault
 	}
 
 	err = kube.Init(kube.InitOptions{
@@ -87,7 +92,7 @@ func trackFollow(cmd *cobra.Command, args []string) error {
 	cmd.SilenceUsage = true
 
 	return follow.TrackDeployment(
-		app.GetReleaseName(),
+		app.GetDeploymentName(),
 		app.Namespace,
 		kube.Kubernetes,
 		tracker.Options{
@@ -105,15 +110,7 @@ func trackReady(cmd *cobra.Command, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	err = rollout.TrackDeploymentTillReady(
-		app.GetReleaseName(),
-		app.Namespace,
-		kube.Kubernetes,
-		tracker.Options{
-			LogsFromTime: logsFromTime,
-			Timeout:      time.Minute * time.Duration(timeout),
-		},
-	)
+	err = trackDeploymentTillReady(app.GetDeploymentName(), app.Namespace)
 	if err != nil {
 		return err
 	}
@@ -153,12 +150,17 @@ func trackDeploymentTillReady(name, namespace string) error {
 		return fmt.Errorf("unable to initialize kube: %s", err)
 	}
 
+	if namespace == "" {
+		namespace = app2kube.NamespaceDefault
+	}
+
 	err = rollout.TrackDeploymentTillReady(
 		name,
 		namespace,
 		kube.Kubernetes,
 		tracker.Options{
-			Timeout: time.Minute * time.Duration(timeout),
+			LogsFromTime: logsFromTime,
+			Timeout:      time.Minute * time.Duration(timeout),
 		},
 	)
 	if err != nil {

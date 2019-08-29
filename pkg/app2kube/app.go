@@ -116,6 +116,15 @@ func (app *App) GetReleaseName() string {
 	return strings.ToLower(releaseName)
 }
 
+// GetDeploymentName of App
+func (app *App) GetDeploymentName() string {
+	deploymentName := app.GetReleaseName()
+	if app.Deployment.BlueGreenColor != "" {
+		deploymentName += "-" + app.Deployment.BlueGreenColor
+	}
+	return strings.ToLower(deploymentName)
+}
+
 // GetColorLabels return labels for blue/green deployment
 func (app *App) GetColorLabels() map[string]string {
 	labels := make(map[string]string, len(app.Labels))

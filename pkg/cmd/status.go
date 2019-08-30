@@ -239,7 +239,7 @@ func getDeploymentStatus(kcs *kubernetes.Clientset, namespace string, labels map
 	for _, deployment := range list.Items {
 		activeMark := ""
 		currentColor := deployment.Spec.Selector.MatchLabels["app.kubernetes.io/color"]
-		if currentColor == serviceColor {
+		if currentColor == serviceColor && len(list.Items) > 1 {
 			activeMark = "*"
 		}
 		if currentColor != "" {

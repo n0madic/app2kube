@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/ghodss/yaml"
 	appsv1 "k8s.io/api/apps/v1"
@@ -11,6 +12,9 @@ import (
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// MaxNameLength of App
+const MaxNameLength = 63
 
 // IngressCommon specification
 type IngressCommon struct {
@@ -154,7 +158,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 	}
 
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
-	app.Labels["app.kubernetes.io/name"] = app.Name
+	app.Labels["app.kubernetes.io/name"] = truncateName(app.Name)
 
 	if app.Staging != "" {
 		app.Common.Image.PullPolicy = apiv1.PullAlways
@@ -163,9 +167,9 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		app.Staging = strings.ToLower(app.Staging)
 		app.Branch = strings.ToLower(app.Branch)
 
-		app.Labels["app.kubernetes.io/instance"] = app.Staging
+		app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging)
 		if app.Branch != "" {
-			app.Labels["app.kubernetes.io/instance"] = app.Staging + "-" + app.Branch
+			app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging + "-" + app.Branch)
 		}
 
 		for i, ingress := range app.Ingress {
@@ -195,4 +199,13 @@ func NewApp() *App {
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
 	return app
+}
+
+func truncateName(name string) string {
+	if len(name) > MaxNameLength {
+		name = name[0:MaxNameLength]
+	}
+	return strings.TrimRightFunc(name, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsNumber(r)
+	})
 }

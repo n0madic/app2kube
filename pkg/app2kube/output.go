@@ -20,6 +20,8 @@ const (
 	OutputAll OutputResource = iota
 	// OutputAllForDeployment is all the resources needed to run Deployment
 	OutputAllForDeployment
+	// OutputAllOther is all other resources not needed to run Deployment
+	OutputAllOther
 	// OutputConfigMap only
 	OutputConfigMap
 	// OutputCronJob only
@@ -88,7 +90,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			}
 		}
 
-		if out == OutputAll || out == OutputCronJob {
+		if out == OutputAll || out == OutputAllOther || out == OutputCronJob {
 			jobs, err := app.GetCronJobs()
 			if err != nil {
 				return "", err
@@ -114,7 +116,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			manifest += yml
 		}
 
-		if out == OutputAll || out == OutputService {
+		if out == OutputAll || out == OutputAllOther || out == OutputService {
 			services, err := app.GetServices()
 			if err != nil {
 				return "", err
@@ -128,7 +130,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			}
 		}
 
-		if out == OutputAll || out == OutputSecret {
+		if out == OutputAll || out == OutputAllOther || out == OutputSecret {
 			for _, ingressSecret := range app.GetIngressSecrets() {
 				yml, err := PrintObj(ingressSecret, outputFormat)
 				if err != nil {
@@ -138,7 +140,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 			}
 		}
 
-		if out == OutputAll || out == OutputIngress {
+		if out == OutputAll || out == OutputAllOther || out == OutputIngress {
 			ingress, err := app.GetIngress()
 			if err != nil {
 				return "", err

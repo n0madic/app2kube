@@ -43,8 +43,6 @@ func NewCmdApply() *cobra.Command {
 					"apps/v1/Deployment",
 					"batch/v1beta1/CronJob",
 					"extensions/v1beta1/Ingress",
-					"rbac.authorization.k8s.io/v1/ClusterRole",
-					"rbac.authorization.k8s.io/v1/ClusterRoleBinding",
 				}
 				o.ServerDryRun = oCmd.ServerDryRun
 

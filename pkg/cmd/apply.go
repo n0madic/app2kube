@@ -92,6 +92,10 @@ func NewCmdApply() *cobra.Command {
 			}
 
 			if blueGreenDeploy {
+				if oCmd.Prune {
+					return fmt.Errorf("cannot prune resources with blue-green deployment")
+				}
+
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
 				cmdutil.CheckErr(err)
 
@@ -104,13 +108,18 @@ func NewCmdApply() *cobra.Command {
 					return err
 				}
 
+				manifest, err = app.GetManifest("json", (app2kube.OutputAllOther))
+				cmdutil.CheckErr(err)
+
 				fmt.Printf("• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
+
+				cmdutil.CheckErr(applyManifest(manifest, false))
+			} else {
+				manifest, err := getManifest(app2kube.OutputAll)
+				cmdutil.CheckErr(err)
+
+				cmdutil.CheckErr(applyManifest(manifest, oCmd.Prune))
 			}
-
-			manifest, err := getManifest(app2kube.OutputAll)
-			cmdutil.CheckErr(err)
-
-			cmdutil.CheckErr(applyManifest(manifest, oCmd.Prune))
 
 			if applyWithTrack != "" {
 				switch strings.ToLower(applyWithTrack) {

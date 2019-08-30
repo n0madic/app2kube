@@ -33,6 +33,19 @@ func NewCmdApply() *cobra.Command {
 				o.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 				o.Overwrite = true
 				o.Prune = prune
+				o.PruneWhitelist = []string{
+					"/v1/ConfigMap",
+					"/v1/PersistentVolumeClaim",
+					"/v1/Secret",
+					"/v1/Service",
+					"/v1/ServiceAccount",
+					"apps/v1/DaemonSet",
+					"apps/v1/Deployment",
+					"batch/v1beta1/CronJob",
+					"extensions/v1beta1/Ingress",
+					"rbac.authorization.k8s.io/v1/ClusterRole",
+					"rbac.authorization.k8s.io/v1/ClusterRoleBinding",
+				}
 				o.ServerDryRun = oCmd.ServerDryRun
 
 				if o.Namespace != "" {

@@ -20,6 +20,7 @@ func Execute(version string) error {
 	rootCmd.AddCommand(NewCmdDelete())
 	rootCmd.AddCommand(NewCmdEncrypt())
 	rootCmd.AddCommand(NewCmdManifest())
+	rootCmd.AddCommand(NewCmdStatus())
 	rootCmd.AddCommand(NewCmdTrack())
 
 	return rootCmd.Execute()

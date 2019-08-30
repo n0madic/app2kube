@@ -12,7 +12,10 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-var applyWithTrack string
+var (
+	applyWithStatus bool
+	applyWithTrack  string
+)
 
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
@@ -106,6 +109,12 @@ func NewCmdApply() *cobra.Command {
 					return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
 				}
 			}
+
+			if applyWithStatus {
+				fmt.Println()
+				status(app.GetReleaseName(), app.Namespace, app.Labels)
+			}
+
 			return nil
 		},
 	}
@@ -117,6 +126,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it. Warning: --dry-run cannot accurately output the result of merging the local manifest and the server-side data. Use --server-dry-run to get the merged result instead.")
 	applyCmd.Flags().BoolVar(&oCmd.ServerDryRun, "server-dry-run", false, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
 	applyCmd.Flags().BoolVar(&oCmd.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
+	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
 
 	return applyCmd

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gosuri/uitable"
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 	apiv1 "k8s.io/api/core/v1"
 	metatable "k8s.io/apimachinery/pkg/api/meta/table"
@@ -34,7 +35,7 @@ func NewCmdStatus() *cobra.Command {
 
 			cmd.SilenceUsage = true
 
-			return status(app.GetReleaseName(), app.Namespace, app.Labels)
+			return status(app)
 		},
 	}
 
@@ -43,14 +44,14 @@ func NewCmdStatus() *cobra.Command {
 	return statusCmd
 }
 
-func status(name, namespace string, labels map[string]string) error {
+func status(app *app2kube.App) error {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("NAME: %s\n", name)
-	fmt.Printf("NAMESPACE: %s\n\n", namespace)
+	fmt.Printf("NAME: %s\n", app.GetReleaseName())
+	fmt.Printf("NAMESPACE: %s\n\n", app.Namespace)
 
 	fmt.Printf("RESOURCES:\n")
 
@@ -66,13 +67,36 @@ func status(name, namespace string, labels map[string]string) error {
 	}
 
 	for _, res := range tables {
-		table, err := res.fn(kcs, namespace, labels)
+		table, err := res.fn(kcs, app.Namespace, app.Labels)
 		if err != nil {
 			return err
 		}
 		if table != "" {
 			fmt.Println("\n==>", res.name)
 			fmt.Println(table)
+		}
+	}
+
+	if len(app.Ingress) > 0 {
+		fmt.Println()
+		fmt.Println("Try the application URL:")
+
+		for _, ingress := range app.Ingress {
+			getURL := func(host, path string) string {
+				https := ""
+				if ingress.Letsencrypt || ingress.TLSSecretName != "" {
+					https = "s"
+				}
+				return fmt.Sprintf("http%s://%s%s", https, host, path)
+			}
+
+			fmt.Println("  ", getURL(ingress.Host, ingress.Path))
+
+			if app.Staging == "" {
+				for _, alias := range ingress.Aliases {
+					fmt.Println("  ", getURL(alias, ingress.Path))
+				}
+			}
 		}
 	}
 

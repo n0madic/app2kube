@@ -60,8 +60,8 @@ func NewCmdBlueGreen() *cobra.Command {
 
 			fmt.Printf("Check Deployment %s with previous color:\n",
 				colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
-			timeout = 1
-			err = trackDeploymentTillReady(app.GetDeploymentName(), app.Namespace)
+			trackTimeout = 1
+			err = trackReady(app.GetDeploymentName(), app.Namespace)
 			if err != nil {
 				return err
 			}

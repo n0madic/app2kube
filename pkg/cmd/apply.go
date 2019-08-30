@@ -103,7 +103,7 @@ func NewCmdApply() *cobra.Command {
 
 				cmdutil.CheckErr(applyManifest(manifest, false))
 
-				err = trackDeploymentTillReady(app.GetDeploymentName(), app.Namespace)
+				err = trackReady(app.GetDeploymentName(), app.Namespace)
 				if err != nil {
 					return err
 				}
@@ -124,17 +124,18 @@ func NewCmdApply() *cobra.Command {
 			if applyWithTrack != "" {
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
-					return trackFollow(app)
+					err = trackFollow(app.GetDeploymentName(), app.Namespace)
 				case "ready":
-					return trackReady(app)
+					err = trackReady(app.GetDeploymentName(), app.Namespace)
 				default:
-					return fmt.Errorf("unknown track parameters: %s", applyWithTrack)
+					err = fmt.Errorf("unknown track parameters: %s", applyWithTrack)
 				}
 			}
+			cmdutil.CheckErr(err)
 
 			if applyWithStatus {
 				fmt.Println()
-				status(app.GetReleaseName(), app.Namespace, app.Labels)
+				status(app)
 			}
 
 			return nil

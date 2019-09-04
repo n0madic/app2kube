@@ -94,6 +94,11 @@ func NewCmdApply() *cobra.Command {
 					return fmt.Errorf("cannot prune resources with blue-green deployment")
 				}
 
+				err := deleteDeployment(app.GetDeploymentName(), app.Namespace)
+				if err != nil {
+					fmt.Printf("Problem with deleting an old deployment: %s\n", err)
+				}
+
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
 				cmdutil.CheckErr(err)
 

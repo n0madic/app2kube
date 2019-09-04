@@ -111,15 +111,11 @@ func NewCmdBlueGreen() *cobra.Command {
 
 			cmd.SilenceUsage = true
 
-			kcs, err := kubeFactory.KubernetesClientSet()
+			err = deleteDeployment(app.GetDeploymentName(), app.Namespace)
 			if err != nil {
 				return err
 			}
 
-			err = kcs.AppsV1().Deployments(app.Namespace).Delete(app.GetDeploymentName(), &metav1.DeleteOptions{})
-			if err != nil {
-				return err
-			}
 			fmt.Printf("Deployment %s pruned\n", colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
 
 			return nil

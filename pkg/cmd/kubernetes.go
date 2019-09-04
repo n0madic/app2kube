@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
@@ -35,4 +36,18 @@ func getSelector(labels map[string]string) string {
 		selectorList = append(selectorList, k+"="+v)
 	}
 	return strings.Join(selectorList, ",")
+}
+
+func deleteDeployment(name, namespace string) error {
+	kcs, err := kubeFactory.KubernetesClientSet()
+	if err != nil {
+		return err
+	}
+
+	err = kcs.AppsV1().Deployments(namespace).Delete(name, &metav1.DeleteOptions{})
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

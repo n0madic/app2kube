@@ -27,7 +27,7 @@ import (
 )
 
 var (
-	buildArgs      []string
+	buildArgs      opts.ListOpts
 	dockerfileName string
 	flagPassStdin  bool
 	flagPull       bool
@@ -45,6 +45,7 @@ func NewCmdBuild() *cobra.Command {
 
 	addAppFlags(buildCmd)
 
+	buildArgs = opts.NewListOpts(opts.ValidateEnv)
 	tags = opts.NewListOpts(func(rawRepo string) (string, error) {
 		_, err := reference.ParseNormalizedNamed(rawRepo)
 		if err != nil {
@@ -53,7 +54,7 @@ func NewCmdBuild() *cobra.Command {
 		return rawRepo, nil
 	})
 
-	buildCmd.Flags().StringArrayVar(&buildArgs, "build-arg", []string{}, "Set build-time variables")
+	buildCmd.Flags().VarP(&buildArgs, "build-arg", "", "Set build-time variables")
 	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
@@ -211,7 +212,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{
 		AuthConfigs:    authConfigs,
-		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs)),
+		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs.GetAll())),
 		Dockerfile:     relDockerfile,
 		PullParent:     flagPull,
 		Remove:         true,

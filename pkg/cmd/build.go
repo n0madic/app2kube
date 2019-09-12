@@ -205,9 +205,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	err = tags.Set(imageName)
-	if err != nil {
-		return err
+	if !tags.Get(imageName) {
+		err = tags.Set(imageName)
+		if err != nil {
+			return err
+		}
 	}
 
 	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{

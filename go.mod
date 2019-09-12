@@ -7,7 +7,7 @@ require (
 	github.com/Masterminds/semver v1.4.2 // indirect
 	github.com/Masterminds/sprig v2.20.0+incompatible
 	github.com/containerd/continuity v0.0.0-20190822154759-403b5be3d72b // indirect
-	github.com/docker/cli v0.0.0-20190808020202-432b76057f0d
+	github.com/docker/cli v0.0.0-20190822175708-578ab52ece34
 	github.com/docker/distribution v2.7.1+incompatible
 	github.com/docker/docker v0.7.3-0.20190525203055-f25e0c6f3093
 	github.com/docker/docker-credential-helpers v0.6.3 // indirect

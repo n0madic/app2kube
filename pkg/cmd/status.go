@@ -348,7 +348,7 @@ func getServicesStatus(kcs *kubernetes.Clientset, namespace string, labels map[s
 }
 
 func getIngressStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.ExtensionsV1beta1().Ingresses(namespace).List(metav1.ListOptions{
+	list, err := kcs.NetworkingV1beta1().Ingresses(namespace).List(metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {

@@ -27,10 +27,10 @@ require (
 	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v0.0.5
 	google.golang.org/grpc v1.23.0 // indirect
-	k8s.io/api v0.0.0-20190820101204-3efd428ce51b
-	k8s.io/apimachinery v0.0.0-20190821142400-bb534aad565e
-	k8s.io/cli-runtime v0.0.0-20190821142400-76d9c1626b8b
-	k8s.io/client-go v0.0.0-20190821142400-e484c9e80a37
+	k8s.io/api v0.0.0-20190918155943-95b840bb6a1f
+	k8s.io/apimachinery v0.0.0-20190913080033-27d36303b655
+	k8s.io/cli-runtime v0.0.0-20190918162238-f783a3654da8
+	k8s.io/client-go v0.0.0-20190918160344-1fbdaa4c8d90
 	k8s.io/helm v2.14.3+incompatible
-	k8s.io/kubectl v0.0.0-20190821142400-8730a7adb5aa
+	k8s.io/kubectl v0.0.0-20190918164019-21692a0861df
 )

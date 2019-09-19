@@ -55,7 +55,7 @@ func NewCmdApply() *cobra.Command {
 					o.Selector = getSelector(app.Labels)
 				}
 
-				if cmd.Flags().Lookup("experimental-server-side") == nil {
+				if cmd.Flags().Lookup("server-side") == nil {
 					cmdutil.AddServerSideApplyFlags(cmd)
 				}
 				if cmd.Flags().Lookup("validate") == nil {

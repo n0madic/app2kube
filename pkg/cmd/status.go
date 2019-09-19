@@ -40,6 +40,9 @@ func NewCmdStatus() *cobra.Command {
 	}
 
 	addAppFlags(statusCmd)
+	statusCmd.Flags().BoolVar(&flagAllInstances, "all-instances", false, "Show all instances of application")
+
+	statusCmd.Flags().MarkHidden("include-namespace")
 
 	return statusCmd
 }
@@ -239,7 +242,7 @@ func getDeploymentStatus(kcs *kubernetes.Clientset, namespace string, labels map
 	for _, deployment := range list.Items {
 		activeMark := ""
 		currentColor := deployment.Spec.Selector.MatchLabels["app.kubernetes.io/color"]
-		if currentColor == serviceColor && len(list.Items) > 1 {
+		if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances {
 			activeMark = "*"
 		}
 		if currentColor != "" {

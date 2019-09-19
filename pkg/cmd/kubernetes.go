@@ -15,6 +15,8 @@ var (
 	kubeFactory     cmdutil.Factory
 )
 
+var flagAllInstances bool
+
 func init() {
 	kubeConfigFlags.AddFlags(rootCmd.PersistentFlags())
 
@@ -33,6 +35,9 @@ func init() {
 func getSelector(labels map[string]string) string {
 	var selectorList = make([]string, 0, len(labels))
 	for k, v := range labels {
+		if flagAllInstances && k == "app.kubernetes.io/instance" {
+			continue
+		}
 		selectorList = append(selectorList, k+"="+v)
 	}
 	return strings.Join(selectorList, ",")

@@ -43,7 +43,7 @@ func NewCmdApply() *cobra.Command {
 					"apps/v1/Deployment",
 					"batch/v1beta1/CronJob",
 					"extensions/v1beta1/Ingress",
-					"networking/v1beta1/Ingress",
+					// "networking/v1beta1/Ingress",
 				}
 				o.ServerDryRun = oCmd.ServerDryRun
 

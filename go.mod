@@ -4,8 +4,8 @@ go 1.12
 
 require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
-	github.com/Masterminds/semver v1.4.2 // indirect
-	github.com/Masterminds/sprig v2.20.0+incompatible
+	github.com/Masterminds/semver v1.5.0 // indirect
+	github.com/Masterminds/sprig v2.21.0+incompatible
 	github.com/containerd/continuity v0.0.0-20190822154759-403b5be3d72b // indirect
 	github.com/docker/cli v0.0.0-20190822175708-578ab52ece34
 	github.com/docker/distribution v2.7.1+incompatible

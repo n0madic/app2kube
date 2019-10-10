@@ -173,7 +173,7 @@ func readFile(filePath string) ([]byte, error) {
 		}
 	}
 
-	return bytes, err
+	return bytes, nil
 }
 
 // templating values

@@ -17,6 +17,8 @@ RUN go install -ldflags="-s -w"
 
 FROM alpine
 
+RUN apk add --quiet --no-cache git
+
 COPY --from=builder /go/bin/* /usr/bin/
 
 CMD ["app2kube"]

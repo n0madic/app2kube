@@ -153,6 +153,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	var dockerfileCtx io.ReadCloser
 
+	if dockerfileName == "-" {
+		dockerfileCtx = os.Stdin
+	}
+
 	buildContext := "."
 	if len(args) == 1 {
 		buildContext = args[0]

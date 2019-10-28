@@ -3,6 +3,7 @@ package app2kube
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
@@ -29,8 +30,8 @@ func (app *App) processContainer(container *apiv1.Container) error {
 	}
 
 	if !thirdpartyImage {
-		for key, value := range app.Env {
-			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: value})
+		for _, key := range sortedKeys(app.Env) {
+			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: app.Env[key]})
 		}
 
 		if len(app.ConfigMap) > 0 {
@@ -125,4 +126,15 @@ func (app *App) processContainer(container *apiv1.Container) error {
 	}
 
 	return nil
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, len(m))
+	i := 0
+	for k := range m {
+		keys[i] = k
+		i++
+	}
+	sort.Strings(keys)
+	return keys
 }

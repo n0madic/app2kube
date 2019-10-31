@@ -125,7 +125,7 @@ func NewCmdApply() *cobra.Command {
 				cmdutil.CheckErr(applyManifest(manifest, oCmd.Prune))
 			}
 
-			if applyWithTrack != "" {
+			if applyWithTrack != "" && len(app.Deployment.Containers) > 0 {
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
 					err = trackFollow(app.GetDeploymentName(), app.Namespace)

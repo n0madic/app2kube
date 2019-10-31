@@ -110,6 +110,9 @@ func (app *App) processContainer(container *apiv1.Container) error {
 				}
 			} else {
 				// Add missing port to LivenessProbe
+				if !reflect.ValueOf(container.LivenessProbe.TCPSocket).IsNil() && container.LivenessProbe.TCPSocket.Port.IntVal == 0 {
+					container.LivenessProbe.TCPSocket.Port = containerPort
+				}
 				if !reflect.ValueOf(container.LivenessProbe.HTTPGet).IsNil() && container.LivenessProbe.HTTPGet.Port.IntVal == 0 {
 					container.LivenessProbe.HTTPGet.Port = containerPort
 				}

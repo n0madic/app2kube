@@ -106,7 +106,10 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error loading Docker config file: %v", err)
 	}
 
-	creds, _ := configFile.GetAllCredentials()
+	creds, err := configFile.GetAllCredentials()
+	if err != nil {
+		return err
+	}
 	authConfigs := make(map[string]types.AuthConfig, len(creds))
 	for k, auth := range creds {
 		authConfigs[k] = types.AuthConfig(auth)

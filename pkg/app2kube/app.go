@@ -102,9 +102,10 @@ type App struct {
 // GetObjectMeta return App metadata
 func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{
-		Name:      name,
-		Namespace: app.Namespace,
-		Labels:    app.Labels,
+		Name:        name,
+		Namespace:   app.Namespace,
+		Labels:      app.Labels,
+		Annotations: make(map[string]string),
 	}
 }
 
@@ -127,6 +128,13 @@ func (app *App) GetDeploymentName() string {
 		deploymentName += "-" + app.Deployment.BlueGreenColor
 	}
 	return strings.ToLower(deploymentName)
+}
+
+func (app *App) getServiceName(name string) string {
+	if name == "" {
+		return app.GetReleaseName()
+	}
+	return app.GetReleaseName() + "-" + strings.ToLower(name)
 }
 
 // GetColorLabels return labels for blue/green deployment

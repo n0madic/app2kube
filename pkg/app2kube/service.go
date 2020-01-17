@@ -2,7 +2,6 @@ package app2kube
 
 import (
 	"fmt"
-	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -32,7 +31,7 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 				svc.InternalPort = svc.ExternalPort
 			}
 
-			serviceName := app.GetReleaseName() + "-" + strings.ToLower(name)
+			serviceName := app.getServiceName(name)
 
 			service := &apiv1.Service{
 				ObjectMeta: app.GetObjectMeta(serviceName),

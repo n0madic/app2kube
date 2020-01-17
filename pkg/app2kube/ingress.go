@@ -16,6 +16,19 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 		for _, ing := range app.Ingress {
 			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 
+			newIngress := &v1beta1.Ingress{
+				ObjectMeta: app.GetObjectMeta(ingressName),
+			}
+
+			var foundIngress bool
+			for _, availableIngress := range ingress {
+				if availableIngress.ObjectMeta.Name == ingressName {
+					newIngress = availableIngress
+					foundIngress = true
+					break
+				}
+			}
+
 			if ing.Class == "" {
 				if app.Common.Ingress.Class != "" {
 					ing.Class = app.Common.Ingress.Class
@@ -24,37 +37,34 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 				}
 			}
 
-			ingressAnnotations := make(map[string]string)
-			ingressAnnotations["kubernetes.io/ingress.class"] = ing.Class
+			newIngress.Annotations["kubernetes.io/ingress.class"] = ing.Class
 			if ing.Letsencrypt {
-				ingressAnnotations["kubernetes.io/tls-acme"] = "true"
+				newIngress.Annotations["kubernetes.io/tls-acme"] = "true"
 			}
 			for key, value := range app.Common.Ingress.Annotations {
-				ingressAnnotations[key] = value
+				newIngress.Annotations[key] = value
 			}
 			for key, value := range ing.Annotations {
-				ingressAnnotations[key] = value
+				newIngress.Annotations[key] = value
 			}
 
-			serviceName := ing.ServiceName
-			if serviceName == "" {
-				if app.Common.Ingress.ServiceName != "" {
-					serviceName = app.Common.Ingress.ServiceName
-				} else if len(app.Service) == 1 {
-					for name := range app.Service {
-						serviceName = app.GetReleaseName() + "-" + name
+			serviceName := app.getServiceName(app.Common.Ingress.ServiceName)
+			servicePort := app.Common.Ingress.ServicePort
+			if ing.ServiceName != "" {
+				if svc, ok := app.Service[ing.ServiceName]; ok {
+					serviceName = app.getServiceName(ing.ServiceName)
+					if svc.ExternalPort > 0 {
+						servicePort = svc.ExternalPort
+					} else {
+						servicePort = svc.Port
 					}
 				} else {
-					return ingress, fmt.Errorf("You must specify a serviceName for the ingress %s", ing.Host)
+					return ingress, fmt.Errorf("Service with name %s for the ingress %s not found", ing.ServiceName, ing.Host)
 				}
-			}
-
-			servicePort := ing.ServicePort
-			if servicePort == 0 {
-				if app.Common.Ingress.ServicePort > 0 {
-					servicePort = app.Common.Ingress.ServicePort
-				} else if len(app.Service) == 1 {
-					for _, svc := range app.Service {
+			} else {
+				if app.Common.Ingress.ServiceName == "" && len(app.Service) == 1 {
+					for name, svc := range app.Service {
+						serviceName = app.getServiceName(name)
 						if svc.ExternalPort > 0 {
 							servicePort = svc.ExternalPort
 						} else {
@@ -62,37 +72,55 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 						}
 					}
 				} else {
-					return ingress, fmt.Errorf("You must specify a servicePort for the ingress %s", ing.Host)
+					return ingress, fmt.Errorf("You must specify a serviceName for the ingress %s", ing.Host)
 				}
+			}
+
+			if servicePort == 0 {
+				return ingress, fmt.Errorf("You must specify a servicePort for the ingress %s", ing.Host)
 			}
 
 			if ing.Path == "" {
 				ing.Path = "/"
 			}
 
-			ingressRuleValue := v1beta1.IngressRuleValue{
-				HTTP: &v1beta1.HTTPIngressRuleValue{
-					Paths: []v1beta1.HTTPIngressPath{v1beta1.HTTPIngressPath{
-						Path: ing.Path,
-						Backend: v1beta1.IngressBackend{
-							ServiceName: strings.ToLower(serviceName),
-							ServicePort: intstr.IntOrString{Type: intstr.Int, IntVal: servicePort},
-						},
-					}},
+			ingressPath := v1beta1.HTTPIngressPath{
+				Path: ing.Path,
+				Backend: v1beta1.IngressBackend{
+					ServiceName: strings.ToLower(serviceName),
+					ServicePort: intstr.IntOrString{Type: intstr.Int, IntVal: servicePort},
 				},
 			}
-			ingressRules := []v1beta1.IngressRule{v1beta1.IngressRule{
-				Host:             ing.Host,
-				IngressRuleValue: ingressRuleValue,
-			}}
+			ingressRule := v1beta1.IngressRule{
+				Host: ing.Host,
+				IngressRuleValue: v1beta1.IngressRuleValue{
+					HTTP: &v1beta1.HTTPIngressRuleValue{
+						Paths: []v1beta1.HTTPIngressPath{ingressPath},
+					},
+				},
+			}
 
-			ingressTLS := []v1beta1.IngressTLS{}
+			foundHost := false
+			for i, rule := range newIngress.Spec.Rules {
+				if rule.Host == ing.Host {
+					foundHost = true
+				}
+				newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths = append(
+					newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths,
+					ingressPath,
+				)
+			}
+
+			if !foundHost {
+				newIngress.Spec.Rules = append(newIngress.Spec.Rules, ingressRule)
+			}
+
 			if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
-				ingressAnnotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(ing.SslRedirect)
+				newIngress.Annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(ing.SslRedirect)
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
-				ingressTLS = append(ingressTLS, v1beta1.IngressTLS{
+				newIngress.Spec.TLS = append(newIngress.Spec.TLS, v1beta1.IngressTLS{
 					Hosts:      []string{ing.Host},
 					SecretName: strings.ToLower(ing.TLSSecretName),
 				})
@@ -100,27 +128,23 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 			if app.Staging == "" {
 				for _, alias := range ing.Aliases {
-					ingressRules = append(ingressRules, v1beta1.IngressRule{
-						Host:             alias,
-						IngressRuleValue: ingressRuleValue,
+					newIngress.Spec.Rules = append(newIngress.Spec.Rules, v1beta1.IngressRule{
+						Host: alias,
+						IngressRuleValue: v1beta1.IngressRuleValue{
+							HTTP: &v1beta1.HTTPIngressRuleValue{
+								Paths: []v1beta1.HTTPIngressPath{ingressPath},
+							},
+						},
 					})
 					if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
-						ingressTLS[0].Hosts = append(ingressTLS[0].Hosts, alias)
+						newIngress.Spec.TLS[0].Hosts = append(newIngress.Spec.TLS[0].Hosts, alias)
 					}
 				}
 			}
 
-			ingressMeta := app.GetObjectMeta(ingressName)
-			ingressMeta.Annotations = ingressAnnotations
-
-			ingressObj := &v1beta1.Ingress{
-				ObjectMeta: ingressMeta,
-				Spec: v1beta1.IngressSpec{
-					Rules: ingressRules,
-					TLS:   ingressTLS,
-				},
+			if !foundIngress {
+				ingress = append(ingress, newIngress)
 			}
-			ingress = append(ingress, ingressObj)
 		}
 	}
 	return ingress, nil

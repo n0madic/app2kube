@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // CryptPrefix for encrypted values
@@ -81,4 +82,26 @@ func GetPassword() (string, error) {
 		return "", fmt.Errorf("password not specified in $APP2KUBE_PASSWORD")
 	}
 	return password, nil
+}
+
+// GetDecryptedSecrets return decrypted secrets of App
+func (app *App) GetDecryptedSecrets() (secrets map[string]string, err error) {
+	secrets = make(map[string]string)
+	for key, value := range app.Secrets {
+		if strings.HasPrefix(value, CryptPrefix) {
+			password, err := GetPassword()
+			if err != nil {
+				return nil, err
+			}
+			value = value[len(CryptPrefix):]
+			decrypted, err := DecryptAES(password, value)
+			if err != nil {
+				return nil, err
+			}
+			secrets[key] = decrypted
+		} else {
+			secrets[key] = value
+		}
+	}
+	return secrets, nil
 }

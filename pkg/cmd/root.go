@@ -17,6 +17,7 @@ func Execute(version string) error {
 	rootCmd.AddCommand(NewCmdBlueGreen())
 	rootCmd.AddCommand(NewCmdBuild())
 	rootCmd.AddCommand(NewCmdCompletion())
+	rootCmd.AddCommand(NewCmdConfig())
 	rootCmd.AddCommand(NewCmdDelete())
 	rootCmd.AddCommand(NewCmdEncrypt())
 	rootCmd.AddCommand(NewCmdManifest())

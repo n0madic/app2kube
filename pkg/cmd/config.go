@@ -51,6 +51,32 @@ func NewCmdConfig() *cobra.Command {
 		},
 	})
 
+	configCmd.AddCommand(&cobra.Command{
+		Use:   "domain",
+		Short: "Print the list of domains from ingress",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true
+
+			var domains []string
+			for _, ingress := range app.Ingress {
+				domains = append(domains, ingress.Host)
+				for _, alias := range ingress.Aliases {
+					domains = append(domains, alias)
+				}
+			}
+			sort.Strings(domains)
+
+			for _, domain := range domains {
+				fmt.Println(domain)
+			}
+			return nil
+		},
+	})
+
 	for _, cmd := range configCmd.Commands() {
 		addAppFlags(cmd)
 		cmd.Flags().MarkHidden("include-namespace")

@@ -46,6 +46,7 @@ Available Commands:
   blue-green  Commands for blue-green deployment
   build       Build and push an image from a Dockerfile
   completion  Generates bash completion scripts
+  config      Manage application config
   delete      Delete resources from kubernetes
   encrypt     Encrypt secret values in YAML file
   help        Help about any command

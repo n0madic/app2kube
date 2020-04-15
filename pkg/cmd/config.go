@@ -70,6 +70,17 @@ func NewCmdConfig() *cobra.Command {
 			}
 			sort.Strings(domains)
 
+			// Deduplicate domains
+			j := 0
+			for i := 1; i < len(domains); i++ {
+				if domains[j] == domains[i] {
+					continue
+				}
+				j++
+				domains[j] = domains[i]
+			}
+			domains = domains[:j+1]
+
 			for _, domain := range domains {
 				fmt.Println(domain)
 			}

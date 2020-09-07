@@ -45,7 +45,8 @@ func NewCmdApply() *cobra.Command {
 					"extensions/v1beta1/Ingress",
 					// "networking/v1beta1/Ingress",
 				}
-				o.ServerDryRun = oCmd.ServerDryRun
+				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
+				cmdutil.CheckErr(err)
 
 				if o.Namespace != "" {
 					o.EnforceNamespace = true
@@ -150,8 +151,12 @@ func NewCmdApply() *cobra.Command {
 	addBlueGreenFlag(applyCmd)
 	oCmd.PrintFlags.AddFlags(applyCmd)
 
-	applyCmd.Flags().Bool("dry-run", false, "If true, only print the object that would be sent, without sending it. Warning: --dry-run cannot accurately output the result of merging the local manifest and the server-side data. Use --server-dry-run to get the merged result instead.")
-	applyCmd.Flags().BoolVar(&oCmd.ServerDryRun, "server-dry-run", false, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
+	// Remove in kubectl 1.19
+	applyCmd.Flags().Bool("server-dry-run", false, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
+	applyCmd.Flags().MarkDeprecated("server-dry-run", "--server-dry-run is deprecated and can be replaced with --dry-run=server.")
+	applyCmd.Flags().MarkHidden("server-dry-run")
+
+	applyCmd.Flags().String("dry-run", "none", "Must be \"none\", \"server\", or \"client\". If client strategy, only print the object that would be sent, without sending it. If server strategy, submit server-side request without persisting the resource.")
 	applyCmd.Flags().BoolVar(&oCmd.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")

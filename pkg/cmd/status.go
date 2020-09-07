@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -107,7 +108,7 @@ func status(app *app2kube.App) error {
 }
 
 func getConfigmapStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().ConfigMaps(namespace).List(metav1.ListOptions{
+	list, err := kcs.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -133,7 +134,7 @@ func getConfigmapStatus(kcs *kubernetes.Clientset, namespace string, labels map[
 }
 
 func getSecretsStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Secrets(namespace).List(metav1.ListOptions{
+	list, err := kcs.CoreV1().Secrets(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -159,7 +160,7 @@ func getSecretsStatus(kcs *kubernetes.Clientset, namespace string, labels map[st
 }
 
 func getCronJobsStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.BatchV1beta1().CronJobs(namespace).List(metav1.ListOptions{
+	list, err := kcs.BatchV1beta1().CronJobs(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -192,7 +193,7 @@ func getCronJobsStatus(kcs *kubernetes.Clientset, namespace string, labels map[s
 }
 
 func getPVCStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().PersistentVolumeClaims(namespace).List(metav1.ListOptions{
+	list, err := kcs.CoreV1().PersistentVolumeClaims(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -225,7 +226,7 @@ func getPVCStatus(kcs *kubernetes.Clientset, namespace string, labels map[string
 func getDeploymentStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
 	serviceColor, _ := getCurrentBlueGreenColor(namespace, labels)
 
-	list, err := kcs.AppsV1().Deployments(namespace).List(metav1.ListOptions{
+	list, err := kcs.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -262,7 +263,7 @@ func getDeploymentStatus(kcs *kubernetes.Clientset, namespace string, labels map
 }
 
 func getPodsStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Pods(namespace).List(metav1.ListOptions{
+	list, err := kcs.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -310,7 +311,7 @@ func getPodsStatus(kcs *kubernetes.Clientset, namespace string, labels map[strin
 }
 
 func getServicesStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Services(namespace).List(metav1.ListOptions{
+	list, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -351,7 +352,7 @@ func getServicesStatus(kcs *kubernetes.Clientset, namespace string, labels map[s
 }
 
 func getIngressStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.NetworkingV1beta1().Ingresses(namespace).List(metav1.ListOptions{
+	list, err := kcs.NetworkingV1beta1().Ingresses(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {

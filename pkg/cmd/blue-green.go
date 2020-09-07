@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -71,7 +72,7 @@ func NewCmdBlueGreen() *cobra.Command {
 				return err
 			}
 
-			services, err := kcs.CoreV1().Services(app.Namespace).List(metav1.ListOptions{
+			services, err := kcs.CoreV1().Services(app.Namespace).List(context.TODO(), metav1.ListOptions{
 				LabelSelector: getSelector(app.Labels),
 			})
 			if err != nil {
@@ -86,7 +87,8 @@ func NewCmdBlueGreen() *cobra.Command {
 						"path": "/spec/selector/app.kubernetes.io~1color",
 						"value": "` + app.Deployment.BlueGreenColor + `"
 					}]`)
-					_, err = kcs.CoreV1().Services(app.Namespace).Patch(service.Name, types.JSONPatchType, payloadBytes)
+					options := metav1.PatchOptions{}
+					_, err = kcs.CoreV1().Services(app.Namespace).Patch(context.TODO(), service.Name, types.JSONPatchType, payloadBytes, options)
 					if err != nil {
 						return err
 					}
@@ -159,7 +161,7 @@ func getCurrentBlueGreenColor(namespace string, labels map[string]string) (strin
 		return "", err
 	}
 
-	svc, err := kcs.CoreV1().Services(namespace).List(metav1.ListOptions{
+	svc, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil || len(svc.Items) == 0 {

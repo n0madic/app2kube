@@ -64,9 +64,7 @@ func NewCmdConfig() *cobra.Command {
 			var domains []string
 			for _, ingress := range app.Ingress {
 				domains = append(domains, ingress.Host)
-				for _, alias := range ingress.Aliases {
-					domains = append(domains, alias)
-				}
+				domains = append(domains, ingress.Aliases...)
 			}
 			sort.Strings(domains)
 

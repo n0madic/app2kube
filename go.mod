@@ -14,23 +14,23 @@ require (
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-metrics v0.0.1 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
-	github.com/flant/kubedog v0.3.4
 	github.com/ghodss/yaml v1.0.0
 	github.com/gorilla/mux v1.7.4 // indirect
 	github.com/gosuri/uitable v0.0.4
-	github.com/huandu/xstrings v1.3.0 // indirect
-	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381
+	github.com/huandu/xstrings v1.3.2 // indirect
+	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/mattn/go-runewidth v0.0.9 // indirect
 	github.com/mitchellh/copystructure v1.0.0 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/opencontainers/runc v0.1.1 // indirect
 	github.com/rhysd/go-fakeio v1.0.0
-	github.com/spf13/cobra v0.0.7
-	k8s.io/api v0.17.4
-	k8s.io/apimachinery v0.17.4
-	k8s.io/cli-runtime v0.17.4
-	k8s.io/client-go v0.17.4
-	k8s.io/helm v2.16.5+incompatible
-	k8s.io/kubectl v0.17.4
+	github.com/spf13/cobra v1.0.0
+	github.com/werf/kubedog v0.4.0
+	k8s.io/api v0.18.8
+	k8s.io/apimachinery v0.18.8
+	k8s.io/cli-runtime v0.18.8
+	k8s.io/client-go v0.18.8
+	k8s.io/helm v2.16.10+incompatible
+	k8s.io/kubectl v0.18.8
 )

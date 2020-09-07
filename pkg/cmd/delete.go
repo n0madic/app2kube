@@ -24,6 +24,9 @@ func NewCmdDelete() *cobra.Command {
 				cmdutil.CheckErr(err)
 			}
 
+			o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
+			cmdutil.CheckErr(err)
+
 			if flagIncludeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
@@ -49,9 +52,11 @@ func NewCmdDelete() *cobra.Command {
 
 	addAppFlags(deleteCmd)
 	addBlueGreenFlag(deleteCmd)
+
 	deleteCmd.Flags().BoolVar(&flagAllInstances, "all-instances", false, "Delete all instances of application with the cmd 'delete all'")
 	deleteCmd.Flags().BoolVar(deleteFlags.IgnoreNotFound, "ignore-not-found", *deleteFlags.IgnoreNotFound, "Treat \"resource not found\" as a successful delete.")
 	deleteCmd.Flags().BoolVar(deleteFlags.Wait, "wait", *deleteFlags.Wait, "If true, wait for resources to be gone before returning. This waits for finalizers.")
+	deleteCmd.Flags().String("dry-run", "none", "Must be \"none\", \"server\", or \"client\". If client strategy, only print the object that would be sent, without sending it. If server strategy, submit server-side request without persisting the resource.")
 
 	return deleteCmd
 }

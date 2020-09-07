@@ -6,16 +6,16 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/flant/kubedog/pkg/kube"
-	"github.com/flant/kubedog/pkg/tracker"
-	"github.com/flant/kubedog/pkg/trackers/follow"
-	"github.com/flant/kubedog/pkg/trackers/rollout"
+	"github.com/werf/kubedog/pkg/kube"
+	"github.com/werf/kubedog/pkg/tracker"
+	"github.com/werf/kubedog/pkg/trackers/follow"
+	"github.com/werf/kubedog/pkg/trackers/rollout"
 )
 
 var (
 	logsFromTime = time.Now()
 	logsSince    = "now"
-	trackTimeout      = 5
+	trackTimeout = 5
 )
 
 // NewCmdTrack return track command
@@ -77,10 +77,10 @@ func NewCmdTrack() *cobra.Command {
 }
 
 func trackFollow(name, namespace string) error {
-	err := kube.Init(kube.InitOptions{
-		KubeContext: *kubeConfigFlags.Context,
-		KubeConfig:  *kubeConfigFlags.KubeConfig,
-	})
+	err := kube.Init(kube.InitOptions{KubeConfigOptions: kube.KubeConfigOptions{
+		Context:    *kubeConfigFlags.Context,
+		ConfigPath: *kubeConfigFlags.KubeConfig,
+	}})
 	if err != nil {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
@@ -97,10 +97,10 @@ func trackFollow(name, namespace string) error {
 }
 
 func trackReady(name, namespace string) error {
-	err = kube.Init(kube.InitOptions{
-		KubeContext: *kubeConfigFlags.Context,
-		KubeConfig:  *kubeConfigFlags.KubeConfig,
-	})
+	err := kube.Init(kube.InitOptions{KubeConfigOptions: kube.KubeConfigOptions{
+		Context:    *kubeConfigFlags.Context,
+		ConfigPath: *kubeConfigFlags.KubeConfig,
+	}})
 	if err != nil {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}

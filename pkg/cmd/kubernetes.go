@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"strings"
 
@@ -49,7 +50,7 @@ func deleteDeployment(name, namespace string) error {
 		return err
 	}
 
-	err = kcs.AppsV1().Deployments(namespace).Delete(name, &metav1.DeleteOptions{})
+	err = kcs.AppsV1().Deployments(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

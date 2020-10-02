@@ -17,10 +17,11 @@ var encryptString string
 // NewCmdEncrypt return encrypt command
 func NewCmdEncrypt() *cobra.Command {
 	encryptCmd := &cobra.Command{
-		Use:   "encrypt",
-		Short: "Encrypt secret values in YAML file",
-		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
-		RunE:  encrypt,
+		Deprecated: "Use app2kube config encrypt",
+		Use:        "encrypt",
+		Short:      "Encrypt secret values in YAML file",
+		Long:       "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
+		RunE:       encrypt,
 	}
 	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
 	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")

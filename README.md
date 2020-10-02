@@ -48,7 +48,6 @@ Available Commands:
   completion  Generates bash completion scripts
   config      Manage application config
   delete      Delete resources from kubernetes
-  encrypt     Encrypt secret values in YAML file
   help        Help about any command
   manifest    Generate kubernetes manifests for an application
   status      Show application resources status in kubernetes

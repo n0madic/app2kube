@@ -18,6 +18,7 @@ func NewCmdConfig() *cobra.Command {
 		Use:   "dotenv",
 		Short: "Print the config as .env",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			stringValues = append(stringValues, "name=app")
 			app, err := initApp()
 			if err != nil {
 				return err
@@ -55,6 +56,7 @@ func NewCmdConfig() *cobra.Command {
 		Use:   "domain",
 		Short: "Print the list of domains from ingress",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			stringValues = append(stringValues, "name=app")
 			app, err := initApp()
 			if err != nil {
 				return err
@@ -66,29 +68,44 @@ func NewCmdConfig() *cobra.Command {
 				domains = append(domains, ingress.Host)
 				domains = append(domains, ingress.Aliases...)
 			}
-			sort.Strings(domains)
 
-			// Deduplicate domains
-			j := 0
-			for i := 1; i < len(domains); i++ {
-				if domains[j] == domains[i] {
-					continue
+			if len(domains) > 0 {
+				sort.Strings(domains)
+				// Deduplicate domains
+				j := 0
+				for i := 1; i < len(domains); i++ {
+					if domains[j] == domains[i] {
+						continue
+					}
+					j++
+					domains[j] = domains[i]
 				}
-				j++
-				domains[j] = domains[i]
-			}
-			domains = domains[:j+1]
+				domains = domains[:j+1]
 
-			for _, domain := range domains {
-				fmt.Println(domain)
+				for _, domain := range domains {
+					fmt.Println(domain)
+				}
 			}
 			return nil
 		},
 	})
 
+	configCmd.AddCommand(&cobra.Command{
+		Use:   "encrypt",
+		Short: "Encrypt secret values",
+		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
+		RunE:  encrypt,
+	})
+
 	for _, cmd := range configCmd.Commands() {
-		addAppFlags(cmd)
-		cmd.Flags().MarkHidden("include-namespace")
+		if cmd.Use == "encrypt" {
+			cmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
+			cmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
+		} else {
+			addAppFlags(cmd)
+			cmd.Flags().MarkHidden("include-namespace")
+			cmd.Flags().MarkHidden("snapshot")
+		}
 	}
 
 	return configCmd

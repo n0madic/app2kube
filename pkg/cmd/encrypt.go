@@ -57,7 +57,7 @@ func encrypt(cmd *cobra.Command, args []string) error {
 		scanner := bufio.NewScanner(yamlFile)
 		for scanner.Scan() {
 			// found secrets section
-			if scanner.Text() == "secrets:" {
+			if strings.TrimSpace(scanner.Text()) == "secrets:" {
 				newYAML += scanner.Text() + "\n"
 				// scan secrets
 				for scanner.Scan() {

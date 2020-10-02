@@ -27,10 +27,10 @@ require (
 	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v1.0.0
 	github.com/werf/kubedog v0.4.0
-	k8s.io/api v0.18.8
-	k8s.io/apimachinery v0.18.8
-	k8s.io/cli-runtime v0.18.8
-	k8s.io/client-go v0.18.8
-	k8s.io/helm v2.16.10+incompatible
-	k8s.io/kubectl v0.18.8
+	k8s.io/api v0.18.9
+	k8s.io/apimachinery v0.18.9
+	k8s.io/cli-runtime v0.18.9
+	k8s.io/client-go v0.18.9
+	k8s.io/helm v2.16.12+incompatible
+	k8s.io/kubectl v0.18.9
 )

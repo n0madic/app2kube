@@ -6,6 +6,7 @@ require (
 	github.com/Masterminds/goutils v1.1.0 // indirect
 	github.com/Masterminds/semver v1.5.0 // indirect
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/Microsoft/hcsshim v0.8.10 // indirect
 	github.com/containerd/continuity v0.0.0-20200228182428-0f16d7a0959c // indirect
 	github.com/docker/cli v0.0.0-20200117153247-52714e413cd1
 	github.com/docker/distribution v2.7.1+incompatible
@@ -34,3 +35,5 @@ require (
 	k8s.io/helm v2.16.12+incompatible
 	k8s.io/kubectl v0.18.9
 )
+
+replace golang.org/x/sys => golang.org/x/sys v0.0.0-20190830141801-acfa387b8d69

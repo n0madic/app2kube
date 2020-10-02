@@ -91,6 +91,36 @@ func NewCmdConfig() *cobra.Command {
 	})
 
 	configCmd.AddCommand(&cobra.Command{
+		Use:   "secrets",
+		Short: "Print decrypted secrets",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			stringValues = append(stringValues, "name=app")
+			app, err := initApp()
+			if err != nil {
+				return err
+			}
+			cmd.SilenceUsage = true
+
+			cfg := make(map[string]string)
+			keys := make([]string, 0, len(app.Secrets))
+			secrets, err := app.GetDecryptedSecrets()
+			if err != nil {
+				return err
+			}
+			for k, v := range secrets {
+				keys = append(keys, k)
+				cfg[k] = v
+			}
+			sort.Strings(keys)
+
+			for _, key := range keys {
+				fmt.Println(key + ": " + cfg[key])
+			}
+			return nil
+		},
+	})
+
+	configCmd.AddCommand(&cobra.Command{
 		Use:   "encrypt",
 		Short: "Encrypt secret values",
 		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",

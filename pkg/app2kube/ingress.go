@@ -83,8 +83,10 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				ing.Path = "/"
 			}
 
+			pathTypeImplementationSpecific := v1.PathTypeImplementationSpecific
 			ingressPath := v1.HTTPIngressPath{
-				Path: ing.Path,
+				Path:     ing.Path,
+				PathType: &pathTypeImplementationSpecific,
 				Backend: v1.IngressBackend{
 					Service: &v1.IngressServiceBackend{
 						Name: strings.ToLower(serviceName),

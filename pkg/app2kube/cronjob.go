@@ -69,11 +69,9 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 
 		if app.Common.Image.PullSecrets != "" {
-			cron.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{
-				apiv1.LocalObjectReference{
-					Name: app.Common.Image.PullSecrets,
-				},
-			}
+			cron.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{{
+				Name: app.Common.Image.PullSecrets,
+			}}
 		}
 
 		if app.Common.GracePeriod > 0 {

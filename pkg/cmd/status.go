@@ -60,14 +60,14 @@ func status(app *app2kube.App) error {
 	fmt.Printf("RESOURCES:\n")
 
 	tables := []tableFunc{
-		tableFunc{name: "ConfigMap", fn: getConfigmapStatus},
-		tableFunc{name: "Secret", fn: getSecretsStatus},
-		tableFunc{name: "CronJob", fn: getCronJobsStatus},
-		tableFunc{name: "PersistentVolumeClaim", fn: getPVCStatus},
-		tableFunc{name: "Deployment", fn: getDeploymentStatus},
-		tableFunc{name: "Pod (related)", fn: getPodsStatus},
-		tableFunc{name: "Service", fn: getServicesStatus},
-		tableFunc{name: "Ingress", fn: getIngressStatus},
+		{name: "ConfigMap", fn: getConfigmapStatus},
+		{name: "Secret", fn: getSecretsStatus},
+		{name: "CronJob", fn: getCronJobsStatus},
+		{name: "PersistentVolumeClaim", fn: getPVCStatus},
+		{name: "Deployment", fn: getDeploymentStatus},
+		{name: "Pod (related)", fn: getPodsStatus},
+		{name: "Service", fn: getServicesStatus},
+		{name: "Ingress", fn: getIngressStatus},
 	}
 
 	for _, res := range tables {

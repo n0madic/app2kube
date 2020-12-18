@@ -56,11 +56,9 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		}
 
 		if app.Common.Image.PullSecrets != "" {
-			deployment.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{
-				apiv1.LocalObjectReference{
-					Name: app.Common.Image.PullSecrets,
-				},
-			}
+			deployment.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{{
+				Name: app.Common.Image.PullSecrets,
+			}}
 		}
 
 		if app.Common.GracePeriod > 0 {

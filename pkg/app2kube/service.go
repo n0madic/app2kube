@@ -36,7 +36,7 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 			service := &apiv1.Service{
 				ObjectMeta: app.GetObjectMeta(serviceName),
 				Spec: apiv1.ServiceSpec{
-					Ports: []apiv1.ServicePort{apiv1.ServicePort{
+					Ports: []apiv1.ServicePort{{
 						Port:       svc.ExternalPort,
 						Protocol:   svc.Protocol,
 						TargetPort: intstr.IntOrString{Type: intstr.Int, IntVal: svc.InternalPort},

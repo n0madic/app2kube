@@ -42,8 +42,7 @@ func NewCmdApply() *cobra.Command {
 					"apps/v1/DaemonSet",
 					"apps/v1/Deployment",
 					"batch/v1beta1/CronJob",
-					"extensions/v1beta1/Ingress",
-					// "networking/v1beta1/Ingress",
+					"networking/v1/Ingress",
 				}
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 				cmdutil.CheckErr(err)

@@ -9,13 +9,13 @@ import (
 	"github.com/werf/kubedog/pkg/kube"
 	"github.com/werf/kubedog/pkg/tracker"
 	"github.com/werf/kubedog/pkg/trackers/follow"
-	"github.com/werf/kubedog/pkg/trackers/rollout"
+	"github.com/werf/kubedog/pkg/trackers/rollout/multitrack"
 )
 
 var (
 	logsFromTime = time.Now()
 	logsSince    = "now"
-	trackTimeout = 5
+	trackTimeout = 10
 )
 
 // NewCmdTrack return track command
@@ -105,18 +105,16 @@ func trackReady(name, namespace string) error {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
 
-	err = rollout.TrackDeploymentTillReady(
-		name,
-		namespace,
-		kube.Kubernetes,
-		tracker.Options{
+	return multitrack.Multitrack(kube.Kubernetes, multitrack.MultitrackSpecs{
+		Deployments: []multitrack.MultitrackSpec{{
+			ResourceName:         name,
+			Namespace:            namespace,
+			TrackTerminationMode: multitrack.WaitUntilResourceReady,
+		}},
+	}, multitrack.MultitrackOptions{
+		Options: tracker.Options{
 			LogsFromTime: logsFromTime,
 			Timeout:      time.Minute * time.Duration(trackTimeout),
 		},
-	)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	})
 }

@@ -56,12 +56,6 @@ func NewCmdApply() *cobra.Command {
 					o.Selector = getSelector(app.Labels)
 				}
 
-				if cmd.Flags().Lookup("server-side") == nil {
-					cmdutil.AddServerSideApplyFlags(cmd)
-				}
-				if cmd.Flags().Lookup("validate") == nil {
-					cmdutil.AddValidateFlags(cmd)
-				}
 				cmdutil.CheckErr(o.Complete(kubeFactory, cmd))
 
 				fake := fakeio.StdinBytes([]byte{})
@@ -150,13 +144,11 @@ func NewCmdApply() *cobra.Command {
 	addAppFlags(applyCmd)
 	addBlueGreenFlag(applyCmd)
 	oCmd.PrintFlags.AddFlags(applyCmd)
+	cmdutil.AddDryRunFlag(applyCmd)
+	cmdutil.AddServerSideApplyFlags(applyCmd)
+	cmdutil.AddValidateFlags(applyCmd)
+	cmdutil.AddFieldManagerFlagVar(applyCmd, &oCmd.FieldManager, apply.FieldManagerClientSideApply)
 
-	// Remove in kubectl 1.19
-	applyCmd.Flags().Bool("server-dry-run", false, "If true, request will be sent to server with dry-run flag, which means the modifications won't be persisted.")
-	applyCmd.Flags().MarkDeprecated("server-dry-run", "--server-dry-run is deprecated and can be replaced with --dry-run=server.")
-	applyCmd.Flags().MarkHidden("server-dry-run")
-
-	applyCmd.Flags().String("dry-run", "none", "Must be \"none\", \"server\", or \"client\". If client strategy, only print the object that would be sent, without sending it. If server strategy, submit server-side request without persisting the resource.")
 	applyCmd.Flags().BoolVar(&oCmd.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")

@@ -6,17 +6,16 @@ import (
 	"strings"
 
 	apiv1 "k8s.io/api/core/v1"
-	"k8s.io/api/networking/v1beta1"
-	"k8s.io/apimachinery/pkg/util/intstr"
+	v1 "k8s.io/api/networking/v1"
 )
 
 // GetIngress resource
-func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
+func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
 			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 
-			newIngress := &v1beta1.Ingress{
+			newIngress := &v1.Ingress{
 				ObjectMeta: app.GetObjectMeta(ingressName),
 			}
 
@@ -84,18 +83,20 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 				ing.Path = "/"
 			}
 
-			ingressPath := v1beta1.HTTPIngressPath{
+			ingressPath := v1.HTTPIngressPath{
 				Path: ing.Path,
-				Backend: v1beta1.IngressBackend{
-					ServiceName: strings.ToLower(serviceName),
-					ServicePort: intstr.IntOrString{Type: intstr.Int, IntVal: servicePort},
+				Backend: v1.IngressBackend{
+					Service: &v1.IngressServiceBackend{
+						Name: strings.ToLower(serviceName),
+						Port: v1.ServiceBackendPort{Number: servicePort},
+					},
 				},
 			}
-			ingressRule := v1beta1.IngressRule{
+			ingressRule := v1.IngressRule{
 				Host: ing.Host,
-				IngressRuleValue: v1beta1.IngressRuleValue{
-					HTTP: &v1beta1.HTTPIngressRuleValue{
-						Paths: []v1beta1.HTTPIngressPath{ingressPath},
+				IngressRuleValue: v1.IngressRuleValue{
+					HTTP: &v1.HTTPIngressRuleValue{
+						Paths: []v1.HTTPIngressPath{ingressPath},
 					},
 				},
 			}
@@ -120,7 +121,7 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
-				newIngress.Spec.TLS = append(newIngress.Spec.TLS, v1beta1.IngressTLS{
+				newIngress.Spec.TLS = append(newIngress.Spec.TLS, v1.IngressTLS{
 					Hosts:      []string{ing.Host},
 					SecretName: strings.ToLower(ing.TLSSecretName),
 				})
@@ -128,11 +129,11 @@ func (app *App) GetIngress() (ingress []*v1beta1.Ingress, err error) {
 
 			if app.Staging == "" {
 				for _, alias := range ing.Aliases {
-					newIngress.Spec.Rules = append(newIngress.Spec.Rules, v1beta1.IngressRule{
+					newIngress.Spec.Rules = append(newIngress.Spec.Rules, v1.IngressRule{
 						Host: alias,
-						IngressRuleValue: v1beta1.IngressRuleValue{
-							HTTP: &v1beta1.HTTPIngressRuleValue{
-								Paths: []v1beta1.HTTPIngressPath{ingressPath},
+						IngressRuleValue: v1.IngressRuleValue{
+							HTTP: &v1.HTTPIngressRuleValue{
+								Paths: []v1.HTTPIngressPath{ingressPath},
 							},
 						},
 					})

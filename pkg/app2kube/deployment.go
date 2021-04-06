@@ -26,6 +26,16 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			containers = append(containers, container)
 		}
 
+		var initContainers []apiv1.Container
+		for name, icontainer := range app.Deployment.InitContainers {
+			icontainer.Name = strings.ToLower(name)
+			err = app.processContainer(&icontainer)
+			if err != nil {
+				return
+			}
+			initContainers = append(initContainers, icontainer)
+		}
+
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
@@ -42,6 +52,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 					Spec: apiv1.PodSpec{
 						AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
 						Containers:                   containers,
+						InitContainers:               initContainers,
 						DNSPolicy:                    app.Common.DNSPolicy,
 						EnableServiceLinks:           &app.Common.EnableServiceLinks,
 						NodeSelector:                 app.Common.NodeSelector,

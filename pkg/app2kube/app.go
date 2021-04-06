@@ -81,6 +81,7 @@ type App struct {
 	Deployment struct {
 		BlueGreenColor       string                     `yaml:"blueGreenColor"`
 		Containers           map[string]apiv1.Container `yaml:"containers"`
+		InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
 		ReplicaCount         int32                      `yaml:"replicaCount"`
 		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
 		Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`

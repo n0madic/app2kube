@@ -17,7 +17,10 @@ func NewCmdDelete() *cobra.Command {
 		Use:   "delete",
 		Short: "Delete resources from kubernetes",
 		Run: func(cmd *cobra.Command, args []string) {
-			o := deleteFlags.ToOptions(nil, ioStreams)
+			o, err := deleteFlags.ToOptions(nil, ioStreams)
+			if err != nil {
+				cmdutil.CheckErr(err)
+			}
 
 			app, err := initApp()
 			if err != nil {

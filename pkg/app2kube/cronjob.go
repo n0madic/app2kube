@@ -27,6 +27,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.SuccessfulJobsHistoryLimit = 2
 		}
 
+		if job.ActiveDeadlineSeconds == 0 {
+			job.ActiveDeadlineSeconds = 86400 // 1 day
+		}
+
 		if job.BackoffLimit == 0 {
 			job.BackoffLimit = 6
 		}

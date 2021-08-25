@@ -7,6 +7,7 @@ import (
 	batch "k8s.io/api/batch/v1beta1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilpointer "k8s.io/utils/pointer"
 )
 
 // GetCronJobs resource
@@ -47,17 +48,17 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
 				ConcurrencyPolicy:          job.ConcurrencyPolicy,
-				FailedJobsHistoryLimit:     &job.FailedJobsHistoryLimit,
+				FailedJobsHistoryLimit:     utilpointer.Int32Ptr(job.FailedJobsHistoryLimit),
 				Schedule:                   job.Schedule,
-				SuccessfulJobsHistoryLimit: &job.SuccessfulJobsHistoryLimit,
-				Suspend:                    &app.Common.CronjobSuspend,
+				SuccessfulJobsHistoryLimit: utilpointer.Int32Ptr(job.SuccessfulJobsHistoryLimit),
+				Suspend:                    utilpointer.BoolPtr(job.Suspend),
 				JobTemplate: batch.JobTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: app.Labels,
 					},
 					Spec: batchv1.JobSpec{
-						ActiveDeadlineSeconds: &job.ActiveDeadlineSeconds,
-						BackoffLimit:          &job.BackoffLimit,
+						ActiveDeadlineSeconds: utilpointer.Int64Ptr(job.ActiveDeadlineSeconds),
+						BackoffLimit:          utilpointer.Int32Ptr(job.BackoffLimit),
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
@@ -74,6 +75,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			},
 		}
 
+		if app.Common.CronjobSuspend {
+			cron.Spec.Suspend = utilpointer.BoolPtr(true)
+		}
+
 		if app.Common.Image.PullSecrets != "" {
 			cron.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{{
 				Name: app.Common.Image.PullSecrets,
@@ -81,7 +86,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 
 		if app.Common.GracePeriod > 0 {
-			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
+			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = utilpointer.Int64Ptr(app.Common.GracePeriod)
 		}
 
 		if app.Common.SharedData != "" && len(cron.Spec.JobTemplate.Spec.Template.Spec.Containers) > 1 {

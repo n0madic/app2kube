@@ -6,6 +6,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilpointer "k8s.io/utils/pointer"
 )
 
 // GetDeployment resource
@@ -39,8 +40,8 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
-				Replicas:             &replicas,
-				RevisionHistoryLimit: &app.Deployment.RevisionHistoryLimit,
+				Replicas:             utilpointer.Int32Ptr(replicas),
+				RevisionHistoryLimit: utilpointer.Int32Ptr(app.Deployment.RevisionHistoryLimit),
 				Selector: &metav1.LabelSelector{
 					MatchLabels: app.GetColorLabels(),
 				},
@@ -50,11 +51,11 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 						Labels: app.GetColorLabels(),
 					},
 					Spec: apiv1.PodSpec{
-						AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
+						AutomountServiceAccountToken: utilpointer.BoolPtr(app.Common.MountServiceAccountToken),
 						Containers:                   containers,
 						InitContainers:               initContainers,
 						DNSPolicy:                    app.Common.DNSPolicy,
-						EnableServiceLinks:           &app.Common.EnableServiceLinks,
+						EnableServiceLinks:           utilpointer.BoolPtr(app.Common.EnableServiceLinks),
 						NodeSelector:                 app.Common.NodeSelector,
 						Tolerations:                  app.Common.Tolerations,
 					},

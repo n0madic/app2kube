@@ -26,6 +26,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.SuccessfulJobsHistoryLimit = 2
 		}
 
+		if job.BackoffLimit == 0 {
+			job.BackoffLimit = 6
+		}
+
 		err := app.processContainer(&job.Container)
 		if err != nil {
 			return crons, err
@@ -52,6 +56,8 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 						Labels: app.Labels,
 					},
 					Spec: batchv1.JobSpec{
+						ActiveDeadlineSeconds: &job.ActiveDeadlineSeconds,
+						BackoffLimit:          &job.BackoffLimit,
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,

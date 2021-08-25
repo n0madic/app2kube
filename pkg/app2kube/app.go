@@ -70,6 +70,8 @@ type App struct {
 	} `yaml:"common"`
 	ConfigMap map[string]string `yaml:"configmap"`
 	Cronjob   map[string]struct {
+		ActiveDeadlineSeconds      int64                   `yaml:"activeDeadlineSeconds"`
+		BackoffLimit               int32                   `yaml:"backoffLimit"`
 		ConcurrencyPolicy          batch.ConcurrencyPolicy `yaml:"concurrencyPolicy"`
 		Container                  apiv1.Container         `yaml:"container"`
 		FailedJobsHistoryLimit     int32                   `yaml:"failedJobsHistoryLimit"`

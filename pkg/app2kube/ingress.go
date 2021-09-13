@@ -37,7 +37,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			}
 
 			newIngress.Annotations["kubernetes.io/ingress.class"] = ing.Class
-			if ing.Letsencrypt {
+			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt {
 				newIngress.Annotations["kubernetes.io/tls-acme"] = "true"
 			}
 			for key, value := range app.Common.Ingress.Annotations {
@@ -118,8 +118,8 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				newIngress.Spec.Rules = append(newIngress.Spec.Rules, ingressRule)
 			}
 
-			if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
-				newIngress.Annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(ing.SslRedirect)
+			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
+				newIngress.Annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(app.Common.Ingress.SslRedirect || ing.SslRedirect)
 				if ing.TLSSecretName == "" {
 					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
 				}
@@ -139,7 +139,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 							},
 						},
 					})
-					if ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
+					if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
 						newIngress.Spec.TLS[0].Hosts = append(newIngress.Spec.TLS[0].Hosts, alias)
 					}
 				}
@@ -157,7 +157,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ingress := range app.Ingress {
-			if ingress.Letsencrypt || (ingress.TLSCrt != "" && ingress.TLSKey != "") {
+			if app.Common.Ingress.Letsencrypt || ingress.Letsencrypt || (ingress.TLSCrt != "" && ingress.TLSKey != "") {
 				if ingress.TLSSecretName == "" {
 					ingress.TLSSecretName = "tls-" + strings.Replace(ingress.Host, "*", "wildcard", 1)
 				}

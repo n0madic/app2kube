@@ -20,8 +20,10 @@ const MaxNameLength = 63
 type IngressCommon struct {
 	Annotations map[string]string `yaml:"annotations"`
 	Class       string            `yaml:"class"`
+	Letsencrypt bool              `yaml:"letsencrypt"`
 	ServiceName string            `yaml:"serviceName"`
 	ServicePort int32             `yaml:"servicePort"`
+	SslRedirect bool              `yaml:"sslRedirect"`
 }
 
 // Ingress specification
@@ -29,9 +31,7 @@ type Ingress struct {
 	IngressCommon
 	Aliases       []string `yaml:"aliases"`
 	Host          string   `yaml:"host"`
-	Letsencrypt   bool     `yaml:"letsencrypt"`
 	Path          string   `yaml:"path"`
-	SslRedirect   bool     `yaml:"sslRedirect"`
 	TLSCrt        string   `yaml:"tlsCrt"`
 	TLSKey        string   `yaml:"tlsKey"`
 	TLSSecretName string   `yaml:"tlsSecretName"`

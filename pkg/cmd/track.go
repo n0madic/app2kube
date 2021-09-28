@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -76,11 +78,20 @@ func NewCmdTrack() *cobra.Command {
 	return trackCmd
 }
 
-func trackFollow(name, namespace string) error {
-	err := kube.Init(kube.InitOptions{KubeConfigOptions: kube.KubeConfigOptions{
-		Context:    *kubeConfigFlags.Context,
-		ConfigPath: *kubeConfigFlags.KubeConfig,
+func kubedogInit() error {
+	var kubeConfigPathMergeList []string
+	if v := os.Getenv("KUBECONFIG"); v != "" {
+		kubeConfigPathMergeList = append(kubeConfigPathMergeList, filepath.SplitList(v)...)
+	}
+	return kube.Init(kube.InitOptions{KubeConfigOptions: kube.KubeConfigOptions{
+		Context:             *kubeConfigFlags.Context,
+		ConfigPath:          *kubeConfigFlags.KubeConfig,
+		ConfigPathMergeList: kubeConfigPathMergeList,
 	}})
+}
+
+func trackFollow(name, namespace string) error {
+	err := kubedogInit()
 	if err != nil {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}
@@ -97,10 +108,7 @@ func trackFollow(name, namespace string) error {
 }
 
 func trackReady(name, namespace string) error {
-	err := kube.Init(kube.InitOptions{KubeConfigOptions: kube.KubeConfigOptions{
-		Context:    *kubeConfigFlags.Context,
-		ConfigPath: *kubeConfigFlags.KubeConfig,
-	}})
+	err := kubedogInit()
 	if err != nil {
 		return fmt.Errorf("unable to initialize kubedog: %s", err)
 	}

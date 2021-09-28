@@ -17,7 +17,7 @@ import (
 var (
 	logsFromTime = time.Now()
 	logsSince    = "now"
-	trackTimeout = 10
+	trackTimeout = 15
 )
 
 // NewCmdTrack return track command

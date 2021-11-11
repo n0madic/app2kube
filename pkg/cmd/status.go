@@ -276,7 +276,7 @@ func getPodsStatus(kcs *kubernetes.Clientset, namespace string, labels map[strin
 
 	table := uitable.New()
 	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "PHASE", "STATUS", "RESTARTS", "AGE")
+	table.AddRow("NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE")
 	for _, pod := range list.Items {
 		currentColor := pod.ObjectMeta.Labels["app.kubernetes.io/color"]
 		if currentColor != "" {
@@ -304,6 +304,7 @@ func getPodsStatus(kcs *kubernetes.Clientset, namespace string, labels map[strin
 			fmt.Sprintf("%d/%d", readyCount, len(pod.Spec.Containers)),
 			restartCount,
 			metatable.ConvertToHumanReadableDateType(pod.CreationTimestamp),
+			pod.Spec.NodeName,
 		)
 	}
 

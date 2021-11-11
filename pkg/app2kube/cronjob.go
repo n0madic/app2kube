@@ -48,6 +48,11 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.RestartPolicy = apiv1.RestartPolicyNever
 		}
 
+		affinity, err := app.getAffinity()
+		if err != nil {
+			return nil, err
+		}
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
@@ -65,6 +70,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 						BackoffLimit:          utilpointer.Int32Ptr(job.BackoffLimit),
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
+								Affinity:                     affinity,
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
 								Containers:                   []apiv1.Container{job.Container},
 								DNSPolicy:                    app.Common.DNSPolicy,

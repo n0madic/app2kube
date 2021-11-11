@@ -37,6 +37,11 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			initContainers = append(initContainers, icontainer)
 		}
 
+		affinity, err := app.getAffinity()
+		if err != nil {
+			return nil, err
+		}
+
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
@@ -51,6 +56,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 						Labels: app.GetColorLabels(),
 					},
 					Spec: apiv1.PodSpec{
+						Affinity:                     affinity,
 						AutomountServiceAccountToken: utilpointer.BoolPtr(app.Common.MountServiceAccountToken),
 						Containers:                   containers,
 						InitContainers:               initContainers,

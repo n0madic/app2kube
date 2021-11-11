@@ -65,6 +65,7 @@ type App struct {
 		} `yaml:"ingress"`
 		MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
 		NodeSelector             map[string]string  `yaml:"nodeSelector"`
+		PodAntiAffinity          string             `yaml:"podAntiAffinity"`
 		SharedData               string             `yaml:"sharedData"`
 		Tolerations              []apiv1.Toleration `yaml:"tolerations"`
 	} `yaml:"common"`
@@ -150,6 +151,54 @@ func (app *App) GetColorLabels() map[string]string {
 		labels["app.kubernetes.io/color"] = app.Deployment.BlueGreenColor
 	}
 	return labels
+}
+
+func (app *App) getAffinity() (*apiv1.Affinity, error) {
+	var affinity *apiv1.Affinity
+	if app.Common.PodAntiAffinity != "" {
+		var podAffinityTerm []apiv1.PodAffinityTerm
+		for label, value := range app.GetColorLabels() {
+			if label == "app.kubernetes.io/managed-by" {
+				continue
+			}
+			podAffinityTerm = append(podAffinityTerm, apiv1.PodAffinityTerm{
+				LabelSelector: &metav1.LabelSelector{
+					MatchExpressions: []metav1.LabelSelectorRequirement{
+						{
+							Key:      label,
+							Operator: metav1.LabelSelectorOpIn,
+							Values:   []string{value},
+						},
+					},
+				},
+				TopologyKey: "kubernetes.io/hostname",
+			})
+		}
+		switch strings.ToLower(app.Common.PodAntiAffinity) {
+		case "preferred":
+			var weightedPodAffinityTerm []apiv1.WeightedPodAffinityTerm
+			for _, term := range podAffinityTerm {
+				weightedPodAffinityTerm = append(weightedPodAffinityTerm, apiv1.WeightedPodAffinityTerm{
+					PodAffinityTerm: term,
+					Weight:          1,
+				})
+			}
+			affinity = &apiv1.Affinity{
+				PodAntiAffinity: &apiv1.PodAntiAffinity{
+					PreferredDuringSchedulingIgnoredDuringExecution: weightedPodAffinityTerm,
+				},
+			}
+		case "required":
+			affinity = &apiv1.Affinity{
+				PodAntiAffinity: &apiv1.PodAntiAffinity{
+					RequiredDuringSchedulingIgnoredDuringExecution: podAffinityTerm,
+				},
+			}
+		default:
+			return nil, fmt.Errorf("unknown podAntiAffinity value: %s", app.Common.PodAntiAffinity)
+		}
+	}
+	return affinity, nil
 }
 
 // LoadValues for App

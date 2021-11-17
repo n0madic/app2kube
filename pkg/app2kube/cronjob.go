@@ -3,8 +3,7 @@ package app2kube
 import (
 	"fmt"
 
-	batchv1 "k8s.io/api/batch/v1"
-	batch "k8s.io/api/batch/v1beta1"
+	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilpointer "k8s.io/utils/pointer"
@@ -65,7 +64,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: app.Labels,
 					},
-					Spec: batchv1.JobSpec{
+					Spec: batch.JobSpec{
 						ActiveDeadlineSeconds: utilpointer.Int64Ptr(job.ActiveDeadlineSeconds),
 						BackoffLimit:          utilpointer.Int32Ptr(job.BackoffLimit),
 						Template: apiv1.PodTemplateSpec{

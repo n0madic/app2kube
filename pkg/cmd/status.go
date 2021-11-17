@@ -160,7 +160,7 @@ func getSecretsStatus(kcs *kubernetes.Clientset, namespace string, labels map[st
 }
 
 func getCronJobsStatus(kcs *kubernetes.Clientset, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.BatchV1beta1().CronJobs(namespace).List(context.TODO(), metav1.ListOptions{
+	list, err := kcs.BatchV1().CronJobs(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {

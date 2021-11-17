@@ -41,7 +41,7 @@ func NewCmdApply() *cobra.Command {
 					"/v1/ServiceAccount",
 					"apps/v1/DaemonSet",
 					"apps/v1/Deployment",
-					"batch/v1beta1/CronJob",
+					"batch/v1/CronJob",
 					// "networking/v1/Ingress",
 				}
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)

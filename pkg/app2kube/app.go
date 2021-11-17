@@ -8,7 +8,7 @@ import (
 
 	"github.com/ghodss/yaml"
 	appsv1 "k8s.io/api/apps/v1"
-	batch "k8s.io/api/batch/v1beta1"
+	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )

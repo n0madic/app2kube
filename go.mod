@@ -17,12 +17,12 @@ require (
 	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v1.2.1
 	github.com/werf/kubedog v0.6.2
-	golang.org/x/sys v0.0.0-20211110154304-99a53858aa08 // indirect
-	k8s.io/api v0.20.12
-	k8s.io/apimachinery v0.20.12
-	k8s.io/cli-runtime v0.20.12
-	k8s.io/client-go v0.20.12
+	golang.org/x/sys v0.0.0-20211116061358-0a5406a5449c // indirect
+	k8s.io/api v0.21.6
+	k8s.io/apimachinery v0.21.6
+	k8s.io/cli-runtime v0.21.6
+	k8s.io/client-go v0.21.6
 	k8s.io/helm v2.17.0+incompatible
-	k8s.io/kubectl v0.20.12
-	k8s.io/utils v0.0.0-20210930125809-cb0fa318a74b
+	k8s.io/kubectl v0.21.6
+	k8s.io/utils v0.0.0-20211116205334-6203023598ed
 )

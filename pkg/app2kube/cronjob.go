@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"fmt"
+	"strings"
 
 	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -34,13 +35,24 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			job.BackoffLimit = 6
 		}
 
-		err := app.processContainer(&job.Container)
-		if err != nil {
-			return crons, err
+		var containers []apiv1.Container
+		if len(job.Container.Command) > 0 {
+			err := app.processContainer(&job.Container)
+			if err != nil {
+				return crons, err
+			}
+			if job.Container.Name == "" {
+				job.Container.Name = cronName + "-job"
+			}
+			containers = append(containers, job.Container)
 		}
-
-		if job.Container.Name == "" {
-			job.Container.Name = cronName + "-job"
+		for name, container := range job.Containers {
+			container.Name = strings.ToLower(name)
+			err = app.processContainer(&container)
+			if err != nil {
+				return crons, err
+			}
+			containers = append(containers, container)
 		}
 
 		if job.RestartPolicy == "" {
@@ -71,7 +83,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 							Spec: apiv1.PodSpec{
 								Affinity:                     affinity,
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,
-								Containers:                   []apiv1.Container{job.Container},
+								Containers:                   containers,
 								DNSPolicy:                    app.Common.DNSPolicy,
 								RestartPolicy:                job.RestartPolicy,
 								EnableServiceLinks:           &app.Common.EnableServiceLinks,

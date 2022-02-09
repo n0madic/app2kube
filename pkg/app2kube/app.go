@@ -71,15 +71,16 @@ type App struct {
 	} `yaml:"common"`
 	ConfigMap map[string]string `yaml:"configmap"`
 	Cronjob   map[string]struct {
-		ActiveDeadlineSeconds      int64                   `yaml:"activeDeadlineSeconds"`
-		BackoffLimit               int32                   `yaml:"backoffLimit"`
-		ConcurrencyPolicy          batch.ConcurrencyPolicy `yaml:"concurrencyPolicy"`
-		Container                  apiv1.Container         `yaml:"container"`
-		FailedJobsHistoryLimit     int32                   `yaml:"failedJobsHistoryLimit"`
-		RestartPolicy              apiv1.RestartPolicy     `yaml:"restartPolicy"`
-		Schedule                   string                  `yaml:"schedule"`
-		SuccessfulJobsHistoryLimit int32                   `yaml:"successfulJobsHistoryLimit"`
-		Suspend                    bool                    `yaml:"suspend"`
+		ActiveDeadlineSeconds      int64                      `yaml:"activeDeadlineSeconds"`
+		BackoffLimit               int32                      `yaml:"backoffLimit"`
+		ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
+		Container                  apiv1.Container            `yaml:"container"`
+		Containers                 map[string]apiv1.Container `yaml:"container"`
+		FailedJobsHistoryLimit     int32                      `yaml:"failedJobsHistoryLimit"`
+		RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
+		Schedule                   string                     `yaml:"schedule"`
+		SuccessfulJobsHistoryLimit int32                      `yaml:"successfulJobsHistoryLimit"`
+		Suspend                    bool                       `yaml:"suspend"`
 	} `yaml:"cronjob"`
 	Deployment struct {
 		BlueGreenColor       string                     `yaml:"blueGreenColor"`

@@ -27,12 +27,19 @@ var (
 )
 
 func initApp() (*app2kube.App, error) {
+	if flagAllApplications {
+		return &app2kube.App{
+			Name:      "all",
+			Namespace: *kubeConfigFlags.Namespace,
+		}, nil
+	}
+
 	if _, err := os.Stat(defaultFile); !os.IsNotExist(err) {
 		valueFiles.Set(defaultFile)
 	}
 
 	if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {
-		return nil, errors.New("Values are required")
+		return nil, errors.New("values are required")
 	}
 
 	app := app2kube.NewApp()

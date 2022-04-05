@@ -101,7 +101,7 @@ func (app *App) processContainer(container *apiv1.Container) error {
 			// Add LivenessProbe to container port if probe not specified
 			if reflect.ValueOf(container.LivenessProbe).IsNil() {
 				container.LivenessProbe = &apiv1.Probe{
-					Handler: apiv1.Handler{
+					ProbeHandler: apiv1.ProbeHandler{
 						TCPSocket: &apiv1.TCPSocketAction{
 							Port: containerPort,
 						},

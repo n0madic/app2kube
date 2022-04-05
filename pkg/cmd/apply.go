@@ -19,7 +19,8 @@ var (
 
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
-	oCmd := apply.NewApplyOptions(ioStreams)
+	flags := apply.NewApplyFlags(kubeFactory, ioStreams)
+	flags.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 
 	applyCmd := &cobra.Command{
 		Use:   "apply",
@@ -29,8 +30,7 @@ func NewCmdApply() *cobra.Command {
 			cmdutil.CheckErr(err)
 
 			applyManifest := func(manifest string, prune bool) error {
-				o := apply.NewApplyOptions(ioStreams)
-				o.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
+				o, err := flags.ToOptions(cmd, "app2kube", args)
 				o.Overwrite = true
 				o.Prune = prune
 				o.PruneWhitelist = []string{
@@ -42,7 +42,7 @@ func NewCmdApply() *cobra.Command {
 					"apps/v1/DaemonSet",
 					"apps/v1/Deployment",
 					"batch/v1/CronJob",
-					// "networking/v1/Ingress",
+					"networking/v1/Ingress",
 				}
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 				cmdutil.CheckErr(err)
@@ -55,7 +55,7 @@ func NewCmdApply() *cobra.Command {
 					o.Selector = getSelector(app.Labels)
 				}
 
-				cmdutil.CheckErr(o.Complete(kubeFactory, cmd))
+				cmdutil.CheckErr(o.Validate(cmd, args))
 
 				fake := fakeio.StdinBytes([]byte{})
 				defer fake.Restore()
@@ -85,7 +85,7 @@ func NewCmdApply() *cobra.Command {
 			}
 
 			if blueGreenDeploy {
-				if oCmd.Prune {
+				if flags.Prune {
 					return fmt.Errorf("cannot prune resources with blue-green deployment")
 				}
 
@@ -116,7 +116,7 @@ func NewCmdApply() *cobra.Command {
 				manifest, err := getManifest(app2kube.OutputAll)
 				cmdutil.CheckErr(err)
 
-				cmdutil.CheckErr(applyManifest(manifest, oCmd.Prune))
+				cmdutil.CheckErr(applyManifest(manifest, flags.Prune))
 			}
 
 			if applyWithTrack != "" && len(app.Deployment.Containers) > 0 {
@@ -142,13 +142,13 @@ func NewCmdApply() *cobra.Command {
 
 	addAppFlags(applyCmd)
 	addBlueGreenFlag(applyCmd)
-	oCmd.PrintFlags.AddFlags(applyCmd)
+	flags.PrintFlags.AddFlags(applyCmd)
 	cmdutil.AddDryRunFlag(applyCmd)
 	cmdutil.AddServerSideApplyFlags(applyCmd)
 	cmdutil.AddValidateFlags(applyCmd)
-	cmdutil.AddFieldManagerFlagVar(applyCmd, &oCmd.FieldManager, apply.FieldManagerClientSideApply)
+	cmdutil.AddFieldManagerFlagVar(applyCmd, &flags.FieldManager, apply.FieldManagerClientSideApply)
 
-	applyCmd.Flags().BoolVar(&oCmd.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
+	applyCmd.Flags().BoolVar(&flags.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
 

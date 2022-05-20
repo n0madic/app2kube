@@ -9,8 +9,14 @@ jobs:
     name: Release on GitHub
     runs-on: ubuntu-latest
     steps:
+
       - name: Check out code
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v3
 
       - name: Create release on GitHub
         uses: goreleaser/goreleaser-action@v2

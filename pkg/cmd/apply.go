@@ -30,19 +30,21 @@ func NewCmdApply() *cobra.Command {
 			cmdutil.CheckErr(err)
 
 			applyManifest := func(manifest string, prune bool) error {
-				o, err := flags.ToOptions(cmd, "app2kube", args)
-				o.Overwrite = true
-				o.Prune = prune
-				o.PruneWhitelist = []string{
+				flags.Overwrite = true
+				flags.Prune = prune
+				flags.PruneWhitelist = []string{
 					"/v1/ConfigMap",
+					"/v1/PersistentVolumeClaim",
 					"/v1/Secret",
 					"/v1/Service",
 					"/v1/ServiceAccount",
 					"apps/v1/DaemonSet",
 					"apps/v1/Deployment",
 					"batch/v1/CronJob",
-					"networking/v1/Ingress",
+					"networking.k8s.io/v1/Ingress",
 				}
+				o, err := flags.ToOptions(cmd, "app2kube", args)
+				cmdutil.CheckErr(err)
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 				cmdutil.CheckErr(err)
 

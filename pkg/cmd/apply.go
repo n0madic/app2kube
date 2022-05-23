@@ -35,7 +35,6 @@ func NewCmdApply() *cobra.Command {
 				o.Prune = prune
 				o.PruneWhitelist = []string{
 					"/v1/ConfigMap",
-					"/v1/PersistentVolumeClaim",
 					"/v1/Secret",
 					"/v1/Service",
 					"/v1/ServiceAccount",

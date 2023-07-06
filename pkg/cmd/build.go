@@ -21,8 +21,8 @@ import (
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/idtools"
 	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/docker/docker/pkg/term"
 	"github.com/docker/docker/registry"
+	"github.com/moby/term"
 	"github.com/spf13/cobra"
 )
 
@@ -80,7 +80,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				imageName = container.Image
 			}
 		} else {
-			return errors.New("Requires common application image values (repository and tag)")
+			return errors.New("requires common application image values (repository and tag)")
 		}
 	}
 
@@ -230,7 +230,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		Version:        types.BuilderV1,
 	})
 	if err != nil {
-		return fmt.Errorf("Docker image build error: %s", err)
+		return fmt.Errorf("docker image build error: %s", err)
 	}
 	defer resp.Body.Close()
 
@@ -249,7 +249,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 				RegistryAuth: encodeAuthToBase64(registryAuth),
 			})
 			if err != nil {
-				return fmt.Errorf("Docker image push error: %s", err)
+				return fmt.Errorf("docker image push error: %s", err)
 			}
 
 			err = jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)

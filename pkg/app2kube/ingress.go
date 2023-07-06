@@ -71,12 +71,12 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 						}
 					}
 				} else {
-					return ingress, fmt.Errorf("You must specify a serviceName for the ingress %s", ing.Host)
+					return ingress, fmt.Errorf("you must specify a serviceName for the ingress %s", ing.Host)
 				}
 			}
 
 			if servicePort == 0 {
-				return ingress, fmt.Errorf("You must specify a servicePort for the ingress %s", ing.Host)
+				return ingress, fmt.Errorf("you must specify a servicePort for the ingress %s", ing.Host)
 			}
 
 			if ing.Path == "" {

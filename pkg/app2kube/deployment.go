@@ -45,8 +45,8 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
-				Replicas:             utilpointer.Int32Ptr(replicas),
-				RevisionHistoryLimit: utilpointer.Int32Ptr(app.Deployment.RevisionHistoryLimit),
+				Replicas:             utilpointer.Int32(replicas),
+				RevisionHistoryLimit: utilpointer.Int32(app.Deployment.RevisionHistoryLimit),
 				Selector: &metav1.LabelSelector{
 					MatchLabels: app.GetColorLabels(),
 				},
@@ -57,11 +57,11 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 					},
 					Spec: apiv1.PodSpec{
 						Affinity:                     affinity,
-						AutomountServiceAccountToken: utilpointer.BoolPtr(app.Common.MountServiceAccountToken),
+						AutomountServiceAccountToken: utilpointer.Bool(app.Common.MountServiceAccountToken),
 						Containers:                   containers,
 						InitContainers:               initContainers,
 						DNSPolicy:                    app.Common.DNSPolicy,
-						EnableServiceLinks:           utilpointer.BoolPtr(app.Common.EnableServiceLinks),
+						EnableServiceLinks:           utilpointer.Bool(app.Common.EnableServiceLinks),
 						NodeSelector:                 app.Common.NodeSelector,
 						Tolerations:                  app.Common.Tolerations,
 					},

@@ -50,7 +50,7 @@ func encrypt(cmd *cobra.Command, args []string) error {
 
 		yamlFile, err := os.Open(filePath)
 		if err != nil {
-			return fmt.Errorf("File open error: %v", err)
+			return fmt.Errorf("file open error: %v", err)
 		}
 		defer yamlFile.Close()
 
@@ -106,7 +106,7 @@ func encrypt(cmd *cobra.Command, args []string) error {
 		if modified {
 			err = ioutil.WriteFile(filePath, []byte(newYAML), 0640)
 			if err != nil {
-				return fmt.Errorf("File write error: %v", err)
+				return fmt.Errorf("file write error: %v", err)
 			}
 		}
 	}

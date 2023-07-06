@@ -18,6 +18,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/moby/buildkit v0.10.3 // indirect
 	github.com/moby/sys/mount v0.3.3 // indirect
+	github.com/moby/term v0.0.0-20221205130635-1aeaba878587
 	github.com/opencontainers/runc v1.1.3 // indirect
 	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v1.7.0

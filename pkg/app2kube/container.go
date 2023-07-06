@@ -91,7 +91,7 @@ func (app *App) processContainer(container *apiv1.Container) error {
 				}
 			}
 			if len(app.Service) == 0 {
-				return fmt.Errorf("Named container port required to create service for container: %s", container.Name)
+				return fmt.Errorf("named container port required to create service for container: %s", container.Name)
 			}
 		}
 

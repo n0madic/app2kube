@@ -134,7 +134,7 @@ func NewCmdApply() *cobra.Command {
 
 			if applyWithStatus {
 				fmt.Println()
-				status(app)
+				cmdutil.CheckErr(status(app))
 			}
 
 			return nil

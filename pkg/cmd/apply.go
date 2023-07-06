@@ -19,7 +19,7 @@ var (
 
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
-	flags := apply.NewApplyFlags(kubeFactory, ioStreams)
+	flags := apply.NewApplyFlags(ioStreams)
 	flags.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 
 	applyCmd := &cobra.Command{
@@ -43,7 +43,7 @@ func NewCmdApply() *cobra.Command {
 					"batch/v1/CronJob",
 					"networking.k8s.io/v1/Ingress",
 				}
-				o, err := flags.ToOptions(cmd, "app2kube", args)
+				o, err := flags.ToOptions(kubeFactory, cmd, "app2kube", args)
 				cmdutil.CheckErr(err)
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 				cmdutil.CheckErr(err)
@@ -56,7 +56,7 @@ func NewCmdApply() *cobra.Command {
 					o.Selector = getSelector(app.Labels)
 				}
 
-				cmdutil.CheckErr(o.Validate(cmd, args))
+				cmdutil.CheckErr(o.Validate())
 
 				fake := fakeio.StdinBytes([]byte{})
 				defer fake.Restore()

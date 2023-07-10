@@ -17,6 +17,7 @@ import (
 	"github.com/docker/cli/opts"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
+	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
 	"github.com/docker/docker/pkg/idtools"
@@ -110,12 +111,12 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	authConfigs := make(map[string]types.AuthConfig, len(creds))
+	authConfigs := make(map[string]registrytypes.AuthConfig, len(creds))
 	for k, auth := range creds {
-		authConfigs[k] = types.AuthConfig(auth)
+		authConfigs[k] = registrytypes.AuthConfig(auth)
 	}
 
-	var registryAuth types.AuthConfig
+	var registryAuth registrytypes.AuthConfig
 	var password string
 
 	username := *kubeConfigFlags.AuthInfoName
@@ -139,18 +140,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	if username != "" && password != "" {
-		registryAuth = types.AuthConfig{
+		registryAuth = registrytypes.AuthConfig{
 			Username:      username,
 			Password:      password,
 			ServerAddress: info.Index.Name,
 		}
-		authConfigs[info.Index.Name] = types.AuthConfig(registryAuth)
+		authConfigs[info.Index.Name] = registrytypes.AuthConfig(registryAuth)
 	} else {
 		authConfigKey := registry.GetAuthConfigKey(info.Index)
 
 		auth, err := configFile.GetAuthConfig(authConfigKey)
 		if err == nil {
-			registryAuth = types.AuthConfig(auth)
+			registryAuth = registrytypes.AuthConfig(auth)
 		}
 	}
 
@@ -261,7 +262,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func encodeAuthToBase64(authConfig types.AuthConfig) string {
+func encodeAuthToBase64(authConfig registrytypes.AuthConfig) string {
 	buf, _ := json.Marshal(authConfig)
 	return base64.URLEncoding.EncodeToString(buf)
 }

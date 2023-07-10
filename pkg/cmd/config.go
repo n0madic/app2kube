@@ -45,8 +45,14 @@ func NewCmdConfig() *cobra.Command {
 			}
 			sort.Strings(keys)
 
+			exportFlag, _ := cmd.Flags().GetBool("export")
+			prefix := ""
+			if exportFlag {
+				prefix = "export "
+			}
+
 			for _, key := range keys {
-				fmt.Println(key + "=" + cfg[key])
+				fmt.Println(prefix + key + "=" + cfg[key])
 			}
 			return nil
 		},
@@ -132,6 +138,9 @@ func NewCmdConfig() *cobra.Command {
 			cmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
 			cmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
 		} else {
+			if cmd.Use == "dotenv" {
+				cmd.Flags().BoolP("export", "e", false, "Print export statements")
+			}
 			addAppFlags(cmd)
 			cmd.Flags().MarkHidden("include-namespace")
 			cmd.Flags().MarkHidden("snapshot")

@@ -12,7 +12,7 @@ RUN go mod download
 
 ADD . .
 
-RUN go install -ldflags="-s -w"
+RUN go install -tags osusergo,netgo -ldflags="-s -w -extldflags=-static"
 
 
 FROM alpine

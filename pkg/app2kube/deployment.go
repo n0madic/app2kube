@@ -13,7 +13,7 @@ import (
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
 		replicas := app.Deployment.ReplicaCount
-		if replicas < 1 || app.Staging != "" {
+		if replicas < 1 {
 			replicas = 1
 		}
 

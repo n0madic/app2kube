@@ -87,6 +87,7 @@ type App struct {
 		Containers           map[string]apiv1.Container `yaml:"containers"`
 		InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
 		ReplicaCount         int32                      `yaml:"replicaCount"`
+		ReplicaCountStaging  int32                      `yaml:"replicaCountStaging"`
 		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
 		Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
 	} `yaml:"deployment"`
@@ -227,6 +228,12 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		app.Deployment.RevisionHistoryLimit = 0
 		app.Staging = strings.ToLower(app.Staging)
 		app.Branch = strings.ToLower(app.Branch)
+
+		if app.Deployment.ReplicaCountStaging > 0 {
+			app.Deployment.ReplicaCount = app.Deployment.ReplicaCountStaging
+		} else {
+			app.Deployment.ReplicaCount = 1
+		}
 
 		app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging)
 		if app.Branch != "" {

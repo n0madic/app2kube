@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -46,13 +47,14 @@ func NewCmdConfig() *cobra.Command {
 			sort.Strings(keys)
 
 			exportFlag, _ := cmd.Flags().GetBool("export")
-			prefix := ""
-			if exportFlag {
-				prefix = "export "
-			}
 
 			for _, key := range keys {
-				fmt.Println(prefix + key + "=" + cfg[key])
+				// escaping single quotes
+				value := strings.ReplaceAll(cfg[key], "'", "'\"'\"'")
+				if exportFlag {
+					key = "export " + key
+				}
+				fmt.Printf("%s='%s'\n", key, value)
 			}
 			return nil
 		},

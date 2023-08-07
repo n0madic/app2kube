@@ -25,11 +25,11 @@ require (
 	github.com/spf13/cobra v1.7.0
 	github.com/werf/kubedog v0.9.12
 	gotest.tools/v3 v3.5.0 // indirect
-	k8s.io/api v0.27.3
-	k8s.io/apimachinery v0.27.3
-	k8s.io/cli-runtime v0.27.3
-	k8s.io/client-go v0.27.3
+	k8s.io/api v0.27.4
+	k8s.io/apimachinery v0.27.4
+	k8s.io/cli-runtime v0.27.4
+	k8s.io/client-go v0.27.4
 	k8s.io/helm v2.17.0+incompatible
-	k8s.io/kubectl v0.27.3
-	k8s.io/utils v0.0.0-20230505201702-9f6742963106
+	k8s.io/kubectl v0.27.4
+	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
 )

@@ -36,7 +36,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				}
 			}
 
-			newIngress.Annotations["kubernetes.io/ingress.class"] = ing.Class
+			newIngress.Spec.IngressClassName = &ing.Class
 			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt {
 				newIngress.Annotations["kubernetes.io/tls-acme"] = "true"
 			}

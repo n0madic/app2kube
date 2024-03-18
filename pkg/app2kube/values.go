@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"html/template"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -78,7 +78,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 		var bytes []byte
 		var err error
 		if strings.TrimSpace(filePath) == "-" {
-			bytes, err = ioutil.ReadAll(os.Stdin)
+			bytes, err = io.ReadAll(os.Stdin)
 		} else {
 			bytes, err = readFile(filePath)
 		}
@@ -117,7 +117,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	// User specified a value via --set-file
 	for _, value := range fileValues {
 		reader := func(rs []rune) (interface{}, error) {
-			bytes, err := ioutil.ReadFile(string(rs))
+			bytes, err := os.ReadFile(string(rs))
 			return string(bytes), err
 		}
 		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
@@ -150,7 +150,7 @@ func readFile(filePath string) ([]byte, error) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode == http.StatusOK {
-			bytes, err = ioutil.ReadAll(resp.Body)
+			bytes, err = io.ReadAll(resp.Body)
 			if err != nil {
 				return nil, err
 			}
@@ -163,7 +163,7 @@ func readFile(filePath string) ([]byte, error) {
 			}
 		}
 	} else {
-		bytes, err = ioutil.ReadFile(filePath)
+		bytes, err = os.ReadFile(filePath)
 		if err != nil {
 			if allowMissing {
 				fmt.Fprintf(os.Stderr, "WARNING: value file missing: %s\n", err)

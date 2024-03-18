@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -126,7 +125,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	if username != "" {
 		if flagPassStdin {
-			bytes, err := ioutil.ReadAll(os.Stdin)
+			bytes, err := io.ReadAll(os.Stdin)
 			if err != nil {
 				return err
 			}

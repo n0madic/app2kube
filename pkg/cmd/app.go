@@ -3,7 +3,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
@@ -76,7 +75,7 @@ func initApp() (*app2kube.App, error) {
 		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",
 			rootCmd.Version,
 			time.Now().Format("2006-01-02 15:04:05 MST"))
-		err := ioutil.WriteFile(snapshot, []byte(header+string(rawVals)), 0660)
+		err := os.WriteFile(snapshot, []byte(header+string(rawVals)), 0660)
 		if err != nil {
 			return nil, err
 		}

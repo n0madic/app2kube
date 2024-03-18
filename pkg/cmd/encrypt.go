@@ -3,7 +3,6 @@ package cmd
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -14,32 +13,15 @@ import (
 
 var encryptString string
 
-// NewCmdEncrypt return encrypt command
-func NewCmdEncrypt() *cobra.Command {
-	encryptCmd := &cobra.Command{
-		Deprecated: "Use app2kube config encrypt",
-		Use:        "encrypt",
-		Short:      "Encrypt secret values in YAML file",
-		Long:       "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
-		RunE:       encrypt,
-	}
-	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
-	encryptCmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
-	return encryptCmd
-}
-
 func encrypt(cmd *cobra.Command, args []string) error {
-	password, err := app2kube.GetPassword()
-	if err != nil {
-		return err
-	}
+	app := app2kube.NewApp()
 
 	if encryptString != "" {
-		encrypted, err := app2kube.EncryptAES(password, encryptString)
+		encrypted, err := app.EncryptSecret(encryptString)
 		if err != nil {
 			return err
 		}
-		fmt.Println(app2kube.CryptPrefix + encrypted)
+		fmt.Println(encrypted)
 	} else if len(valueFiles) == 0 {
 		return fmt.Errorf("need to specify yaml files")
 	}
@@ -77,12 +59,12 @@ func encrypt(cmd *cobra.Command, args []string) error {
 								value = stripped
 							}
 							// encrypt value
-							if !strings.HasPrefix(value, app2kube.CryptPrefix) {
-								encrypted, err := app2kube.EncryptAES(password, value)
+							if !app2kube.IsEncrypted(value) {
+								encrypted, err := app.EncryptSecret(value)
 								if err != nil {
 									return err
 								}
-								value = app2kube.CryptPrefix + encrypted
+								value = encrypted
 								modified = true
 							}
 							newYAML += fmt.Sprintf("%s: %s\n", v[0], value)
@@ -104,7 +86,7 @@ func encrypt(cmd *cobra.Command, args []string) error {
 		}
 
 		if modified {
-			err = ioutil.WriteFile(filePath, []byte(newYAML), 0640)
+			err = os.WriteFile(filePath, []byte(newYAML), 0640)
 			if err != nil {
 				return fmt.Errorf("file write error: %v", err)
 			}

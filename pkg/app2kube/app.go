@@ -3,6 +3,7 @@ package app2kube
 import (
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"unicode"
 
@@ -48,8 +49,11 @@ type Service struct {
 
 // App instance
 type App struct {
-	Branch string `yaml:"branch"`
-	Common struct {
+	aesPassword   string
+	rsaPublicKey  string
+	rsaPrivateKey string
+	Branch        string `yaml:"branch"`
+	Common        struct {
 		CronjobSuspend     bool            `yaml:"cronjobSuspend"`
 		DNSPolicy          apiv1.DNSPolicy `yaml:"dnsPolicy"`
 		EnableServiceLinks bool            `yaml:"enableServiceLinks"`
@@ -266,6 +270,10 @@ func NewApp() *App {
 	}
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
+	// Read passwords and keys from environment variables
+	app.aesPassword = os.Getenv("APP2KUBE_PASSWORD")
+	app.rsaPublicKey = os.Getenv("APP2KUBE_ENCRYPT_KEY")
+	app.rsaPrivateKey = os.Getenv("APP2KUBE_DECRYPT_KEY")
 	return app
 }
 

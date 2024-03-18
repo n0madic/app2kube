@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 )
 
@@ -129,8 +130,25 @@ func NewCmdConfig() *cobra.Command {
 	configCmd.AddCommand(&cobra.Command{
 		Use:   "encrypt",
 		Short: "Encrypt secret values",
-		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.",
+		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.\nSet the APP2KUBE_PASSWORD environment variable to encrypt with AES.\nSet the APP2KUBE_ENCRYPT_KEY environment variable to encrypt with RSA.\nUse the `config generate-keys` command to generate RSA keys.\nRSA has priority over AES if both keys are specified.",
 		RunE:  encrypt,
+	})
+
+	configCmd.AddCommand(&cobra.Command{
+		Use:   "generate-keys",
+		Short: "Generate RSA keys",
+		Long:  "Generates RSA-2048 encrypt and decrypt keys",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			publicKey, privateKey, err := app2kube.GenerateRSAKeys(2048)
+			if err != nil {
+				return err
+			}
+			fmt.Println("export APP2KUBE_ENCRYPT_KEY=" + publicKey)
+			fmt.Println()
+			fmt.Println("export APP2KUBE_DECRYPT_KEY=" + privateKey)
+			fmt.Println()
+			return nil
+		},
 	})
 
 	for _, cmd := range configCmd.Commands() {

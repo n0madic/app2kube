@@ -7,7 +7,7 @@ import (
 	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	utilpointer "k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 )
 
 // GetCronJobs resource
@@ -68,17 +68,17 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
 				ConcurrencyPolicy:          job.ConcurrencyPolicy,
-				FailedJobsHistoryLimit:     utilpointer.Int32(job.FailedJobsHistoryLimit),
+				FailedJobsHistoryLimit:     ptr.To(job.FailedJobsHistoryLimit),
 				Schedule:                   job.Schedule,
-				SuccessfulJobsHistoryLimit: utilpointer.Int32(job.SuccessfulJobsHistoryLimit),
-				Suspend:                    utilpointer.Bool(job.Suspend),
+				SuccessfulJobsHistoryLimit: ptr.To(job.SuccessfulJobsHistoryLimit),
+				Suspend:                    ptr.To(job.Suspend),
 				JobTemplate: batch.JobTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: app.Labels,
 					},
 					Spec: batch.JobSpec{
-						ActiveDeadlineSeconds: utilpointer.Int64(job.ActiveDeadlineSeconds),
-						BackoffLimit:          utilpointer.Int32(job.BackoffLimit),
+						ActiveDeadlineSeconds: ptr.To(job.ActiveDeadlineSeconds),
+						BackoffLimit:          ptr.To(job.BackoffLimit),
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								Affinity:                     affinity,
@@ -97,7 +97,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 
 		if app.Common.CronjobSuspend {
-			cron.Spec.Suspend = utilpointer.Bool(true)
+			cron.Spec.Suspend = ptr.To(true)
 		}
 
 		if app.Common.Image.PullSecrets != "" {
@@ -107,7 +107,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 
 		if app.Common.GracePeriod > 0 {
-			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = utilpointer.Int64(app.Common.GracePeriod)
+			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(app.Common.GracePeriod)
 		}
 
 		if app.Common.SharedData != "" && len(cron.Spec.JobTemplate.Spec.Template.Spec.Containers) > 1 {

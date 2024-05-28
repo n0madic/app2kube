@@ -113,9 +113,22 @@ func EncryptRSA(publicKey string, plaintext string) (string, error) {
 		return "", err
 	}
 
-	encryptedBytes, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, pubKey.(*rsa.PublicKey), []byte(plaintext), nil)
-	if err != nil {
-		return "", err
+	msg := []byte(plaintext)
+	msgLen := len(msg)
+	hash := sha256.New()
+	public := pubKey.(*rsa.PublicKey)
+	step := public.Size() - 2*hash.Size() - 2
+	var encryptedBytes []byte
+	for start := 0; start < msgLen; start += step {
+		finish := start + step
+		if finish > msgLen {
+			finish = msgLen
+		}
+		encryptedBlockBytes, err := rsa.EncryptOAEP(hash, rand.Reader, public, msg[start:finish], nil)
+		if err != nil {
+			return "", err
+		}
+		encryptedBytes = append(encryptedBytes, encryptedBlockBytes...)
 	}
 
 	return base64.StdEncoding.EncodeToString(encryptedBytes), nil
@@ -137,9 +150,20 @@ func DecryptRSA(privateKey string, crypt64 string) (string, error) {
 		return "", err
 	}
 
-	decryptedBytes, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, privKey, crypt, nil)
-	if err != nil {
-		return "", err
+	msgLen := len(crypt)
+	step := privKey.PublicKey.Size()
+	hash := sha256.New()
+	var decryptedBytes []byte
+	for start := 0; start < msgLen; start += step {
+		finish := start + step
+		if finish > msgLen {
+			finish = msgLen
+		}
+		decryptedBlockBytes, err := rsa.DecryptOAEP(hash, rand.Reader, privKey, crypt[start:finish], nil)
+		if err != nil {
+			return "", err
+		}
+		decryptedBytes = append(decryptedBytes, decryptedBlockBytes...)
 	}
 
 	return string(decryptedBytes), nil

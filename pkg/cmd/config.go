@@ -120,8 +120,9 @@ func NewCmdConfig() *cobra.Command {
 			}
 			sort.Strings(keys)
 
+			fmt.Println("secrets:")
 			for _, key := range keys {
-				fmt.Println(key + ": " + cfg[key])
+				fmt.Println("  " + key + ": " + cfg[key])
 			}
 			return nil
 		},

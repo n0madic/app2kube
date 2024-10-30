@@ -52,8 +52,14 @@ func NewCmdConfig() *cobra.Command {
 				prefix = "export "
 			}
 
+			quoteFlag, _ := cmd.Flags().GetBool("quotes")
+			quote := ""
+			if quoteFlag {
+				quote = "\""
+			}
+
 			for _, key := range keys {
-				fmt.Println(prefix + key + "=" + cfg[key])
+				fmt.Println(prefix + key + "=" + quote + cfg[key] + quote)
 			}
 			return nil
 		},
@@ -159,6 +165,7 @@ func NewCmdConfig() *cobra.Command {
 		} else {
 			if cmd.Use == "dotenv" {
 				cmd.Flags().BoolP("export", "e", false, "Print export statements")
+				cmd.Flags().BoolP("quotes", "q", false, "Print quotes around values")
 			}
 			addAppFlags(cmd)
 			cmd.Flags().MarkHidden("include-namespace")

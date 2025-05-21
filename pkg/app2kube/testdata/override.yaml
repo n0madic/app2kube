@@ -1,0 +1,4 @@
+deployment:
+  containers:
+    app:
+      image: "example/app:v2"

@@ -1,0 +1,5 @@
+name: example
+deployment:
+  containers:
+    app:
+      image: "example/app:v1"

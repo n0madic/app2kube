@@ -115,15 +115,15 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	}
 
 	// User specified a value via --set-file
-	for _, value := range fileValues {
-		reader := func(rs []rune) (interface{}, error) {
-			bytes, err := os.ReadFile(string(rs))
-			return string(bytes), err
-		}
-		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
-			return []byte{}, fmt.Errorf("failed parsing --set-file data: %s", err)
-		}
-	}
+        for _, value := range fileValues {
+                reader := func(rs []rune) (interface{}, error) {
+                        bytes, err := os.ReadFile(string(rs))
+                        return strings.TrimSpace(string(bytes)), err
+                }
+                if err := strvals.ParseIntoFile(value, base, reader); err != nil {
+                        return []byte{}, fmt.Errorf("failed parsing --set-file data: %s", err)
+                }
+        }
 
 	return yaml.Marshal(base)
 }

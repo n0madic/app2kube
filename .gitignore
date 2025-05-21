@@ -12,6 +12,8 @@
 *.out
 
 *.bak
+!pkg/app2kube/testdata/*.yaml
+!.github/workflows/test.yml
 *.yaml
 *.yml
 

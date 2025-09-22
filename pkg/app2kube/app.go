@@ -85,6 +85,7 @@ type App struct {
 		Schedule                   string                     `yaml:"schedule"`
 		SuccessfulJobsHistoryLimit int32                      `yaml:"successfulJobsHistoryLimit"`
 		Suspend                    bool                       `yaml:"suspend"`
+		TimeZone                   string                     `yaml:"timeZone"`
 	} `yaml:"cronjob"`
 	Deployment struct {
 		BlueGreenColor       string                     `yaml:"blueGreenColor"`

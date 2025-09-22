@@ -96,6 +96,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			},
 		}
 
+		if job.TimeZone != "" {
+			cron.Spec.TimeZone = ptr.To(job.TimeZone)
+		}
+
 		if app.Common.CronjobSuspend {
 			cron.Spec.Suspend = ptr.To(true)
 		}

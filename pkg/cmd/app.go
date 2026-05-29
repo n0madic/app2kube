@@ -33,8 +33,12 @@ func initApp() (*app2kube.App, error) {
 		}, nil
 	}
 
-	if _, err := os.Stat(defaultFile); !os.IsNotExist(err) {
-		valueFiles.Set(defaultFile)
+	// The default file is always used as a base when present in the current
+	// directory; values from -f/--set extend and override it, so it must come
+	// first. A non-NotExist Stat error (e.g. permission denied) must not be
+	// treated as "present".
+	if _, err := os.Stat(defaultFile); err == nil {
+		valueFiles = append(app2kube.ValueFiles{defaultFile}, valueFiles...)
 	}
 
 	if len(valueFiles)+len(values)+len(stringValues)+len(fileValues) == 0 {

@@ -105,19 +105,23 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 
 			foundHost := false
 			for i, rule := range newIngress.Spec.Rules {
+				// Only append the path to the rule that serves this host, not to
+				// every existing rule (which would corrupt other hosts/aliases
+				// sharing the same ingress object).
 				if rule.Host == ing.Host {
 					foundHost = true
+					newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths = append(
+						newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths,
+						ingressPath,
+					)
 				}
-				newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths = append(
-					newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths,
-					ingressPath,
-				)
 			}
 
 			if !foundHost {
 				newIngress.Spec.Rules = append(newIngress.Spec.Rules, ingressRule)
 			}
 
+			tlsIndex := -1
 			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
 				newIngress.Annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(app.Common.Ingress.SslRedirect || ing.SslRedirect)
 				if ing.TLSSecretName == "" {
@@ -127,6 +131,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 					Hosts:      []string{ing.Host},
 					SecretName: strings.ToLower(ing.TLSSecretName),
 				})
+				tlsIndex = len(newIngress.Spec.TLS) - 1
 			}
 
 			if app.Staging == "" {
@@ -139,8 +144,10 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 							},
 						},
 					})
-					if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
-						newIngress.Spec.TLS[0].Hosts = append(newIngress.Spec.TLS[0].Hosts, alias)
+					// Attach aliases to the TLS entry created for this host above,
+					// not to a hardcoded TLS[0] that may belong to another host.
+					if tlsIndex >= 0 {
+						newIngress.Spec.TLS[tlsIndex].Hosts = append(newIngress.Spec.TLS[tlsIndex].Hosts, alias)
 					}
 				}
 			}
@@ -157,7 +164,11 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ingress := range app.Ingress {
-			if app.Common.Ingress.Letsencrypt || ingress.Letsencrypt || (ingress.TLSCrt != "" && ingress.TLSKey != "") {
+			// Only emit a TLS Secret when actual certificate material is
+			// provided. With letsencrypt (or an externally referenced
+			// TLSSecretName) the Secret is managed by cert-manager; emitting an
+			// empty kubernetes.io/tls Secret here would be rejected as invalid.
+			if ingress.TLSCrt != "" && ingress.TLSKey != "" {
 				if ingress.TLSSecretName == "" {
 					ingress.TLSSecretName = "tls-" + strings.Replace(ingress.Host, "*", "wildcard", 1)
 				}

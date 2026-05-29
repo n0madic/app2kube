@@ -1,0 +1,319 @@
+package app2kube
+
+import (
+	"encoding/base64"
+	"testing"
+
+	"github.com/ghodss/yaml"
+	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
+)
+
+func mustUnmarshalApp(t *testing.T, y string) *App {
+	t.Helper()
+	app := NewApp()
+	if err := yaml.Unmarshal([]byte(y), app); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	return app
+}
+
+// Regression: a cronjob with multiple named containers (the `containers:` map,
+// mirroring deployment) was silently dropped because the field shared the
+// `container` yaml tag with the single-container field.
+func TestCronjobMultipleContainers(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    containers:
+      one:
+        image: example/one:v1
+      two:
+        image: example/two:v1
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if len(crons) != 1 {
+		t.Fatalf("expected 1 cronjob, got %d", len(crons))
+	}
+	containers := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+}
+
+// Regression: zero values for cronjob limits must be honored (e.g. backoffLimit:0
+// to disable retries) instead of being treated as "unset" and overridden.
+func TestCronjobZeroLimitsHonored(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    backoffLimit: 0
+    failedJobsHistoryLimit: 0
+    successfulJobsHistoryLimit: 0
+    activeDeadlineSeconds: 0
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	spec := crons[0].Spec
+	if got := *spec.JobTemplate.Spec.BackoffLimit; got != 0 {
+		t.Errorf("BackoffLimit: expected 0, got %d", got)
+	}
+	if got := *spec.FailedJobsHistoryLimit; got != 0 {
+		t.Errorf("FailedJobsHistoryLimit: expected 0, got %d", got)
+	}
+	if got := *spec.SuccessfulJobsHistoryLimit; got != 0 {
+		t.Errorf("SuccessfulJobsHistoryLimit: expected 0, got %d", got)
+	}
+	if got := *spec.JobTemplate.Spec.ActiveDeadlineSeconds; got != 0 {
+		t.Errorf("ActiveDeadlineSeconds: expected 0, got %d", got)
+	}
+}
+
+// Defaults must still apply when limits are omitted entirely.
+func TestCronjobDefaultLimits(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	spec := crons[0].Spec
+	if got := *spec.JobTemplate.Spec.BackoffLimit; got != 6 {
+		t.Errorf("BackoffLimit default: expected 6, got %d", got)
+	}
+	if got := *spec.FailedJobsHistoryLimit; got != 2 {
+		t.Errorf("FailedJobsHistoryLimit default: expected 2, got %d", got)
+	}
+	if got := *spec.JobTemplate.Spec.ActiveDeadlineSeconds; got != 86400 {
+		t.Errorf("ActiveDeadlineSeconds default: expected 86400, got %d", got)
+	}
+}
+
+// Regression: malformed AES ciphertext must return an error, not panic.
+func TestDecryptAESMalformed(t *testing.T) {
+	cases := []string{
+		base64.StdEncoding.EncodeToString([]byte("short")),                 // shorter than IV
+		base64.StdEncoding.EncodeToString(make([]byte, 16)),                // only IV, no data
+		base64.StdEncoding.EncodeToString(make([]byte, 20)),                // not block-aligned
+		base64.StdEncoding.EncodeToString(make([]byte, 32)),                // zero block -> invalid padding
+		"not-base64-!!!",                                                   // invalid base64
+	}
+	for _, c := range cases {
+		if _, err := DecryptAES("password", c); err == nil {
+			t.Errorf("expected error for malformed ciphertext %q", c)
+		}
+	}
+}
+
+// AES round-trip must still succeed after adding padding validation.
+func TestDecryptAESRoundTrip(t *testing.T) {
+	enc, err := EncryptAES("password", "topsecret")
+	if err != nil {
+		t.Fatalf("EncryptAES: %v", err)
+	}
+	dec, err := DecryptAES("password", enc)
+	if err != nil {
+		t.Fatalf("DecryptAES: %v", err)
+	}
+	if dec != "topsecret" {
+		t.Errorf("expected 'topsecret', got %q", dec)
+	}
+}
+
+// Regression: an image whose repository contains a registry port (or a digest)
+// must be recognized as the app's own image so env/secrets are injected.
+func TestProcessContainerRegistryPort(t *testing.T) {
+	app := NewApp()
+	app.Common.Image.Repository = "registry.io:5000/app"
+	app.Common.Image.Tag = "v2"
+	app.Env = map[string]string{"FOO": "bar"}
+
+	cases := []struct {
+		name      string
+		image     string
+		wantImage string
+		wantEnv   bool
+	}{
+		{"registry port + tag", "registry.io:5000/app:v1", "registry.io:5000/app:v2", true},
+		{"registry port + digest", "registry.io:5000/app@sha256:" + zeros(64), "registry.io:5000/app:v2", true},
+		{"bare repository", "registry.io:5000/app", "registry.io:5000/app:v2", true},
+		{"third party image", "other.io/lib:1.0", "other.io/lib:1.0", false},
+		{"prefix collision is not a match", "registry.io:5000/app-extra:v1", "registry.io:5000/app-extra:v1", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &apiv1.Container{Name: "app", Image: tc.image}
+			if err := app.processContainer(c); err != nil {
+				t.Fatalf("processContainer: %v", err)
+			}
+			if c.Image != tc.wantImage {
+				t.Errorf("image: expected %q, got %q", tc.wantImage, c.Image)
+			}
+			hasEnv := len(c.Env) > 0
+			if hasEnv != tc.wantEnv {
+				t.Errorf("env injected=%v, want %v", hasEnv, tc.wantEnv)
+			}
+		})
+	}
+}
+
+// Regression: a named (string) probe port must not be overwritten by the
+// numeric container port; an unset numeric port must still be filled.
+func TestProbeNamedPortPreserved(t *testing.T) {
+	app := NewApp()
+
+	named := &apiv1.Container{
+		Name:  "app",
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
+		LivenessProbe: &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{
+			HTTPGet: &apiv1.HTTPGetAction{Port: intstr.FromString("http")},
+		}},
+	}
+	if err := app.processContainer(named); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if got := named.LivenessProbe.HTTPGet.Port; got.StrVal != "http" {
+		t.Errorf("named probe port overwritten: %+v", got)
+	}
+
+	unset := &apiv1.Container{
+		Name:  "app",
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
+		LivenessProbe: &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{
+			HTTPGet: &apiv1.HTTPGetAction{},
+		}},
+	}
+	if err := app.processContainer(unset); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if got := unset.LivenessProbe.HTTPGet.Port.IntVal; got != 8080 {
+		t.Errorf("unset probe port not filled: got %d, want 8080", got)
+	}
+}
+
+// Regression: NodePort must only be pinned when ExternalPort is a valid node
+// port; otherwise it is left for the apiserver to auto-assign.
+func TestServiceNodePortRange(t *testing.T) {
+	newApp := func() *App {
+		app := NewApp()
+		app.Name = "example"
+		app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
+		return app
+	}
+
+	app := newApp()
+	app.Service = map[string]Service{"web": {Port: 80, Type: apiv1.ServiceTypeNodePort}}
+	svcs, err := app.GetServices()
+	if err != nil {
+		t.Fatalf("GetServices: %v", err)
+	}
+	if got := svcs[0].Spec.Ports[0].NodePort; got != 0 {
+		t.Errorf("NodePort for port 80: expected unset (0), got %d", got)
+	}
+
+	app = newApp()
+	app.Service = map[string]Service{"web": {Port: 80, ExternalPort: 30080, Type: apiv1.ServiceTypeNodePort}}
+	svcs, err = app.GetServices()
+	if err != nil {
+		t.Fatalf("GetServices: %v", err)
+	}
+	if got := svcs[0].Spec.Ports[0].NodePort; got != 30080 {
+		t.Errorf("NodePort for valid 30080: expected 30080, got %d", got)
+	}
+}
+
+func ingressTestApp() *App {
+	app := NewApp()
+	app.Name = "example"
+	app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
+	app.Service = map[string]Service{"web": {Port: 80}}
+	return app
+}
+
+// Regression: a TLS Secret must only be emitted when certificate material is
+// actually provided. With letsencrypt the Secret is managed by cert-manager and
+// emitting an empty kubernetes.io/tls Secret would be invalid.
+func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}},
+		{Host: "cert.example.com", TLSCrt: "CRT", TLSKey: "KEY"},
+	}
+	secrets := app.GetIngressSecrets()
+	if len(secrets) != 1 {
+		t.Fatalf("expected 1 TLS secret (only the one with crt/key), got %d", len(secrets))
+	}
+	if string(secrets[0].Data["tls.crt"]) != "CRT" || string(secrets[0].Data["tls.key"]) != "KEY" {
+		t.Errorf("unexpected TLS secret data: %v", secrets[0].Data)
+	}
+}
+
+// Regression: when the same host is described by multiple ingress entries, paths
+// must accumulate on that host's rule only, and aliases must attach to the TLS
+// entry created in their own iteration (not a hardcoded TLS[0]).
+func TestIngressPathsAndAliasTLS(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "example.com", Path: "/a", TLSCrt: "C", TLSKey: "K"},
+		{Host: "example.com", Path: "/b", TLSCrt: "C", TLSKey: "K", Aliases: []string{"www.example.com"}},
+	}
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings) != 1 {
+		t.Fatalf("expected 1 ingress, got %d", len(ings))
+	}
+	ing := ings[0]
+
+	var hostPaths int
+	for _, r := range ing.Spec.Rules {
+		if r.Host == "example.com" {
+			hostPaths = len(r.IngressRuleValue.HTTP.Paths)
+		}
+	}
+	if hostPaths != 2 {
+		t.Errorf("expected 2 paths on example.com rule, got %d", hostPaths)
+	}
+
+	aliasFound := false
+	for _, tls := range ing.Spec.TLS {
+		for _, h := range tls.Hosts {
+			if h == "www.example.com" {
+				aliasFound = true
+			}
+		}
+	}
+	if !aliasFound {
+		t.Errorf("alias www.example.com not attached to any TLS entry: %+v", ing.Spec.TLS)
+	}
+}
+
+func zeros(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = '0'
+	}
+	return string(b)
+}

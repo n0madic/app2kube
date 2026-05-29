@@ -19,20 +19,20 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			return crons, fmt.Errorf("schedule required for cron: %s", cronName)
 		}
 
-		if job.FailedJobsHistoryLimit == 0 {
-			job.FailedJobsHistoryLimit = 2
+		if job.FailedJobsHistoryLimit == nil {
+			job.FailedJobsHistoryLimit = ptr.To(int32(2))
 		}
 
-		if job.SuccessfulJobsHistoryLimit == 0 {
-			job.SuccessfulJobsHistoryLimit = 2
+		if job.SuccessfulJobsHistoryLimit == nil {
+			job.SuccessfulJobsHistoryLimit = ptr.To(int32(2))
 		}
 
-		if job.ActiveDeadlineSeconds == 0 {
-			job.ActiveDeadlineSeconds = 86400 // 1 day
+		if job.ActiveDeadlineSeconds == nil {
+			job.ActiveDeadlineSeconds = ptr.To(int64(86400)) // 1 day
 		}
 
-		if job.BackoffLimit == 0 {
-			job.BackoffLimit = 6
+		if job.BackoffLimit == nil {
+			job.BackoffLimit = ptr.To(int32(6))
 		}
 
 		var containers []apiv1.Container
@@ -68,17 +68,17 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
 				ConcurrencyPolicy:          job.ConcurrencyPolicy,
-				FailedJobsHistoryLimit:     ptr.To(job.FailedJobsHistoryLimit),
+				FailedJobsHistoryLimit:     job.FailedJobsHistoryLimit,
 				Schedule:                   job.Schedule,
-				SuccessfulJobsHistoryLimit: ptr.To(job.SuccessfulJobsHistoryLimit),
+				SuccessfulJobsHistoryLimit: job.SuccessfulJobsHistoryLimit,
 				Suspend:                    ptr.To(job.Suspend),
 				JobTemplate: batch.JobTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels: app.Labels,
 					},
 					Spec: batch.JobSpec{
-						ActiveDeadlineSeconds: ptr.To(job.ActiveDeadlineSeconds),
-						BackoffLimit:          ptr.To(job.BackoffLimit),
+						ActiveDeadlineSeconds: job.ActiveDeadlineSeconds,
+						BackoffLimit:          job.BackoffLimit,
 						Template: apiv1.PodTemplateSpec{
 							Spec: apiv1.PodSpec{
 								Affinity:                     affinity,

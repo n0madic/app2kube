@@ -21,9 +21,15 @@ func (app *App) processContainer(container *apiv1.Container) error {
 
 	thirdpartyImage := false
 	if app.Common.Image.Repository != "" {
-		imageParts := strings.Split(container.Image, ":")
-		if len(imageParts) == 2 && imageParts[0] == app.Common.Image.Repository {
-			container.Image = imageParts[0] + ":" + app.Common.Image.Tag
+		repo := app.Common.Image.Repository
+		// The image belongs to the app when it is exactly the repository or the
+		// repository followed by a tag (":") or a digest ("@"). Splitting on ":"
+		// would misclassify repositories that contain a registry port (e.g.
+		// registry.io:5000/app) or digests (repo@sha256:...) as third-party.
+		if container.Image == repo ||
+			strings.HasPrefix(container.Image, repo+":") ||
+			strings.HasPrefix(container.Image, repo+"@") {
+			container.Image = repo + ":" + app.Common.Image.Tag
 		} else {
 			thirdpartyImage = true
 		}
@@ -110,17 +116,17 @@ func (app *App) processContainer(container *apiv1.Container) error {
 				}
 			} else {
 				// Add missing port to LivenessProbe
-				if !reflect.ValueOf(container.LivenessProbe.TCPSocket).IsNil() && container.LivenessProbe.TCPSocket.Port.IntVal == 0 {
+				if !reflect.ValueOf(container.LivenessProbe.TCPSocket).IsNil() && portIsUnset(container.LivenessProbe.TCPSocket.Port) {
 					container.LivenessProbe.TCPSocket.Port = containerPort
 				}
-				if !reflect.ValueOf(container.LivenessProbe.HTTPGet).IsNil() && container.LivenessProbe.HTTPGet.Port.IntVal == 0 {
+				if !reflect.ValueOf(container.LivenessProbe.HTTPGet).IsNil() && portIsUnset(container.LivenessProbe.HTTPGet.Port) {
 					container.LivenessProbe.HTTPGet.Port = containerPort
 				}
 			}
 
 			// Add missing port to ReadinessProbe
 			if !reflect.ValueOf(container.ReadinessProbe).IsNil() && !reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() {
-				if container.ReadinessProbe.HTTPGet.Port.IntVal == 0 {
+				if portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
 					container.ReadinessProbe.HTTPGet.Port = containerPort
 				}
 			}
@@ -129,6 +135,13 @@ func (app *App) processContainer(container *apiv1.Container) error {
 	}
 
 	return nil
+}
+
+// portIsUnset reports whether an IntOrString probe port carries no value, i.e.
+// it is neither a numeric port nor a named (string) port. A named port has a
+// non-empty StrVal and must not be overwritten with the numeric container port.
+func portIsUnset(p intstr.IntOrString) bool {
+	return p.IntVal == 0 && p.StrVal == ""
 }
 
 func sortedKeys(m map[string]string) []string {

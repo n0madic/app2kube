@@ -30,19 +30,23 @@ func encrypt(cmd *cobra.Command, args []string) error {
 		var modified bool
 		var newYAML string
 
-		yamlFile, err := os.Open(filePath)
+		content, err := os.ReadFile(filePath)
 		if err != nil {
 			return fmt.Errorf("file open error: %v", err)
 		}
-		defer yamlFile.Close()
 
-		scanner := bufio.NewScanner(yamlFile)
+		scanner := bufio.NewScanner(strings.NewReader(string(content)))
 		for scanner.Scan() {
 			// found secrets section
 			if strings.TrimSpace(scanner.Text()) == "secrets:" {
 				newYAML += scanner.Text() + "\n"
 				// scan secrets
 				for scanner.Scan() {
+					// blank lines belong to the section, keep them and continue
+					if strings.TrimSpace(scanner.Text()) == "" {
+						newYAML += scanner.Text() + "\n"
+						continue
+					}
 					// skip template lines
 					if strings.HasPrefix(strings.TrimSpace(scanner.Text()), "{{") {
 						newYAML += scanner.Text() + "\n"

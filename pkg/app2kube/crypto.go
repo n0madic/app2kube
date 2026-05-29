@@ -74,13 +74,33 @@ func DecryptAES(password string, crypt64 string) (string, error) {
 		return "", err
 	}
 
-	iv := crypt[:aes.BlockSize]
-	crypt = crypt[aes.BlockSize:]
+	blockSize := block.BlockSize()
+	// Ciphertext must contain the IV plus at least one block of data and be
+	// block-aligned, otherwise CryptBlocks would panic on malformed input.
+	if len(crypt) < 2*blockSize || len(crypt)%blockSize != 0 {
+		return "", fmt.Errorf("invalid ciphertext length")
+	}
+
+	iv := crypt[:blockSize]
+	crypt = crypt[blockSize:]
 	decrypted := make([]byte, len(crypt))
 	mode := cipher.NewCBCDecrypter(block, iv)
 	mode.CryptBlocks(decrypted, crypt)
 
-	return string(decrypted[:len(decrypted)-int(decrypted[len(decrypted)-1])]), nil
+	// Validate and strip PKCS#7 padding. CBC provides no authentication, but
+	// verifying the padding rejects most corrupted/forged ciphertext instead
+	// of panicking on an out-of-range slice index.
+	padding := int(decrypted[len(decrypted)-1])
+	if padding == 0 || padding > blockSize || padding > len(decrypted) {
+		return "", fmt.Errorf("invalid padding")
+	}
+	for _, b := range decrypted[len(decrypted)-padding:] {
+		if int(b) != padding {
+			return "", fmt.Errorf("invalid padding")
+		}
+	}
+
+	return string(decrypted[:len(decrypted)-padding]), nil
 }
 
 // GenerateRSAKeys returns a base64 encoded public and private keys

@@ -1,0 +1,48 @@
+package cmd
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/n0madic/app2kube/pkg/app2kube"
+)
+
+// Regression: a blank line inside the secrets: block must not end the section;
+// secrets after it must still be encrypted instead of left in plaintext.
+func TestEncryptBlankLineInSecrets(t *testing.T) {
+	os.Setenv("APP2KUBE_PASSWORD", "pass")
+	defer os.Unsetenv("APP2KUBE_PASSWORD")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  a: one\n\n  b: two\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	valueFiles = app2kube.ValueFiles{file}
+	encryptString = ""
+	defer func() { valueFiles = nil }()
+
+	if err := encrypt(nil, nil); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	out, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+
+	if !strings.Contains(s, "a: AES#") {
+		t.Errorf("secret 'a' not encrypted:\n%s", s)
+	}
+	if !strings.Contains(s, "b: AES#") {
+		t.Errorf("secret 'b' after blank line not encrypted (plaintext leak):\n%s", s)
+	}
+	if !strings.Contains(s, "other: keep") {
+		t.Errorf("non-secret content not preserved:\n%s", s)
+	}
+}

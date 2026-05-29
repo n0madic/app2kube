@@ -46,7 +46,11 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 				},
 			}
 
-			if svc.Type == apiv1.ServiceTypeNodePort {
+			// Only pin a node port when the requested ExternalPort falls inside
+			// the default node-port range; otherwise leave it unset so the
+			// apiserver auto-assigns a valid port instead of rejecting the
+			// Service (e.g. ExternalPort=80 is not a valid node port).
+			if svc.Type == apiv1.ServiceTypeNodePort && svc.ExternalPort >= 30000 && svc.ExternalPort <= 32767 {
 				service.Spec.Ports[0].NodePort = svc.ExternalPort
 			}
 

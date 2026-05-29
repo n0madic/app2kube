@@ -180,10 +180,14 @@ func getCronJobsStatus(kcs *kubernetes.Clientset, namespace string, labels map[s
 		if cron.Status.LastScheduleTime != nil {
 			lastScheduleTime = cron.Status.LastScheduleTime.String()
 		}
+		suspend := false
+		if cron.Spec.Suspend != nil {
+			suspend = *cron.Spec.Suspend
+		}
 		table.AddRow(
 			cron.Name,
 			cron.Spec.Schedule,
-			*cron.Spec.Suspend,
+			suspend,
 			len(cron.Status.Active),
 			lastScheduleTime,
 			metatable.ConvertToHumanReadableDateType(cron.CreationTimestamp),

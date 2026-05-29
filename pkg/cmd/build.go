@@ -12,8 +12,9 @@ import (
 	"strings"
 
 	"github.com/distribution/reference"
+	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/image/build"
-	"github.com/docker/cli/cli/config"
+	"github.com/docker/cli/cli/flags"
 	"github.com/docker/cli/opts"
 	"github.com/moby/go-archive"
 	buildtypes "github.com/moby/moby/api/types/build"
@@ -84,10 +85,18 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	cmd.SilenceUsage = true
 
-	cli, err := client.NewClientWithOpts(client.WithAPIVersionNegotiation(), client.FromEnv)
+	// Use docker/cli to create the API client so that the active Docker
+	// context (and DOCKER_HOST) is respected, exactly like the docker CLI.
+	// A bare client.FromEnv only reads DOCKER_HOST and otherwise falls back
+	// to the default socket, ignoring contexts such as colima.
+	dockerCli, err := command.NewDockerCli()
 	if err != nil {
 		return err
 	}
+	if err := dockerCli.Initialize(flags.NewClientOptions()); err != nil {
+		return err
+	}
+	cli := dockerCli.Client()
 
 	named, err := reference.ParseNormalizedNamed(imageName)
 	if err != nil {
@@ -96,10 +105,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 
 	registryDomain := reference.Domain(named)
 
-	configFile, err := config.Load(config.Dir())
-	if err != nil {
-		return fmt.Errorf("error loading Docker config file: %v", err)
-	}
+	configFile := dockerCli.ConfigFile()
 
 	creds, err := configFile.GetAllCredentials()
 	if err != nil {

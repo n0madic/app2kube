@@ -11,18 +11,15 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/distribution/reference"
 	"github.com/docker/cli/cli/command/image/build"
 	"github.com/docker/cli/cli/config"
 	"github.com/docker/cli/opts"
-	"github.com/docker/distribution/reference"
-	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/api/types/image"
-	registrytypes "github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/client"
-	"github.com/docker/docker/pkg/archive"
-	"github.com/docker/docker/pkg/idtools"
-	"github.com/docker/docker/pkg/jsonmessage"
-	"github.com/docker/docker/registry"
+	"github.com/moby/go-archive"
+	buildtypes "github.com/moby/moby/api/types/build"
+	registrytypes "github.com/moby/moby/api/types/registry"
+	"github.com/moby/moby/client"
+	"github.com/moby/moby/client/pkg/jsonmessage"
 	"github.com/moby/term"
 	"github.com/spf13/cobra"
 )
@@ -97,10 +94,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	info, err := registry.ParseRepositoryInfo(named)
-	if err != nil {
-		return err
-	}
+	registryDomain := reference.Domain(named)
 
 	configFile, err := config.Load(config.Dir())
 	if err != nil {
@@ -143,13 +137,11 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		registryAuth = registrytypes.AuthConfig{
 			Username:      username,
 			Password:      password,
-			ServerAddress: info.Index.Name,
+			ServerAddress: registryDomain,
 		}
-		authConfigs[info.Index.Name] = registrytypes.AuthConfig(registryAuth)
+		authConfigs[registryDomain] = registryAuth
 	} else {
-		authConfigKey := registry.GetAuthConfigKey(info.Index)
-
-		auth, err := configFile.GetAuthConfig(authConfigKey)
+		auth, err := configFile.GetAuthConfig(registryDomain)
 		if err == nil {
 			registryAuth = registrytypes.AuthConfig(auth)
 		}
@@ -199,7 +191,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, false)
 	buildCtx, err := archive.TarWithOptions(contextDir, &archive.TarOptions{
 		ExcludePatterns: excludes,
-		ChownOpts:       &idtools.Identity{UID: 0, GID: 0},
+		ChownOpts:       &archive.ChownOpts{UID: 0, GID: 0},
 	})
 	if err != nil {
 		return err
@@ -220,33 +212,33 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	resp, err := cli.ImageBuild(context.Background(), buildCtx, types.ImageBuildOptions{
+	result, err := cli.ImageBuild(context.Background(), buildCtx, client.ImageBuildOptions{
 		AuthConfigs:    authConfigs,
-		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs.GetAll())),
+		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs.GetSlice())),
 		Dockerfile:     relDockerfile,
 		PullParent:     flagPull,
 		Remove:         true,
 		SuppressOutput: false,
-		Tags:           tags.GetAll(),
-		Version:        types.BuilderV1,
+		Tags:           tags.GetSlice(),
+		Version:        buildtypes.BuilderV1,
 	})
 	if err != nil {
 		return fmt.Errorf("docker image build error: %s", err)
 	}
-	defer resp.Body.Close()
+	defer result.Body.Close()
 
 	fd, isTerminal := term.GetFdInfo(os.Stdout)
 
-	err = jsonmessage.DisplayJSONMessagesStream(resp.Body, os.Stdout, fd, isTerminal, nil)
+	err = jsonmessage.DisplayJSONMessagesStream(result.Body, os.Stdout, fd, isTerminal, nil)
 	if err != nil {
 		return err
 	}
 
 	if flagPush {
-		for _, tag := range tags.GetAll() {
+		for _, tag := range tags.GetSlice() {
 			fmt.Printf("\nPush image %s to registry\n", tag)
 
-			res, err := cli.ImagePush(context.Background(), tag, image.PushOptions{
+			res, err := cli.ImagePush(context.Background(), tag, client.ImagePushOptions{
 				RegistryAuth: encodeAuthToBase64(registryAuth),
 			})
 			if err != nil {

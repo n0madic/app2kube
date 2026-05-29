@@ -1,0 +1,92 @@
+package cmd
+
+import (
+	"strings"
+	"testing"
+
+	apiv1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
+)
+
+func TestNextBlueGreenColor(t *testing.T) {
+	cases := []struct {
+		current string
+		want    string
+	}{
+		{"blue", "green"},
+		{"green", "blue"},
+		{"", "blue"},       // no current deployment starts at blue
+		{"unknown", "blue"}, // any non-blue color toggles to blue
+	}
+	for _, tc := range cases {
+		if got := nextBlueGreenColor(tc.current); got != tc.want {
+			t.Errorf("nextBlueGreenColor(%q): got %q, want %q", tc.current, got, tc.want)
+		}
+	}
+}
+
+func TestColorize(t *testing.T) {
+	// "blue" input renders in blue; the returned string still contains the text.
+	blue := colorize("blue")
+	if !strings.Contains(blue, "blue") {
+		t.Errorf("colorize lost text: %q", blue)
+	}
+	// With extra args the trailing args become the displayed text.
+	msg := colorize("blue", "hello", "world")
+	if !strings.Contains(msg, "hello world") {
+		t.Errorf("colorize message: %q", msg)
+	}
+	// Non-blue colors render green but keep the text.
+	green := colorize("green", "ok")
+	if !strings.Contains(green, "ok") {
+		t.Errorf("colorize green: %q", green)
+	}
+}
+
+func newColorService(name, color string) *apiv1.Service {
+	svc := &apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: "prod",
+			Labels:    map[string]string{"app.kubernetes.io/managed-by": "app2kube"},
+		},
+	}
+	if color != "" {
+		svc.Spec.Selector = map[string]string{"app.kubernetes.io/color": color}
+	}
+	return svc
+}
+
+func TestColorFromServices(t *testing.T) {
+	kcs := fake.NewSimpleClientset(newColorService("web", "green"))
+	got, err := colorFromServices(kcs, "prod", "")
+	if err != nil {
+		t.Fatalf("colorFromServices: %v", err)
+	}
+	if got != "green" {
+		t.Errorf("color: got %q, want green", got)
+	}
+}
+
+func TestColorFromServicesNoService(t *testing.T) {
+	kcs := fake.NewSimpleClientset()
+	if _, err := colorFromServices(kcs, "prod", ""); err == nil {
+		t.Errorf("expected 'service not found' error")
+	}
+}
+
+func TestColorFromServicesNoColorSelector(t *testing.T) {
+	kcs := fake.NewSimpleClientset(newColorService("web", ""))
+	if _, err := colorFromServices(kcs, "prod", ""); err == nil {
+		t.Errorf("expected 'color not found' error when selector lacks color")
+	}
+}
+
+func TestColorFromServicesSelectorFilter(t *testing.T) {
+	// A selector that matches no service must yield "service not found".
+	kcs := fake.NewSimpleClientset(newColorService("web", "blue"))
+	if _, err := colorFromServices(kcs, "prod", "app.kubernetes.io/instance=other"); err == nil {
+		t.Errorf("expected no match for non-matching selector")
+	}
+}

@@ -32,12 +32,21 @@ func manifest(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if app.Namespace == app2kube.NamespaceDefault {
-		app.Namespace = ""
+	out, err := buildManifest(app, typeOutput, output, flagIncludeNamespace)
+	if err != nil {
+		return err
 	}
 
+	fmt.Println(out)
+
+	return nil
+}
+
+// parseOutputTypes maps the user-facing --type strings to OutputResource values.
+// Unknown values are ignored, matching the original switch behavior.
+func parseOutputTypes(types []string) []app2kube.OutputResource {
 	var outputTypes []app2kube.OutputResource
-	for _, outType := range typeOutput {
+	for _, outType := range types {
 		switch strings.ToLower(outType) {
 		case "all":
 			outputTypes = append(outputTypes, app2kube.OutputAll)
@@ -57,21 +66,29 @@ func manifest(cmd *cobra.Command, args []string) error {
 			outputTypes = append(outputTypes, app2kube.OutputService)
 		}
 	}
+	return outputTypes
+}
 
-	manifest, err := app.GetManifest(output, outputTypes...)
+// buildManifest renders the manifest string for the given app and selected
+// resource types. It is split out from manifest() so the rendering logic can be
+// tested without capturing stdout.
+func buildManifest(app *app2kube.App, types []string, outputFormat string, includeNamespace bool) (string, error) {
+	if app.Namespace == app2kube.NamespaceDefault {
+		app.Namespace = ""
+	}
+
+	out, err := app.GetManifest(outputFormat, parseOutputTypes(types)...)
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if app.Namespace != "" && flagIncludeNamespace {
-		namespace, err := app.GetManifest(output, app2kube.OutputNamespace)
+	if app.Namespace != "" && includeNamespace {
+		namespace, err := app.GetManifest(outputFormat, app2kube.OutputNamespace)
 		if err != nil {
-			return err
+			return "", err
 		}
-		manifest = namespace + manifest
+		out = namespace + out
 	}
 
-	fmt.Println(manifest)
-
-	return nil
+	return out, nil
 }

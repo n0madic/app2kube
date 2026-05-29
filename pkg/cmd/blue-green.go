@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes"
 )
 
 var blueGreenDeploy bool
@@ -144,25 +145,28 @@ func colorize(s ...string) string {
 	return aurora.Green(str).String()
 }
 
-// getTargetBlueGreenColor return the color for target deployment
-func getTargetBlueGreenColor(namespace string, labels map[string]string) (string, error) {
-	color := "blue"
-	currentColor, _ := getCurrentBlueGreenColor(namespace, labels)
+// nextBlueGreenColor returns the color to deploy next given the current one:
+// it alternates to "green" only when the current color is "blue", otherwise
+// "blue". An unknown/empty current color therefore starts at "blue".
+func nextBlueGreenColor(currentColor string) string {
 	if currentColor == "blue" {
-		color = "green"
+		return "green"
 	}
-	return color, nil
+	return "blue"
 }
 
-// getCurrentBlueGreenColor return the color for current deployment
-func getCurrentBlueGreenColor(namespace string, labels map[string]string) (string, error) {
-	kcs, err := kubeFactory.KubernetesClientSet()
-	if err != nil {
-		return "", err
-	}
+// getTargetBlueGreenColor return the color for target deployment
+func getTargetBlueGreenColor(namespace string, labels map[string]string) (string, error) {
+	currentColor, _ := getCurrentBlueGreenColor(namespace, labels)
+	return nextBlueGreenColor(currentColor), nil
+}
 
+// colorFromServices reads the current blue/green color from the first service
+// matching the selector. It takes a kubernetes.Interface so it can be exercised
+// with a fake client, without a live cluster.
+func colorFromServices(kcs kubernetes.Interface, namespace, selector string) (string, error) {
 	svc, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
-		LabelSelector: getSelector(labels),
+		LabelSelector: selector,
 	})
 	if err != nil || len(svc.Items) == 0 {
 		return "", fmt.Errorf("service not found")
@@ -172,4 +176,13 @@ func getCurrentBlueGreenColor(namespace string, labels map[string]string) (strin
 		return currentColor, nil
 	}
 	return "", fmt.Errorf("color not found")
+}
+
+// getCurrentBlueGreenColor return the color for current deployment
+func getCurrentBlueGreenColor(namespace string, labels map[string]string) (string, error) {
+	kcs, err := kubeFactory.KubernetesClientSet()
+	if err != nil {
+		return "", err
+	}
+	return colorFromServices(kcs, namespace, getSelector(labels))
 }

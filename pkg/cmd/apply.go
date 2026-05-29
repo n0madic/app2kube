@@ -21,12 +21,13 @@ var (
 func NewCmdApply() *cobra.Command {
 	flags := apply.NewApplyFlags(ioStreams)
 	flags.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
+	var opts *appOptions
 
 	applyCmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a configuration to a resource in kubernetes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
+			app, err := opts.initApp()
 			cmdutil.CheckErr(err)
 
 			applyManifest := func(manifest string, prune bool) error {
@@ -75,7 +76,7 @@ func NewCmdApply() *cobra.Command {
 				if err != nil {
 					return "", err
 				}
-				if app.Namespace != app2kube.NamespaceDefault && flagIncludeNamespace {
+				if app.Namespace != app2kube.NamespaceDefault && opts.includeNamespace {
 					namespace, err := app.GetManifest("json", app2kube.OutputNamespace)
 					if err != nil {
 						return "", err
@@ -141,7 +142,7 @@ func NewCmdApply() *cobra.Command {
 		},
 	}
 
-	addAppFlags(applyCmd)
+	opts = addAppFlags(applyCmd)
 	addBlueGreenFlag(applyCmd)
 	flags.PrintFlags.AddFlags(applyCmd)
 	cmdutil.AddDryRunFlag(applyCmd)

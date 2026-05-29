@@ -98,72 +98,70 @@ func NewCmdConfig() *cobra.Command {
 		Short: "Manage application config",
 	}
 
-	configCmd.AddCommand(&cobra.Command{
-		Use:   "dotenv",
-		Short: "Print the config as .env",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			stringValues = append(stringValues, "name=app")
-			app, err := initApp()
+	// addConfigSub wires a config subcommand with its own appOptions. These
+	// commands inject a default application name so they work without one.
+	addConfigSub := func(use, short string, run func(cmd *cobra.Command, app *app2kube.App) error) *cobra.Command {
+		c := &cobra.Command{Use: use, Short: short}
+		opts := addAppFlags(c)
+		c.Flags().MarkHidden("include-namespace")
+		c.Flags().MarkHidden("snapshot")
+		c.RunE = func(cmd *cobra.Command, args []string) error {
+			opts.stringValues = append(opts.stringValues, "name=app")
+			app, err := opts.initApp()
 			if err != nil {
 				return err
 			}
 			cmd.SilenceUsage = true
+			return run(cmd, app)
+		}
+		configCmd.AddCommand(c)
+		return c
+	}
 
-			exportFlag, _ := cmd.Flags().GetBool("export")
-			quoteFlag, _ := cmd.Flags().GetBool("quotes")
-			out, err := renderDotenv(app, exportFlag, quoteFlag)
-			if err != nil {
-				return err
-			}
-			fmt.Print(out)
-			return nil
-		},
+	dotenv := addConfigSub("dotenv", "Print the config as .env", func(cmd *cobra.Command, app *app2kube.App) error {
+		exportFlag, _ := cmd.Flags().GetBool("export")
+		quoteFlag, _ := cmd.Flags().GetBool("quotes")
+		out, err := renderDotenv(app, exportFlag, quoteFlag)
+		if err != nil {
+			return err
+		}
+		fmt.Print(out)
+		return nil
+	})
+	dotenv.Flags().BoolP("export", "e", false, "Print export statements")
+	dotenv.Flags().BoolP("quotes", "q", false, "Print quotes around values")
+
+	addConfigSub("domain", "Print the list of domains from ingress", func(cmd *cobra.Command, app *app2kube.App) error {
+		for _, domain := range collectDomains(app) {
+			fmt.Println(domain)
+		}
+		return nil
 	})
 
-	configCmd.AddCommand(&cobra.Command{
-		Use:   "domain",
-		Short: "Print the list of domains from ingress",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			stringValues = append(stringValues, "name=app")
-			app, err := initApp()
-			if err != nil {
-				return err
-			}
-			cmd.SilenceUsage = true
-
-			for _, domain := range collectDomains(app) {
-				fmt.Println(domain)
-			}
-			return nil
-		},
+	addConfigSub("secrets", "Print decrypted secrets", func(cmd *cobra.Command, app *app2kube.App) error {
+		out, err := renderSecrets(app)
+		if err != nil {
+			return err
+		}
+		fmt.Print(out)
+		return nil
 	})
 
-	configCmd.AddCommand(&cobra.Command{
-		Use:   "secrets",
-		Short: "Print decrypted secrets",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			stringValues = append(stringValues, "name=app")
-			app, err := initApp()
-			if err != nil {
-				return err
-			}
-			cmd.SilenceUsage = true
-
-			out, err := renderSecrets(app)
-			if err != nil {
-				return err
-			}
-			fmt.Print(out)
-			return nil
-		},
-	})
-
-	configCmd.AddCommand(&cobra.Command{
+	var (
+		encryptString string
+		encryptFiles  app2kube.ValueFiles
+	)
+	encryptCmd := &cobra.Command{
 		Use:   "encrypt",
 		Short: "Encrypt secret values",
 		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.\nSet the APP2KUBE_PASSWORD environment variable to encrypt with AES.\nSet the APP2KUBE_ENCRYPT_KEY environment variable to encrypt with RSA.\nUse the `config generate-keys` command to generate RSA keys.\nRSA has priority over AES if both keys are specified.",
-		RunE:  encrypt,
-	})
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runEncrypt(encryptString, encryptFiles)
+		},
+	}
+	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
+	encryptCmd.Flags().VarP(&encryptFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
+	configCmd.AddCommand(encryptCmd)
 
 	configCmd.AddCommand(&cobra.Command{
 		Use:   "generate-keys",
@@ -181,21 +179,6 @@ func NewCmdConfig() *cobra.Command {
 			return nil
 		},
 	})
-
-	for _, cmd := range configCmd.Commands() {
-		if cmd.Use == "encrypt" {
-			cmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
-			cmd.Flags().VarP(&valueFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
-		} else {
-			if cmd.Use == "dotenv" {
-				cmd.Flags().BoolP("export", "e", false, "Print export statements")
-				cmd.Flags().BoolP("quotes", "q", false, "Print quotes around values")
-			}
-			addAppFlags(cmd)
-			cmd.Flags().MarkHidden("include-namespace")
-			cmd.Flags().MarkHidden("snapshot")
-		}
-	}
 
 	return configCmd
 }

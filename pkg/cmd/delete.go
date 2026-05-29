@@ -12,6 +12,7 @@ import (
 // NewCmdDelete return delete command
 func NewCmdDelete() *cobra.Command {
 	deleteFlags := delete.NewDeleteCommandFlags("containing the resource to delete.")
+	var opts *appOptions
 
 	deleteCmd := &cobra.Command{
 		Use:   "delete",
@@ -22,7 +23,7 @@ func NewCmdDelete() *cobra.Command {
 				cmdutil.CheckErr(err)
 			}
 
-			app, err := initApp()
+			app, err := opts.initApp()
 			if err != nil {
 				cmdutil.CheckErr(err)
 			}
@@ -30,7 +31,7 @@ func NewCmdDelete() *cobra.Command {
 			o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 			cmdutil.CheckErr(err)
 
-			if flagIncludeNamespace && app.Namespace != "" {
+			if opts.includeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
 				args = []string{"all,ingress,configmap,secret,pvc"}
@@ -53,7 +54,7 @@ func NewCmdDelete() *cobra.Command {
 		},
 	}
 
-	addAppFlags(deleteCmd)
+	opts = addAppFlags(deleteCmd)
 	addBlueGreenFlag(deleteCmd)
 
 	deleteCmd.Flags().BoolVar(&flagAllInstances, "all-instances", false, "Delete all instances of application with the cmd 'delete all'")

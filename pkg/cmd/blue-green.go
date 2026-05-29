@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/logrusorgru/aurora"
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -28,108 +29,83 @@ func NewCmdBlueGreen() *cobra.Command {
 		},
 	}
 
-	blueGreenCmd.AddCommand(&cobra.Command{
-		Use:   "color",
-		Short: "Get current Deployment color",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
+	// addBGSub wires a blue-green subcommand with its own appOptions so no
+	// state is shared between commands.
+	addBGSub := func(use, short string, run func(app *app2kube.App) error) {
+		c := &cobra.Command{Use: use, Short: short}
+		opts := addAppFlags(c)
+		c.Flags().MarkHidden("include-namespace")
+		c.Flags().MarkHidden("snapshot")
+		c.RunE = func(cmd *cobra.Command, args []string) error {
+			app, err := opts.initApp()
 			if err != nil {
 				return err
 			}
-
 			cmd.SilenceUsage = true
-
-			currentColor, err := getCurrentBlueGreenColor(app.Namespace, app.Labels)
-			if err != nil {
-				return err
-			}
-			fmt.Println(colorize(currentColor))
-
-			return nil
-		},
-	})
-
-	blueGreenCmd.AddCommand(&cobra.Command{
-		Use:   "rollback",
-		Short: "Rollback Deployment to previous color",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
-			if err != nil {
-				return err
-			}
-
-			cmd.SilenceUsage = true
-
-			fmt.Printf("Check Deployment %s with previous color:\n",
-				colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
-			trackTimeout = 1
-			err = trackReady(app.GetDeploymentName(), app.Namespace)
-			if err != nil {
-				return err
-			}
-
-			kcs, err := kubeFactory.KubernetesClientSet()
-			if err != nil {
-				return err
-			}
-
-			services, err := kcs.CoreV1().Services(app.Namespace).List(context.TODO(), metav1.ListOptions{
-				LabelSelector: getSelector(app.Labels),
-			})
-			if err != nil {
-				return err
-			}
-
-			if len(services.Items) > 0 {
-				for _, service := range services.Items {
-					fmt.Printf("Patch service %s in [%s] color\n", service.Name, colorize(app.Deployment.BlueGreenColor))
-					payloadBytes := []byte(`[{
-						"op": "replace",
-						"path": "/spec/selector/app.kubernetes.io~1color",
-						"value": "` + app.Deployment.BlueGreenColor + `"
-					}]`)
-					options := metav1.PatchOptions{}
-					_, err = kcs.CoreV1().Services(app.Namespace).Patch(context.TODO(), service.Name, types.JSONPatchType, payloadBytes, options)
-					if err != nil {
-						return err
-					}
-					fmt.Println(colorize(app.Deployment.BlueGreenColor, "Rollback is successful"))
-				}
-			} else {
-				return fmt.Errorf("no services found")
-			}
-
-			return nil
-		},
-	})
-
-	blueGreenCmd.AddCommand(&cobra.Command{
-		Use:   "prune",
-		Short: "Prune Deployment with previous color",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
-			if err != nil {
-				return err
-			}
-
-			cmd.SilenceUsage = true
-
-			err = deleteDeployment(app.GetDeploymentName(), app.Namespace)
-			if err != nil {
-				return err
-			}
-
-			fmt.Printf("Deployment %s pruned\n", colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
-
-			return nil
-		},
-	})
-
-	for _, cmd := range blueGreenCmd.Commands() {
-		addAppFlags(cmd)
-		cmd.Flags().MarkHidden("include-namespace")
-		cmd.Flags().MarkHidden("snapshot")
+			return run(app)
+		}
+		blueGreenCmd.AddCommand(c)
 	}
+
+	addBGSub("color", "Get current Deployment color", func(app *app2kube.App) error {
+		currentColor, err := getCurrentBlueGreenColor(app.Namespace, app.Labels)
+		if err != nil {
+			return err
+		}
+		fmt.Println(colorize(currentColor))
+		return nil
+	})
+
+	addBGSub("rollback", "Rollback Deployment to previous color", func(app *app2kube.App) error {
+		fmt.Printf("Check Deployment %s with previous color:\n",
+			colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
+		trackTimeout = 1
+		err := trackReady(app.GetDeploymentName(), app.Namespace)
+		if err != nil {
+			return err
+		}
+
+		kcs, err := kubeFactory.KubernetesClientSet()
+		if err != nil {
+			return err
+		}
+
+		services, err := kcs.CoreV1().Services(app.Namespace).List(context.TODO(), metav1.ListOptions{
+			LabelSelector: getSelector(app.Labels),
+		})
+		if err != nil {
+			return err
+		}
+
+		if len(services.Items) > 0 {
+			for _, service := range services.Items {
+				fmt.Printf("Patch service %s in [%s] color\n", service.Name, colorize(app.Deployment.BlueGreenColor))
+				payloadBytes := []byte(`[{
+					"op": "replace",
+					"path": "/spec/selector/app.kubernetes.io~1color",
+					"value": "` + app.Deployment.BlueGreenColor + `"
+				}]`)
+				options := metav1.PatchOptions{}
+				_, err = kcs.CoreV1().Services(app.Namespace).Patch(context.TODO(), service.Name, types.JSONPatchType, payloadBytes, options)
+				if err != nil {
+					return err
+				}
+				fmt.Println(colorize(app.Deployment.BlueGreenColor, "Rollback is successful"))
+			}
+		} else {
+			return fmt.Errorf("no services found")
+		}
+
+		return nil
+	})
+
+	addBGSub("prune", "Prune Deployment with previous color", func(app *app2kube.App) error {
+		if err := deleteDeployment(app.GetDeploymentName(), app.Namespace); err != nil {
+			return err
+		}
+		fmt.Printf("Deployment %s pruned\n", colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
+		return nil
+	})
 
 	return blueGreenCmd
 }

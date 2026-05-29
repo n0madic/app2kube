@@ -127,10 +127,7 @@ func TestGetDeploymentSharedDataNeedsMultipleContainers(t *testing.T) {
 
 func TestGetDeploymentVolumes(t *testing.T) {
 	app := deployApp(t)
-	app.Volumes = map[string]struct {
-		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
-		MountPath string                          `yaml:"mountPath"`
-	}{
+	app.Volumes = map[string]VolumeSpec{
 		"data": {MountPath: "/data"},
 	}
 	dep, err := app.GetDeployment()
@@ -276,10 +273,7 @@ func TestGetSecretDecryptError(t *testing.T) {
 func TestGetPersistentVolumeClaims(t *testing.T) {
 	app := NewApp()
 	app.Name = "example"
-	app.Volumes = map[string]struct {
-		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
-		MountPath string                          `yaml:"mountPath"`
-	}{
+	app.Volumes = map[string]VolumeSpec{
 		"data": {
 			MountPath: "/data",
 			Spec: apiv1.PersistentVolumeClaimSpec{
@@ -310,10 +304,7 @@ func TestGetPersistentVolumeClaims(t *testing.T) {
 func TestGetPersistentVolumeClaimsMissingMountPath(t *testing.T) {
 	app := NewApp()
 	app.Name = "example"
-	app.Volumes = map[string]struct {
-		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
-		MountPath string                          `yaml:"mountPath"`
-	}{
+	app.Volumes = map[string]VolumeSpec{
 		"data": {},
 	}
 	if _, err := app.GetPersistentVolumeClaims(); err == nil {

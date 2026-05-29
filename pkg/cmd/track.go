@@ -42,38 +42,28 @@ func NewCmdTrack() *cobra.Command {
 	trackCmd.PersistentFlags().StringVarP(&logsSince, "logs-since", "l", logsSince, "A duration like 30s, 5m, or 2h to start log records from the past. 'all' to show all logs and 'now' to display only new records")
 	trackCmd.PersistentFlags().IntVarP(&trackTimeout, "timeout", "t", trackTimeout, "Timeout of operation in minutes. 0 is wait forever")
 
-	trackCmd.AddCommand(&cobra.Command{
-		Use:   "follow",
-		Short: "Follow Deployment",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
+	// addTrackSub wires a track subcommand with its own appOptions so no
+	// state is shared between commands. run receives the resolved deployment
+	// name and namespace (trackFollow/trackReady match this signature).
+	addTrackSub := func(use, short string, run func(name, namespace string) error) {
+		c := &cobra.Command{Use: use, Short: short}
+		opts := addAppFlags(c)
+		addBlueGreenFlag(c)
+		c.Flags().MarkHidden("include-namespace")
+		c.Flags().MarkHidden("snapshot")
+		c.RunE = func(cmd *cobra.Command, args []string) error {
+			app, err := opts.initApp()
 			if err != nil {
 				return err
 			}
 			cmd.SilenceUsage = true
-			return trackFollow(app.GetDeploymentName(), app.Namespace)
-		},
-	})
-
-	trackCmd.AddCommand(&cobra.Command{
-		Use:   "ready",
-		Short: "Track Deployment till ready",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := initApp()
-			if err != nil {
-				return err
-			}
-			cmd.SilenceUsage = true
-			return trackReady(app.GetDeploymentName(), app.Namespace)
-		},
-	})
-
-	for _, cmd := range trackCmd.Commands() {
-		addAppFlags(cmd)
-		addBlueGreenFlag(cmd)
-		cmd.Flags().MarkHidden("include-namespace")
-		cmd.Flags().MarkHidden("snapshot")
+			return run(app.GetDeploymentName(), app.Namespace)
+		}
+		trackCmd.AddCommand(c)
 	}
+
+	addTrackSub("follow", "Follow Deployment", trackFollow)
+	addTrackSub("ready", "Track Deployment till ready", trackReady)
 
 	return trackCmd
 }

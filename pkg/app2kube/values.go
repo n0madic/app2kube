@@ -3,7 +3,7 @@ package app2kube
 import (
 	"bytes"
 	"fmt"
-	"html/template"
+	"text/template"
 	"io"
 	"net/http"
 	"net/url"

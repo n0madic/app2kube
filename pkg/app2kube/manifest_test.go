@@ -139,3 +139,26 @@ func TestPrintObjStripsCreationTimestamp(t *testing.T) {
 		t.Errorf("unexpected header:\n%s", out)
 	}
 }
+
+func TestParseOutputType(t *testing.T) {
+	cases := map[string]OutputResource{
+		"all":        OutputAll,
+		"configmap":  OutputConfigMap,
+		"cronjob":    OutputCronJob,
+		"deployment": OutputDeployment,
+		"ingress":    OutputIngress,
+		"pvc":        OutputPersistentVolumeClaim,
+		"secret":     OutputSecret,
+		"service":    OutputService,
+		"SECRET":     OutputSecret, // case-insensitive
+	}
+	for name, want := range cases {
+		got, ok := ParseOutputType(name)
+		if !ok || got != want {
+			t.Errorf("ParseOutputType(%q) = (%v, %v), want (%v, true)", name, got, ok, want)
+		}
+	}
+	if _, ok := ParseOutputType("bogus"); ok {
+		t.Errorf("ParseOutputType(bogus) must report unknown")
+	}
+}

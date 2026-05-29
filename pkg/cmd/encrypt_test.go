@@ -22,11 +22,7 @@ func TestEncryptBlankLineInSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	valueFiles = app2kube.ValueFiles{file}
-	encryptString = ""
-	defer func() { valueFiles = nil }()
-
-	if err := encrypt(nil, nil); err != nil {
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 

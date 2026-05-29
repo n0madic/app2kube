@@ -39,10 +39,12 @@ func NewCmdBuild() *cobra.Command {
 	buildCmd := &cobra.Command{
 		Use:   "build",
 		Short: "Build and push an image from a Dockerfile",
-		RunE:  runBuild,
 	}
 
-	addAppFlags(buildCmd)
+	appOpts := addAppFlags(buildCmd)
+	buildCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return runBuild(appOpts, cmd, args)
+	}
 
 	buildArgs = opts.NewListOpts(opts.ValidateEnv)
 	tags = opts.NewListOpts(func(rawRepo string) (string, error) {
@@ -65,8 +67,8 @@ func NewCmdBuild() *cobra.Command {
 	return buildCmd
 }
 
-func runBuild(cmd *cobra.Command, args []string) error {
-	app, err := initApp()
+func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
+	app, err := appOpts.initApp()
 	if err != nil {
 		return err
 	}

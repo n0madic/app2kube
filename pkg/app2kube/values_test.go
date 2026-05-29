@@ -159,3 +159,17 @@ func TestTemplatingInvalid(t *testing.T) {
 		t.Errorf("expected parse error for malformed template")
 	}
 }
+
+// TestTemplatingNoHTMLEscape locks the fix for values templating using
+// text/template instead of html/template. HTML escaping would corrupt YAML by
+// turning special characters in template output into entities
+// (e.g. & -> &amp;, < -> &lt;), which is invalid for config values.
+func TestTemplatingNoHTMLEscape(t *testing.T) {
+	out, err := templating([]byte(`value: {{ "a&b<c>d" }}`))
+	if err != nil {
+		t.Fatalf("templating: %v", err)
+	}
+	if string(out) != `value: a&b<c>d` {
+		t.Errorf("template output must not be HTML-escaped: got %q", string(out))
+	}
+}

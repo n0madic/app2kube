@@ -4,18 +4,13 @@ import (
 	"testing"
 )
 
-// resetAppFlags clears the package-level value flags shared across commands so
-// each test starts from a clean state.
+// resetAppFlags clears the package-level flags that are still global (kube
+// config and the all/blue-green toggles) so each test starts from a clean
+// state. Value inputs now live on appOptions and are set per test.
 func resetAppFlags() {
-	valueFiles = nil
-	values = nil
-	stringValues = nil
-	fileValues = nil
 	flagAllApplications = false
 	flagAllInstances = false
 	blueGreenDeploy = false
-	snapshot = ""
-	flagVerbose = false
 	if kubeConfigFlags.Namespace != nil {
 		*kubeConfigFlags.Namespace = ""
 	}
@@ -24,7 +19,8 @@ func resetAppFlags() {
 func TestInitAppValuesRequired(t *testing.T) {
 	resetAppFlags()
 	defer resetAppFlags()
-	if _, err := initApp(); err == nil {
+	o := &appOptions{}
+	if _, err := o.initApp(); err == nil {
 		t.Errorf("expected error when no values are provided")
 	}
 }
@@ -32,9 +28,9 @@ func TestInitAppValuesRequired(t *testing.T) {
 func TestInitAppFromSet(t *testing.T) {
 	resetAppFlags()
 	defer resetAppFlags()
-	values = []string{"name=app"}
+	o := &appOptions{values: []string{"name=app"}}
 
-	app, err := initApp()
+	app, err := o.initApp()
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}
@@ -53,10 +49,10 @@ func TestInitAppFromSet(t *testing.T) {
 func TestInitAppNamespaceOverride(t *testing.T) {
 	resetAppFlags()
 	defer resetAppFlags()
-	values = []string{"name=app", "namespace=fromvalues"}
+	o := &appOptions{values: []string{"name=app", "namespace=fromvalues"}}
 	*kubeConfigFlags.Namespace = "fromflag"
 
-	app, err := initApp()
+	app, err := o.initApp()
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}
@@ -72,7 +68,8 @@ func TestInitAppAllApplications(t *testing.T) {
 	flagAllApplications = true
 	*kubeConfigFlags.Namespace = "ns"
 
-	app, err := initApp()
+	o := &appOptions{}
+	app, err := o.initApp()
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}

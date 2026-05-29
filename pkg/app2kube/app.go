@@ -47,67 +47,80 @@ type Service struct {
 	Type         apiv1.ServiceType `yaml:"type"`
 }
 
+// ImageSpec is the common container image configuration.
+type ImageSpec struct {
+	PullPolicy  apiv1.PullPolicy `yaml:"pullPolicy"`
+	PullSecrets string           `yaml:"pullSecrets"`
+	Repository  string           `yaml:"repository"`
+	Tag         string           `yaml:"tag"`
+}
+
+// CommonSpec holds settings shared by all workloads of an App.
+type CommonSpec struct {
+	CronjobSuspend           bool               `yaml:"cronjobSuspend"`
+	DNSPolicy                apiv1.DNSPolicy    `yaml:"dnsPolicy"`
+	EnableServiceLinks       bool               `yaml:"enableServiceLinks"`
+	GracePeriod              int64              `yaml:"gracePeriod"`
+	Image                    ImageSpec          `yaml:"image"`
+	Ingress                  IngressCommon      `yaml:"ingress"`
+	MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
+	NodeSelector             map[string]string  `yaml:"nodeSelector"`
+	PodAntiAffinity          string             `yaml:"podAntiAffinity"`
+	SharedData               string             `yaml:"sharedData"`
+	Tolerations              []apiv1.Toleration `yaml:"tolerations"`
+}
+
+// CronjobSpec is a single named cronjob definition.
+type CronjobSpec struct {
+	ActiveDeadlineSeconds      *int64                     `yaml:"activeDeadlineSeconds"`
+	BackoffLimit               *int32                     `yaml:"backoffLimit"`
+	ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
+	Container                  apiv1.Container            `yaml:"container"`
+	Containers                 map[string]apiv1.Container `yaml:"containers"`
+	FailedJobsHistoryLimit     *int32                     `yaml:"failedJobsHistoryLimit"`
+	RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
+	Schedule                   string                     `yaml:"schedule"`
+	SuccessfulJobsHistoryLimit *int32                     `yaml:"successfulJobsHistoryLimit"`
+	Suspend                    bool                       `yaml:"suspend"`
+	TimeZone                   string                     `yaml:"timeZone"`
+}
+
+// DeploymentSpec is the App's deployment configuration.
+type DeploymentSpec struct {
+	BlueGreenColor       string                     `yaml:"blueGreenColor"`
+	Containers           map[string]apiv1.Container `yaml:"containers"`
+	InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
+	ReplicaCount         int32                      `yaml:"replicaCount"`
+	ReplicaCountStaging  int32                      `yaml:"replicaCountStaging"`
+	RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
+	Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
+}
+
+// VolumeSpec is a single named persistent volume claim and its mount path.
+type VolumeSpec struct {
+	Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
+	MountPath string                          `yaml:"mountPath"`
+}
+
 // App instance
 type App struct {
 	aesPassword   string
 	rsaPublicKey  string
 	rsaPrivateKey string
-	Branch        string `yaml:"branch"`
-	Common        struct {
-		CronjobSuspend     bool            `yaml:"cronjobSuspend"`
-		DNSPolicy          apiv1.DNSPolicy `yaml:"dnsPolicy"`
-		EnableServiceLinks bool            `yaml:"enableServiceLinks"`
-		GracePeriod        int64           `yaml:"gracePeriod"`
-		Image              struct {
-			PullPolicy  apiv1.PullPolicy `yaml:"pullPolicy"`
-			PullSecrets string           `yaml:"pullSecrets"`
-			Repository  string           `yaml:"repository"`
-			Tag         string           `yaml:"tag"`
-		} `yaml:"image"`
-		Ingress struct {
-			IngressCommon
-		} `yaml:"ingress"`
-		MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
-		NodeSelector             map[string]string  `yaml:"nodeSelector"`
-		PodAntiAffinity          string             `yaml:"podAntiAffinity"`
-		SharedData               string             `yaml:"sharedData"`
-		Tolerations              []apiv1.Toleration `yaml:"tolerations"`
-	} `yaml:"common"`
-	ConfigMap map[string]string `yaml:"configmap"`
-	Cronjob   map[string]struct {
-		ActiveDeadlineSeconds      *int64                     `yaml:"activeDeadlineSeconds"`
-		BackoffLimit               *int32                     `yaml:"backoffLimit"`
-		ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
-		Container                  apiv1.Container            `yaml:"container"`
-		Containers                 map[string]apiv1.Container `yaml:"containers"`
-		FailedJobsHistoryLimit     *int32                     `yaml:"failedJobsHistoryLimit"`
-		RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
-		Schedule                   string                     `yaml:"schedule"`
-		SuccessfulJobsHistoryLimit *int32                     `yaml:"successfulJobsHistoryLimit"`
-		Suspend                    bool                       `yaml:"suspend"`
-		TimeZone                   string                     `yaml:"timeZone"`
-	} `yaml:"cronjob"`
-	Deployment struct {
-		BlueGreenColor       string                     `yaml:"blueGreenColor"`
-		Containers           map[string]apiv1.Container `yaml:"containers"`
-		InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
-		ReplicaCount         int32                      `yaml:"replicaCount"`
-		ReplicaCountStaging  int32                      `yaml:"replicaCountStaging"`
-		RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
-		Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
-	} `yaml:"deployment"`
-	Env       map[string]string  `yaml:"env"`
-	Ingress   []Ingress          `yaml:"ingress"`
-	Labels    map[string]string  `yaml:"labels"`
-	Name      string             `yaml:"name"`
-	Namespace string             `yaml:"namespace"`
-	Secrets   map[string]string  `yaml:"secrets"`
-	Service   map[string]Service `yaml:"service"`
-	Staging   string             `yaml:"staging"`
-	Volumes   map[string]struct {
-		Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
-		MountPath string                          `yaml:"mountPath"`
-	} `yaml:"volumes"`
+	Branch        string                 `yaml:"branch"`
+	Common        CommonSpec             `yaml:"common"`
+	ConfigMap     map[string]string      `yaml:"configmap"`
+	Cronjob       map[string]CronjobSpec `yaml:"cronjob"`
+	Deployment    DeploymentSpec         `yaml:"deployment"`
+	Env           map[string]string      `yaml:"env"`
+	Ingress       []Ingress              `yaml:"ingress"`
+	Labels        map[string]string      `yaml:"labels"`
+	Name          string                 `yaml:"name"`
+	Namespace     string                 `yaml:"namespace"`
+	Secrets       map[string]string      `yaml:"secrets"`
+	Service       map[string]Service     `yaml:"service"`
+	Staging       string                 `yaml:"staging"`
+	Volumes       map[string]VolumeSpec  `yaml:"volumes"`
 }
 
 // GetObjectMeta return App metadata
@@ -208,58 +221,88 @@ func (app *App) getAffinity() (*apiv1.Affinity, error) {
 	return affinity, nil
 }
 
-// LoadValues for App
+// LoadValues merges the given value sources, unmarshals them into the App and
+// applies validation and staging transformations. It returns the merged raw
+// YAML. The work is split into parse/validate/applyStaging so each step can be
+// understood and tested in isolation.
 func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]byte, error) {
-	rawVals, err := vals(valueFiles, values, stringValues, fileValues)
+	rawVals, err := app.parseValues(valueFiles, values, stringValues, fileValues)
 	if err != nil {
 		return nil, err
 	}
 
-	err = yaml.Unmarshal(rawVals, &app)
-	if err != nil {
+	if err := app.validate(); err != nil {
 		return nil, err
-	}
-
-	if app.Name == "" {
-		return nil, errors.New("App name is required")
 	}
 
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
 	app.Labels["app.kubernetes.io/name"] = truncateName(app.Name)
 
-	if app.Staging != "" {
-		app.Common.Image.PullPolicy = apiv1.PullAlways
-		app.Deployment.BlueGreenColor = ""
-		app.Deployment.RevisionHistoryLimit = 0
-		app.Staging = strings.ToLower(app.Staging)
-		app.Branch = strings.ToLower(app.Branch)
-
-		if app.Deployment.ReplicaCountStaging > 0 {
-			app.Deployment.ReplicaCount = app.Deployment.ReplicaCountStaging
-		} else {
-			app.Deployment.ReplicaCount = 1
-		}
-
-		app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging)
-		if app.Branch != "" {
-			app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging + "-" + app.Branch)
-		}
-
-		for i, ingress := range app.Ingress {
-			if strings.HasPrefix(ingress.Host, "*") {
-				return nil, fmt.Errorf("staging cannot be used with wildcard domain: %s", ingress.Host)
-			}
-			ingress.Host = app.Staging + "." + ingress.Host
-			if app.Branch != "" {
-				ingress.Host = app.Branch + "." + ingress.Host
-			}
-			app.Ingress[i].Host = ingress.Host
-		}
-	} else {
-		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
+	if err := app.applyStaging(); err != nil {
+		return nil, err
 	}
 
 	return rawVals, nil
+}
+
+// parseValues merges the value sources and unmarshals them into the App.
+func (app *App) parseValues(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]byte, error) {
+	rawVals, err := vals(valueFiles, values, stringValues, fileValues)
+	if err != nil {
+		return nil, err
+	}
+	if err := yaml.Unmarshal(rawVals, &app); err != nil {
+		return nil, err
+	}
+	return rawVals, nil
+}
+
+// validate checks required fields after parsing.
+func (app *App) validate() error {
+	if app.Name == "" {
+		return errors.New("App name is required")
+	}
+	return nil
+}
+
+// applyStaging rewrites replica counts, instance labels, ingress hosts and
+// image pull policy when a staging environment is configured; otherwise it just
+// normalizes the blue/green color.
+func (app *App) applyStaging() error {
+	if app.Staging == "" {
+		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
+		return nil
+	}
+
+	app.Common.Image.PullPolicy = apiv1.PullAlways
+	app.Deployment.BlueGreenColor = ""
+	app.Deployment.RevisionHistoryLimit = 0
+	app.Staging = strings.ToLower(app.Staging)
+	app.Branch = strings.ToLower(app.Branch)
+
+	if app.Deployment.ReplicaCountStaging > 0 {
+		app.Deployment.ReplicaCount = app.Deployment.ReplicaCountStaging
+	} else {
+		app.Deployment.ReplicaCount = 1
+	}
+
+	app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging)
+	if app.Branch != "" {
+		app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging + "-" + app.Branch)
+	}
+
+	for i, ingress := range app.Ingress {
+		if strings.HasPrefix(ingress.Host, "*") {
+			return fmt.Errorf("staging cannot be used with wildcard domain: %s", ingress.Host)
+		}
+		ingress.Host = app.Staging + "." + ingress.Host
+		if app.Branch != "" {
+			ingress.Host = app.Branch + "." + ingress.Host
+		}
+		app.Ingress[i].Host = ingress.Host
+	}
+
+	return nil
 }
 
 // NewApp return App instance

@@ -8,12 +8,11 @@ import (
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
-	"github.com/spf13/cobra"
 )
 
-var encryptString string
-
-func encrypt(cmd *cobra.Command, args []string) error {
+// runEncrypt encrypts the given string and/or the secrets sections of the
+// provided value files in place.
+func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 	app := app2kube.NewApp()
 
 	if encryptString != "" {

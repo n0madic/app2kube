@@ -158,3 +158,33 @@ func TestLoadValuesStagingPrefixesHost(t *testing.T) {
 		t.Errorf("host: got %q, want feat.stg.example.com", app.Ingress[0].Host)
 	}
 }
+
+// applyStaging is exercised directly (without parsing) to lock the instance
+// label composition when both staging and branch are set.
+func TestApplyStagingBranchInstanceLabel(t *testing.T) {
+	app := NewApp()
+	app.Staging = "STG"
+	app.Branch = "Feat"
+	if err := app.applyStaging(); err != nil {
+		t.Fatalf("applyStaging: %v", err)
+	}
+	if app.Labels["app.kubernetes.io/instance"] != "stg-feat" {
+		t.Errorf("instance label: got %q, want stg-feat", app.Labels["app.kubernetes.io/instance"])
+	}
+	// Staging clears blue/green color and revision history.
+	if app.Deployment.BlueGreenColor != "" || app.Deployment.RevisionHistoryLimit != 0 {
+		t.Errorf("staging must reset blue/green and revision history: %+v", app.Deployment)
+	}
+}
+
+// Without staging, applyStaging only normalizes the blue/green color.
+func TestApplyStagingNoStagingLowercasesColor(t *testing.T) {
+	app := NewApp()
+	app.Deployment.BlueGreenColor = "BLUE"
+	if err := app.applyStaging(); err != nil {
+		t.Fatalf("applyStaging: %v", err)
+	}
+	if app.Deployment.BlueGreenColor != "blue" {
+		t.Errorf("color: got %q, want blue", app.Deployment.BlueGreenColor)
+	}
+}

@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 )
 
@@ -65,6 +66,32 @@ func TestGetDecryptedSecretsNoRSAKey(t *testing.T) {
 	app.Secrets = map[string]string{"k": "RSA#whatever"}
 	if _, err := app.GetDecryptedSecrets(); err == nil {
 		t.Errorf("expected error: RSA private key not specified")
+	}
+}
+
+// Regression: decrypting a secret with the wrong AES password must produce an
+// actionable error that names the secret and points at $APP2KUBE_PASSWORD,
+// instead of the cryptic underlying "invalid padding".
+func TestGetDecryptedSecretsWrongPassword(t *testing.T) {
+	enc, err := EncryptAES("correct-password", "topsecret")
+	if err != nil {
+		t.Fatalf("EncryptAES: %v", err)
+	}
+
+	app := NewApp()
+	app.aesPassword = "wrong-password"
+	app.Secrets = map[string]string{"db": aesPrefix + enc}
+
+	_, err = app.GetDecryptedSecrets()
+	if err == nil {
+		t.Fatalf("expected error when decrypting with the wrong password")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `"db"`) {
+		t.Errorf("error must name the failing secret, got: %v", msg)
+	}
+	if !strings.Contains(msg, "APP2KUBE_PASSWORD") {
+		t.Errorf("error must hint at $APP2KUBE_PASSWORD, got: %v", msg)
 	}
 }
 

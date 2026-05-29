@@ -231,7 +231,7 @@ func (app *App) GetDecryptedSecrets() (secrets map[string]string, err error) {
 			}
 			decrypted, err := DecryptAES(app.aesPassword, value)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to decrypt secret %q, check $APP2KUBE_PASSWORD is correct: %w", key, err)
 			}
 			secrets[key] = decrypted
 		} else if strings.HasPrefix(value, rsaPrefix) {
@@ -241,7 +241,7 @@ func (app *App) GetDecryptedSecrets() (secrets map[string]string, err error) {
 			value = value[len(rsaPrefix):]
 			decrypted, err := DecryptRSA(app.rsaPrivateKey, value)
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to decrypt secret %q, check $APP2KUBE_DECRYPT_KEY is correct: %w", key, err)
 			}
 			secrets[key] = decrypted
 		} else {

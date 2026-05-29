@@ -16,6 +16,7 @@ import (
 	"github.com/docker/cli/opts"
 	"github.com/docker/distribution/reference"
 	"github.com/docker/docker/api/types"
+	"github.com/docker/docker/api/types/image"
 	registrytypes "github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	"github.com/docker/docker/pkg/archive"
@@ -193,7 +194,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	}
 
 	// canonicalize dockerfile name to a platform-independent one
-	relDockerfile = archive.CanonicalTarNameForPath(relDockerfile)
+	relDockerfile = filepath.ToSlash(relDockerfile)
 
 	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, false)
 	buildCtx, err := archive.TarWithOptions(contextDir, &archive.TarOptions{
@@ -245,7 +246,7 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		for _, tag := range tags.GetAll() {
 			fmt.Printf("\nPush image %s to registry\n", tag)
 
-			res, err := cli.ImagePush(context.Background(), tag, types.ImagePushOptions{
+			res, err := cli.ImagePush(context.Background(), tag, image.PushOptions{
 				RegistryAuth: encodeAuthToBase64(registryAuth),
 			})
 			if err != nil {

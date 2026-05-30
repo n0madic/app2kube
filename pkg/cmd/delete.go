@@ -35,7 +35,8 @@ func NewCmdDelete() *cobra.Command {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
 				args = []string{"all,ingress,configmap,secret,pvc"}
-				o.LabelSelector = getSelector(app.Labels)
+				o.LabelSelector, err = scopedSelector(app.Labels)
+				cmdutil.CheckErr(err)
 			} else if len(args) == 0 {
 				o.Filenames = []string{"-"}
 				manifest, err := app.GetManifest("json", app2kube.OutputAll)

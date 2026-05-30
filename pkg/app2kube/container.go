@@ -10,7 +10,13 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
-func (app *App) processContainer(container *apiv1.Container) error {
+// processContainer fills in defaults and injected configuration for a container.
+// When isInit is true the container is an init container: the auto-service
+// derivation and Liveness/Readiness probe injection are skipped, because the
+// Kubernetes API rejects probes on non-sidecar init containers and an init
+// container port must never drive the app's Service. Env/EnvFrom and volume
+// mounts are still applied (init containers legitimately use them).
+func (app *App) processContainer(container *apiv1.Container, isInit bool) error {
 	if container.Image == "" {
 		if app.Common.Image.Repository != "" {
 			container.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
@@ -81,7 +87,7 @@ func (app *App) processContainer(container *apiv1.Container) error {
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
-	if len(container.Ports) > 0 {
+	if !isInit && len(container.Ports) > 0 {
 		// Automatic creation of a service for ingress if one is not specified
 		if len(app.Service) == 0 && len(app.Ingress) > 0 && len(app.Deployment.Containers) == 1 {
 			app.Service = map[string]Service{}

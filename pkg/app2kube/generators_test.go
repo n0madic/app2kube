@@ -167,10 +167,10 @@ func TestGetDeploymentBlueGreenLabels(t *testing.T) {
 
 func TestGetDeploymentAffinity(t *testing.T) {
 	cases := []struct {
-		value         string
-		wantErr       bool
-		preferred     bool
-		required      bool
+		value     string
+		wantErr   bool
+		preferred bool
+		required  bool
 	}{
 		{"", false, false, false},
 		{"preferred", false, true, false},
@@ -208,6 +208,59 @@ func TestGetDeploymentAffinity(t *testing.T) {
 				t.Errorf("expected required terms")
 			}
 		})
+	}
+}
+
+// Init containers must not run the main-container service/probe pipeline: the
+// Kubernetes API rejects probes on non-sidecar init containers, and an init
+// container port must never drive auto-service derivation.
+func TestInitContainerSkipsProbeAndAutoService(t *testing.T) {
+	app := deployApp(t)
+	// Enable the auto-service code path: an ingress is present and the single
+	// main container has no named port — only the init container exposes one.
+	app.Ingress = []Ingress{{Host: "example.com"}}
+	app.Deployment.InitContainers = map[string]apiv1.Container{
+		"migrate": {
+			Image: "example/migrate:v1",
+			Ports: []apiv1.ContainerPort{{Name: "web", ContainerPort: 8080}},
+		},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if len(dep.Spec.Template.Spec.InitContainers) != 1 {
+		t.Fatalf("expected 1 init container, got %d", len(dep.Spec.Template.Spec.InitContainers))
+	}
+	if probe := dep.Spec.Template.Spec.InitContainers[0].LivenessProbe; probe != nil {
+		t.Errorf("init container must not receive an auto LivenessProbe, got %+v", probe)
+	}
+	if len(app.Service) != 0 {
+		t.Errorf("init container port must not create an auto-service, got %+v", app.Service)
+	}
+}
+
+// A main container with a single named port still gets the auto LivenessProbe
+// and drives auto-service derivation (the behavior init containers must skip).
+func TestMainContainerGetsProbeAndAutoService(t *testing.T) {
+	app := deployApp(t)
+	app.Ingress = []Ingress{{Host: "example.com"}}
+	app.Deployment.Containers = map[string]apiv1.Container{
+		"app": {
+			Image: "example/app:v1",
+			Ports: []apiv1.ContainerPort{{Name: "web", ContainerPort: 8080}},
+		},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	c := dep.Spec.Template.Spec.Containers[0]
+	if c.LivenessProbe == nil || c.LivenessProbe.TCPSocket == nil {
+		t.Errorf("main container with a single port must get a TCP LivenessProbe, got %+v", c.LivenessProbe)
+	}
+	if _, ok := app.Service["web"]; !ok {
+		t.Errorf("main container named port must create an auto-service, got %+v", app.Service)
 	}
 }
 

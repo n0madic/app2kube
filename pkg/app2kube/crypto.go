@@ -1,7 +1,6 @@
 package app2kube
 
 import (
-	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
@@ -9,98 +8,136 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 )
 
+// errDecrypt is the single, generic error returned for every AES decryption
+// failure. Collapsing all failure modes (bad base64, wrong length, failed GCM
+// authentication, bad CBC padding) into one indistinguishable error removes the
+// padding/stage oracle the previous distinct messages exposed.
+var errDecrypt = errors.New("decryption failed")
+
 const (
-	// aesPrefix for encrypted values by AES-256 CBC
+	// aesPrefix for values encrypted with AES-256-GCM (legacy AES-256-CBC blobs
+	// under the same prefix are still decryptable via the CBC fallback)
 	aesPrefix = "AES#"
-	// Deprecated: cryptPrefix for encrypted values by AES-256 CBC
+	// Deprecated: cryptPrefix for legacy values encrypted with AES-256-CBC
 	cryptPrefix = "CRYPT#"
 	// rsaPrefix for encrypted values by RSA
 	rsaPrefix = "RSA#"
 )
 
-// EncryptAES text with AES-256 CBC and returns a base64 encoded string
+// deriveKey turns a password into a 32-byte AES-256 key by copying it into a
+// zero-filled buffer. This derivation is intentionally kept (no KDF/salt) so
+// that legacy AES#/CRYPT# blobs encrypted before the AES-GCM migration still
+// decrypt under the same key. It is shared by the GCM path and the CBC fallback.
+func deriveKey(password string) []byte {
+	key := make([]byte, 32)
+	copy(key, []byte(password))
+	return key
+}
+
+// EncryptAES encrypts plaintext with AES-256-GCM (authenticated encryption) and
+// returns a base64-encoded string of nonce || ciphertext || tag. The "AES#"
+// prefix is added by EncryptSecret.
 func EncryptAES(password string, plaintext string) (string, error) {
 	if plaintext == "" {
 		return "", nil
 	}
 
-	key := make([]byte, 32)
-	copy(key, []byte(password))
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(deriveKey(password))
+	if err != nil {
+		return "", err
+	}
+	gcm, err := cipher.NewGCM(block)
 	if err != nil {
 		return "", err
 	}
 
-	content := []byte(plaintext)
-	blockSize := block.BlockSize()
-	padding := blockSize - len(content)%blockSize
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
-	content = append(content, padtext...)
-
-	ciphertext := make([]byte, aes.BlockSize+len(content))
-
-	iv := ciphertext[:aes.BlockSize]
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
 		return "", err
 	}
 
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext[aes.BlockSize:], content)
-
+	// Seal appends the ciphertext+tag to nonce, yielding nonce || ct || tag.
+	ciphertext := gcm.Seal(nonce, nonce, []byte(plaintext), nil)
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// DecryptAES base64 string encoded by the AES-256 CBC
+// DecryptAES decrypts a base64-encoded blob produced by EncryptAES. It first
+// tries the current AES-256-GCM format; if that does not apply or fails it falls
+// back to the legacy AES-256-CBC format for backward compatibility. Every
+// failure mode returns the single generic errDecrypt to avoid a padding/stage
+// oracle.
+//
+// Backward-compat caveat: the CBC fallback still ACCEPTS unauthenticated blobs,
+// so pre-existing AES#/CRYPT# secrets remain malleable until they are
+// re-encrypted. Full closure requires dropping the CBC fallback in a future
+// major version.
 func DecryptAES(password string, crypt64 string) (string, error) {
 	if crypt64 == "" {
 		return "", nil
 	}
 
-	key := make([]byte, 32)
-	copy(key, []byte(password))
+	key := deriveKey(password)
 
-	crypt, err := base64.StdEncoding.DecodeString(crypt64)
+	raw, err := base64.StdEncoding.DecodeString(crypt64)
 	if err != nil {
-		return "", err
+		return "", errDecrypt
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return "", errDecrypt
 	}
 
-	blockSize := block.BlockSize()
-	// Ciphertext must contain the IV plus at least one block of data and be
-	// block-aligned, otherwise CryptBlocks would panic on malformed input.
-	if len(crypt) < 2*blockSize || len(crypt)%blockSize != 0 {
-		return "", fmt.Errorf("invalid ciphertext length")
-	}
-
-	iv := crypt[:blockSize]
-	crypt = crypt[blockSize:]
-	decrypted := make([]byte, len(crypt))
-	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(decrypted, crypt)
-
-	// Validate and strip PKCS#7 padding. CBC provides no authentication, but
-	// verifying the padding rejects most corrupted/forged ciphertext instead
-	// of panicking on an out-of-range slice index.
-	padding := int(decrypted[len(decrypted)-1])
-	if padding == 0 || padding > blockSize || padding > len(decrypted) {
-		return "", fmt.Errorf("invalid padding")
-	}
-	for _, b := range decrypted[len(decrypted)-padding:] {
-		if int(b) != padding {
-			return "", fmt.Errorf("invalid padding")
+	// Current format: AES-256-GCM (nonce || ciphertext || tag).
+	if gcm, err := cipher.NewGCM(block); err == nil {
+		if len(raw) >= gcm.NonceSize()+gcm.Overhead() {
+			nonce := raw[:gcm.NonceSize()]
+			if plaintext, err := gcm.Open(nil, nonce, raw[gcm.NonceSize():], nil); err == nil {
+				return string(plaintext), nil
+			}
 		}
 	}
 
-	return string(decrypted[:len(decrypted)-padding]), nil
+	// Legacy format: AES-256-CBC. Only attempt when the blob matches the old
+	// invariant (IV plus at least one block, block-aligned). This guard also
+	// makes wrong-password GCM blobs whose length is not block-aligned skip CBC
+	// and fail reliably instead of producing garbage.
+	blockSize := block.BlockSize()
+	if len(raw) >= 2*blockSize && len(raw)%blockSize == 0 {
+		if plaintext, ok := decryptLegacyCBC(block, raw); ok {
+			return plaintext, nil
+		}
+	}
+
+	return "", errDecrypt
+}
+
+// decryptLegacyCBC decrypts a legacy AES-256-CBC blob (IV || ciphertext) and
+// strips PKCS#7 padding, returning ok=false on any malformed input. The caller
+// must have already validated the length/alignment invariant.
+func decryptLegacyCBC(block cipher.Block, raw []byte) (string, bool) {
+	blockSize := block.BlockSize()
+	iv := raw[:blockSize]
+	data := raw[blockSize:]
+	decrypted := make([]byte, len(data))
+	cipher.NewCBCDecrypter(block, iv).CryptBlocks(decrypted, data)
+
+	padding := int(decrypted[len(decrypted)-1])
+	if padding == 0 || padding > blockSize || padding > len(decrypted) {
+		return "", false
+	}
+	for _, b := range decrypted[len(decrypted)-padding:] {
+		if int(b) != padding {
+			return "", false
+		}
+	}
+	return string(decrypted[:len(decrypted)-padding]), true
 }
 
 // GenerateRSAKeys returns a base64 encoded public and private keys
@@ -133,11 +170,19 @@ func EncryptRSA(publicKey string, plaintext string) (string, error) {
 		return "", err
 	}
 
+	public, ok := pubKey.(*rsa.PublicKey)
+	if !ok {
+		return "", fmt.Errorf("public key is not an RSA key")
+	}
+
+	hash := sha256.New()
+	step := public.Size() - 2*hash.Size() - 2
+	if step <= 0 {
+		return "", fmt.Errorf("RSA key too small for OAEP-SHA256")
+	}
+
 	msg := []byte(plaintext)
 	msgLen := len(msg)
-	hash := sha256.New()
-	public := pubKey.(*rsa.PublicKey)
-	step := public.Size() - 2*hash.Size() - 2
 	var encryptedBytes []byte
 	for start := 0; start < msgLen; start += step {
 		finish := start + step
@@ -170,8 +215,12 @@ func DecryptRSA(privateKey string, crypt64 string) (string, error) {
 		return "", err
 	}
 
+	step := privKey.Size()
 	msgLen := len(crypt)
-	step := privKey.PublicKey.Size()
+	if step <= 0 || msgLen%step != 0 {
+		return "", fmt.Errorf("invalid RSA ciphertext length")
+	}
+
 	hash := sha256.New()
 	var decryptedBytes []byte
 	for start := 0; start < msgLen; start += step {

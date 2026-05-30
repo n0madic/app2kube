@@ -99,6 +99,48 @@ func TestGetSelector(t *testing.T) {
 	}
 }
 
+func TestScopedSelector(t *testing.T) {
+	resetAppFlags()
+	defer resetAppFlags()
+
+	// Normal, app-scoped labels return the selector without error.
+	got, err := scopedSelector(map[string]string{"app.kubernetes.io/name": "myapp"})
+	if err != nil {
+		t.Fatalf("scopedSelector(name): unexpected error: %v", err)
+	}
+	if got != "app.kubernetes.io/name=myapp" {
+		t.Errorf("scoped selector: got %q", got)
+	}
+
+	// Labels without app.kubernetes.io/name are unscoped → refuse.
+	if _, err := scopedSelector(map[string]string{"app.kubernetes.io/instance": "production"}); err == nil {
+		t.Errorf("expected error for unscoped selector (no name label)")
+	}
+
+	// An empty label set yields an empty selector → refuse.
+	if _, err := scopedSelector(map[string]string{}); err == nil {
+		t.Errorf("expected error for empty selector")
+	}
+
+	// flagAllInstances dropping the only (instance) label yields "" → refuse.
+	flagAllInstances = true
+	if _, err := scopedSelector(map[string]string{"app.kubernetes.io/instance": "production"}); err == nil {
+		t.Errorf("expected error when all-instances drops the only label")
+	}
+	flagAllInstances = false
+
+	// The deliberate --all-applications mode is allowed (managed-by scope).
+	flagAllApplications = true
+	got, err = scopedSelector(map[string]string{"app.kubernetes.io/name": "myapp"})
+	if err != nil {
+		t.Fatalf("scopedSelector(all-apps): unexpected error: %v", err)
+	}
+	if got != "app.kubernetes.io/managed-by=app2kube" {
+		t.Errorf("all-apps scoped selector: got %q", got)
+	}
+	flagAllApplications = false
+}
+
 func TestCommandConstructors(t *testing.T) {
 	// Smoke: command constructors must build without panicking and expose the
 	// expected names.

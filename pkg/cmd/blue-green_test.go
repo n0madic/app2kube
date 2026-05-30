@@ -1,12 +1,15 @@
 package cmd
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestNextBlueGreenColor(t *testing.T) {
@@ -16,7 +19,7 @@ func TestNextBlueGreenColor(t *testing.T) {
 	}{
 		{"blue", "green"},
 		{"green", "blue"},
-		{"", "blue"},       // no current deployment starts at blue
+		{"", "blue"},        // no current deployment starts at blue
 		{"unknown", "blue"}, // any non-blue color toggles to blue
 	}
 	for _, tc := range cases {
@@ -84,9 +87,45 @@ func TestColorFromServicesNoColorSelector(t *testing.T) {
 }
 
 func TestColorFromServicesSelectorFilter(t *testing.T) {
-	// A selector that matches no service must yield "service not found".
+	// A selector that matches no service must yield a not-found error.
 	kcs := fake.NewSimpleClientset(newColorService("web", "blue"))
 	if _, err := colorFromServices(kcs, "prod", "app.kubernetes.io/instance=other"); err == nil {
 		t.Errorf("expected no match for non-matching selector")
+	}
+}
+
+// A live service with color=blue must rotate the target to green.
+func TestTargetColorFromServicesBlueToGreen(t *testing.T) {
+	kcs := fake.NewSimpleClientset(newColorService("web", "blue"))
+	got, err := targetColorFromServices(kcs, "prod", "")
+	if err != nil {
+		t.Fatalf("targetColorFromServices: %v", err)
+	}
+	if got != "green" {
+		t.Errorf("target color: got %q, want green", got)
+	}
+}
+
+// With no service yet (first deploy) the rotation starts at blue, with no error.
+func TestTargetColorFromServicesNoService(t *testing.T) {
+	kcs := fake.NewSimpleClientset()
+	got, err := targetColorFromServices(kcs, "prod", "")
+	if err != nil {
+		t.Fatalf("targetColorFromServices: %v", err)
+	}
+	if got != "blue" {
+		t.Errorf("no service must start at blue, got %q", got)
+	}
+}
+
+// A real API/connectivity error must propagate so the deploy aborts instead of
+// silently defaulting to blue.
+func TestTargetColorFromServicesAPIError(t *testing.T) {
+	kcs := fake.NewSimpleClientset()
+	kcs.PrependReactor("list", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("connection refused")
+	})
+	if _, err := targetColorFromServices(kcs, "prod", ""); err == nil {
+		t.Errorf("expected a real API error to propagate (cluster unreachable must abort)")
 	}
 }

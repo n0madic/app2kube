@@ -3,12 +3,10 @@ package app2kube
 import (
 	"bytes"
 	"fmt"
-	"text/template"
 	"io"
-	"net/http"
-	"net/url"
 	"os"
 	"strings"
+	"text/template"
 
 	"github.com/Masterminds/sprig"
 	"github.com/ghodss/yaml"
@@ -115,20 +113,22 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	}
 
 	// User specified a value via --set-file
-        for _, value := range fileValues {
-                reader := func(rs []rune) (interface{}, error) {
-                        bytes, err := os.ReadFile(string(rs))
-                        return strings.TrimSpace(string(bytes)), err
-                }
-                if err := strvals.ParseIntoFile(value, base, reader); err != nil {
-                        return []byte{}, fmt.Errorf("failed parsing --set-file data: %s", err)
-                }
-        }
+	for _, value := range fileValues {
+		reader := func(rs []rune) (interface{}, error) {
+			bytes, err := os.ReadFile(string(rs))
+			return strings.TrimSpace(string(bytes)), err
+		}
+		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
+			return []byte{}, fmt.Errorf("failed parsing --set-file data: %s", err)
+		}
+	}
 
 	return yaml.Marshal(base)
 }
 
-// readFile load a file from the local directory or a remote file with a url.
+// readFile loads a file from the local filesystem. A trailing '?' marks the
+// file as optional: if it is missing, a warning is printed and empty content is
+// returned instead of an error.
 func readFile(filePath string) ([]byte, error) {
 	var allowMissing bool
 	if strings.HasSuffix(filePath, "?") {
@@ -136,41 +136,13 @@ func readFile(filePath string) ([]byte, error) {
 		filePath = strings.TrimSuffix(filePath, "?")
 	}
 
-	u, err := url.Parse(filePath)
+	bytes, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, err
-	}
-
-	var bytes []byte
-	if strings.HasPrefix(u.Scheme, "http") {
-		resp, err := http.Get(filePath)
-		if err != nil {
-			return nil, err
+		if allowMissing {
+			fmt.Fprintf(os.Stderr, "WARNING: value file missing: %s\n", err)
+			return []byte{}, nil
 		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode == http.StatusOK {
-			bytes, err = io.ReadAll(resp.Body)
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			err = fmt.Errorf("%s loading error: %s", filePath, resp.Status)
-			if allowMissing {
-				fmt.Fprintf(os.Stderr, "WARNING: value URL missing: %s\n", err)
-			} else {
-				return nil, err
-			}
-		}
-	} else {
-		bytes, err = os.ReadFile(filePath)
-		if err != nil {
-			if allowMissing {
-				fmt.Fprintf(os.Stderr, "WARNING: value file missing: %s\n", err)
-			} else {
-				return []byte{}, err
-			}
-		}
+		return []byte{}, err
 	}
 
 	return bytes, nil

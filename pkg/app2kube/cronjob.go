@@ -37,7 +37,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 
 		var containers []apiv1.Container
 		if len(job.Container.Command) > 0 {
-			err := app.processContainer(&job.Container)
+			err := app.processContainer(&job.Container, false)
 			if err != nil {
 				return crons, err
 			}
@@ -48,7 +48,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 		for name, container := range job.Containers {
 			container.Name = strings.ToLower(name)
-			err = app.processContainer(&container)
+			err = app.processContainer(&container, false)
 			if err != nil {
 				return crons, err
 			}

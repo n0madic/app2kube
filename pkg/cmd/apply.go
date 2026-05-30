@@ -8,6 +8,7 @@ import (
 	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/kubectl/pkg/cmd/apply"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
@@ -54,7 +55,8 @@ func NewCmdApply() *cobra.Command {
 				}
 
 				if o.Prune {
-					o.Selector = getSelector(app.Labels)
+					o.Selector, err = scopedSelector(app.Labels)
+					cmdutil.CheckErr(err)
 				}
 
 				cmdutil.CheckErr(o.Validate())
@@ -91,8 +93,11 @@ func NewCmdApply() *cobra.Command {
 					return fmt.Errorf("cannot prune resources with blue-green deployment")
 				}
 
+				// Pre-delete the (stale) target-color deployment before recreating
+				// it. A NotFound is the expected case on a normal rotation and is
+				// ignored; only real errors (RBAC/connectivity) are surfaced.
 				err := deleteDeployment(app.GetDeploymentName(), app.Namespace)
-				if err != nil {
+				if err != nil && !apierrors.IsNotFound(err) {
 					fmt.Printf("Problem with deleting an old deployment: %s\n", err)
 				}
 

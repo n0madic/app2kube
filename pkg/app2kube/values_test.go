@@ -109,33 +109,30 @@ func TestValsSetFile(t *testing.T) {
 	}
 }
 
-func TestReadFileHTTP(t *testing.T) {
+// readFile must NOT perform any network fetch. An http:// argument is treated as
+// a local filesystem path (which does not exist), so it errors without hitting
+// the server, and the '?' suffix tolerates the missing "file".
+func TestReadFileHTTPNotFetched(t *testing.T) {
+	var hit bool
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hit = true
 		_, _ = w.Write([]byte("name: remote\n"))
 	}))
 	defer srv.Close()
 
-	b, err := readFile(srv.URL)
-	if err != nil {
-		t.Fatalf("readFile: %v", err)
-	}
-	if string(b) != "name: remote\n" {
-		t.Errorf("got %q", string(b))
-	}
-}
-
-func TestReadFileHTTPNotFoundError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	}))
-	defer srv.Close()
-
 	if _, err := readFile(srv.URL); err == nil {
-		t.Errorf("expected error for 404 without '?' suffix")
+		t.Errorf("expected error: http URL must be treated as a local path, not fetched")
 	}
-	// With the '?' suffix a missing remote file is tolerated.
-	if _, err := readFile(srv.URL + "?"); err != nil {
-		t.Errorf("'?' suffix must tolerate missing file: %v", err)
+	// With '?' the missing "file" is tolerated and yields empty content.
+	b, err := readFile(srv.URL + "?")
+	if err != nil {
+		t.Errorf("'?' suffix must tolerate the missing path: %v", err)
+	}
+	if len(b) != 0 {
+		t.Errorf("expected empty content, got %q", string(b))
+	}
+	if hit {
+		t.Errorf("readFile must not make a network request")
 	}
 }
 

@@ -20,7 +20,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		var containers []apiv1.Container
 		for name, container := range app.Deployment.Containers {
 			container.Name = strings.ToLower(name)
-			err = app.processContainer(&container)
+			err = app.processContainer(&container, false)
 			if err != nil {
 				return
 			}
@@ -30,7 +30,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		var initContainers []apiv1.Container
 		for name, icontainer := range app.Deployment.InitContainers {
 			icontainer.Name = strings.ToLower(name)
-			err = app.processContainer(&icontainer)
+			err = app.processContainer(&icontainer, true)
 			if err != nil {
 				return
 			}

@@ -111,11 +111,11 @@ cronjob:
 // Regression: malformed AES ciphertext must return an error, not panic.
 func TestDecryptAESMalformed(t *testing.T) {
 	cases := []string{
-		base64.StdEncoding.EncodeToString([]byte("short")),                 // shorter than IV
-		base64.StdEncoding.EncodeToString(make([]byte, 16)),                // only IV, no data
-		base64.StdEncoding.EncodeToString(make([]byte, 20)),                // not block-aligned
-		base64.StdEncoding.EncodeToString(make([]byte, 32)),                // zero block -> invalid padding
-		"not-base64-!!!",                                                   // invalid base64
+		base64.StdEncoding.EncodeToString([]byte("short")),  // shorter than IV
+		base64.StdEncoding.EncodeToString(make([]byte, 16)), // only IV, no data
+		base64.StdEncoding.EncodeToString(make([]byte, 20)), // not block-aligned
+		base64.StdEncoding.EncodeToString(make([]byte, 32)), // zero block -> invalid padding
+		"not-base64-!!!", // invalid base64
 	}
 	for _, c := range cases {
 		if _, err := DecryptAES("password", c); err == nil {
@@ -162,7 +162,7 @@ func TestProcessContainerRegistryPort(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &apiv1.Container{Name: "app", Image: tc.image}
-			if err := app.processContainer(c); err != nil {
+			if err := app.processContainer(c, false); err != nil {
 				t.Fatalf("processContainer: %v", err)
 			}
 			if c.Image != tc.wantImage {
@@ -189,7 +189,7 @@ func TestProbeNamedPortPreserved(t *testing.T) {
 			HTTPGet: &apiv1.HTTPGetAction{Port: intstr.FromString("http")},
 		}},
 	}
-	if err := app.processContainer(named); err != nil {
+	if err := app.processContainer(named, false); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if got := named.LivenessProbe.HTTPGet.Port; got.StrVal != "http" {
@@ -204,7 +204,7 @@ func TestProbeNamedPortPreserved(t *testing.T) {
 			HTTPGet: &apiv1.HTTPGetAction{},
 		}},
 	}
-	if err := app.processContainer(unset); err != nil {
+	if err := app.processContainer(unset, false); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if got := unset.LivenessProbe.HTTPGet.Port.IntVal; got != 8080 {

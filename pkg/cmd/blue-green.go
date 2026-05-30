@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -14,6 +15,12 @@ import (
 )
 
 var blueGreenDeploy bool
+
+// errNoBlueGreenColor signals that no current blue/green color could be resolved
+// because no matching service exists yet (or it carries no color selector). This
+// is a benign condition — the rotation simply starts at blue — and must be
+// distinguished from a real API/connectivity error, which must abort the deploy.
+var errNoBlueGreenColor = errors.New("no blue/green color found")
 
 func addBlueGreenFlag(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&blueGreenDeploy, "blue-green", false, "Enable blue-green deployment")
@@ -133,25 +140,48 @@ func nextBlueGreenColor(currentColor string) string {
 
 // getTargetBlueGreenColor return the color for target deployment
 func getTargetBlueGreenColor(namespace string, labels map[string]string) (string, error) {
-	currentColor, _ := getCurrentBlueGreenColor(namespace, labels)
+	kcs, err := kubeFactory.KubernetesClientSet()
+	if err != nil {
+		return "", err
+	}
+	return targetColorFromServices(kcs, namespace, getSelector(labels))
+}
+
+// targetColorFromServices computes the blue/green color to deploy next from the
+// live services. A genuine API/connectivity error is propagated so the deploy
+// aborts on an unreachable cluster; the benign "no service yet" / "no color"
+// cases are treated as no current color and start the rotation at blue.
+func targetColorFromServices(kcs kubernetes.Interface, namespace, selector string) (string, error) {
+	currentColor, err := colorFromServices(kcs, namespace, selector)
+	if err != nil {
+		if errors.Is(err, errNoBlueGreenColor) {
+			return nextBlueGreenColor(""), nil
+		}
+		return "", err
+	}
 	return nextBlueGreenColor(currentColor), nil
 }
 
 // colorFromServices reads the current blue/green color from the first service
 // matching the selector. It takes a kubernetes.Interface so it can be exercised
-// with a fake client, without a live cluster.
+// with a fake client, without a live cluster. A real API error is returned
+// as-is; the absence of a matching service or color selector is reported via the
+// errNoBlueGreenColor sentinel so callers can tell the two apart.
 func colorFromServices(kcs kubernetes.Interface, namespace, selector string) (string, error) {
 	svc, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
 		LabelSelector: selector,
 	})
-	if err != nil || len(svc.Items) == 0 {
-		return "", fmt.Errorf("service not found")
+	if err != nil {
+		return "", fmt.Errorf("listing services: %w", err)
+	}
+	if len(svc.Items) == 0 {
+		return "", errNoBlueGreenColor
 	}
 
 	if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
 		return currentColor, nil
 	}
-	return "", fmt.Errorf("color not found")
+	return "", errNoBlueGreenColor
 }
 
 // getCurrentBlueGreenColor return the color for current deployment

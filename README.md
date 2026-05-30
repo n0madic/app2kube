@@ -17,7 +17,7 @@ The easiest way to create and apply kubernetes manifests for an application
   * PersistentVolumeClaim
   * Secret
   * Service
-* Secret value encryption with AES-256 CBC or RSA-2048
+* Secret value encryption with AES-256 GCM or RSA-2048
 * Support staging
 * Build and push docker image
 * Apply/delete a configuration to a resource in kubernetes
@@ -135,7 +135,7 @@ app2kube delete
 
 ## Secrets
 
-The `secrets:` section of the YAML file can store secrets, which can be encrypted using either AES-256 CBC or RSA-2048. To use AES-256 CBC, set the `APP2KUBE_PASSWORD` environment variable. For RSA-2048, set the `APP2KUBE_ENCRYPT_KEY` or `APP2KUBE_DECRYPT_KEY` environment variable. If both are set, RSA will take precedence over AES.
+The `secrets:` section of the YAML file can store secrets, which can be encrypted using either AES-256 GCM or RSA-2048. To use AES-256 GCM, set the `APP2KUBE_PASSWORD` environment variable. For RSA-2048, set the `APP2KUBE_ENCRYPT_KEY` or `APP2KUBE_DECRYPT_KEY` environment variable. If both are set, RSA will take precedence over AES. Secrets encrypted with the legacy AES-256 CBC format are still decrypted transparently for backward compatibility.
 
 To encrypt YAML file:
 ```shell

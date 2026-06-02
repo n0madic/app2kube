@@ -92,8 +92,7 @@ func TestLoadValuesNilLabels(t *testing.T) {
 }
 
 func TestEncryptAndDecryptAES(t *testing.T) {
-	os.Setenv("APP2KUBE_PASSWORD", "pass")
-	defer os.Unsetenv("APP2KUBE_PASSWORD")
+	t.Setenv(EnvPassword, "pass")
 
 	app := NewApp()
 	enc, err := app.EncryptSecret("secret")
@@ -119,10 +118,8 @@ func TestEncryptAndDecryptRSA(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GenerateRSAKeys error: %v", err)
 	}
-	os.Setenv("APP2KUBE_ENCRYPT_KEY", pub)
-	os.Setenv("APP2KUBE_DECRYPT_KEY", priv)
-	defer os.Unsetenv("APP2KUBE_ENCRYPT_KEY")
-	defer os.Unsetenv("APP2KUBE_DECRYPT_KEY")
+	t.Setenv(EnvEncryptKey, pub)
+	t.Setenv(EnvDecryptKey, priv)
 
 	app := NewApp()
 	enc, err := app.EncryptSecret("secret")

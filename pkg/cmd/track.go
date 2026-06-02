@@ -49,8 +49,8 @@ func NewCmdTrack() *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short}
 		opts := addAppFlags(c)
 		addBlueGreenFlag(c)
-		c.Flags().MarkHidden("include-namespace")
-		c.Flags().MarkHidden("snapshot")
+		_ = c.Flags().MarkHidden("include-namespace")
+		_ = c.Flags().MarkHidden("snapshot")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
 			app, err := opts.initApp()
 			if err != nil {

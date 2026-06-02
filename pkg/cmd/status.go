@@ -45,7 +45,7 @@ func NewCmdStatus() *cobra.Command {
 	statusCmd.Flags().BoolVar(&flagAllApplications, "all", false, "Show all applications managed by app2kube")
 	statusCmd.Flags().BoolVar(&flagAllInstances, "all-instances", false, "Show all instances of application")
 
-	statusCmd.Flags().MarkHidden("include-namespace")
+	_ = statusCmd.Flags().MarkHidden("include-namespace")
 
 	return statusCmd
 }
@@ -250,7 +250,7 @@ func getDeploymentStatus(kcs kubernetes.Interface, namespace string, labels map[
 	table.AddRow("NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE")
 	for _, deployment := range list.Items {
 		activeMark := ""
-		currentColor := deployment.Spec.Selector.MatchLabels["app.kubernetes.io/color"]
+		currentColor := deployment.Spec.Selector.MatchLabels[app2kube.LabelColor]
 		if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
 			activeMark = "*"
 		}
@@ -286,7 +286,7 @@ func getPodsStatus(kcs kubernetes.Interface, namespace string, labels map[string
 	table.MaxColWidth = maxColWidth
 	table.AddRow("NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE")
 	for _, pod := range list.Items {
-		currentColor := pod.ObjectMeta.Labels["app.kubernetes.io/color"]
+		currentColor := pod.Labels[app2kube.LabelColor]
 		if currentColor != "" {
 			pod.Name = colorize(currentColor, pod.Name)
 		}
@@ -343,7 +343,7 @@ func getServicesStatus(kcs kubernetes.Interface, namespace string, labels map[st
 		for _, port := range svc.Spec.Ports {
 			ports = append(ports, strconv.Itoa(int(port.Port)))
 		}
-		currentColor := svc.Spec.Selector["app.kubernetes.io/color"]
+		currentColor := svc.Spec.Selector[app2kube.LabelColor]
 		if currentColor != "" {
 			svc.Name = colorize(currentColor, svc.Name)
 		}

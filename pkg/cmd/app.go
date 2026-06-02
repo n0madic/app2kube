@@ -69,7 +69,7 @@ func (o *appOptions) initApp() (*app2kube.App, error) {
 		app.Namespace = app2kube.NamespaceDefault
 	}
 
-	app.Labels["app.kubernetes.io/managed-by"] = "app2kube"
+	app.Labels[app2kube.LabelManagedBy] = app2kube.ManagedByValue
 
 	if blueGreenDeploy {
 		app.Deployment.BlueGreenColor, err = getTargetBlueGreenColor(app.Namespace, app.Labels)

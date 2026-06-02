@@ -62,7 +62,7 @@ func NewCmdBuild() *cobra.Command {
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
 	buildCmd.Flags().VarP(&tags, "tag", "t", "Additional name and optionally a tag in the 'name:tag' format")
 
-	buildCmd.Flags().MarkHidden("include-namespace")
+	_ = buildCmd.Flags().MarkHidden("include-namespace")
 
 	return buildCmd
 }
@@ -173,7 +173,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return fmt.Errorf("unable to open Dockerfile: %v", err)
 		}
-		defer dockerfileCtx.Close()
+		defer func() { _ = dockerfileCtx.Close() }()
 	}
 
 	if err != nil {
@@ -233,7 +233,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("docker image build error: %s", err)
 	}
-	defer result.Body.Close()
+	defer func() { _ = result.Body.Close() }()
 
 	fd, isTerminal := term.GetFdInfo(os.Stdout)
 

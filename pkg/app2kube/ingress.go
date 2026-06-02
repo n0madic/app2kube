@@ -10,14 +10,20 @@ import (
 	v1 "k8s.io/api/networking/v1"
 )
 
+// wildcardHost rewrites a leading wildcard ("*") in a host into "wildcard" so it
+// can appear in a DNS-1123-valid object name.
+func wildcardHost(host string) string {
+	return strings.Replace(host, "*", "wildcard", 1)
+}
+
 // ingressTLSSecretName derives the TLS Secret name for a host: the explicit
-// name when set, otherwise "tls-"+host (with the wildcard rewrite), always
-// lowercased so the Ingress TLS reference and the emitted Secret share a
+// name when set, otherwise tlsSecretPrefix+host (with the wildcard rewrite),
+// always lowercased so the Ingress TLS reference and the emitted Secret share a
 // byte-identical, DNS-1123-valid name.
 func ingressTLSSecretName(explicit, host string) string {
 	name := explicit
 	if name == "" {
-		name = "tls-" + strings.Replace(host, "*", "wildcard", 1)
+		name = tlsSecretPrefix + wildcardHost(host)
 	}
 	return strings.ToLower(name)
 }
@@ -26,7 +32,7 @@ func ingressTLSSecretName(explicit, host string) string {
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
-			ingressName := strings.ToLower(app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1))
+			ingressName := strings.ToLower(app.Name + "-" + wildcardHost(ing.Host))
 
 			newIngress := &v1.Ingress{
 				ObjectMeta: app.GetObjectMeta(ingressName),
@@ -34,7 +40,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 
 			var foundIngress bool
 			for _, availableIngress := range ingress {
-				if availableIngress.ObjectMeta.Name == ingressName {
+				if availableIngress.Name == ingressName {
 					newIngress = availableIngress
 					foundIngress = true
 					break
@@ -123,8 +129,8 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				// sharing the same ingress object).
 				if rule.Host == ing.Host {
 					foundHost = true
-					newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths = append(
-						newIngress.Spec.Rules[i].IngressRuleValue.HTTP.Paths,
+					newIngress.Spec.Rules[i].HTTP.Paths = append(
+						newIngress.Spec.Rules[i].HTTP.Paths,
 						ingressPath,
 					)
 				}

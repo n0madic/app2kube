@@ -291,7 +291,7 @@ func TestIngressPathsAndAliasTLS(t *testing.T) {
 	var hostPaths int
 	for _, r := range ing.Spec.Rules {
 		if r.Host == "example.com" {
-			hostPaths = len(r.IngressRuleValue.HTTP.Paths)
+			hostPaths = len(r.HTTP.Paths)
 		}
 	}
 	if hostPaths != 2 {
@@ -348,7 +348,7 @@ func TestIngressTLSNamesLowercasedAndConsistent(t *testing.T) {
 	if secretName != strings.ToLower(secretName) {
 		t.Errorf("Secret object name not lowercased: %q", secretName)
 	}
-	if ingName := ings[0].ObjectMeta.Name; ingName != strings.ToLower(ingName) {
+	if ingName := ings[0].Name; ingName != strings.ToLower(ingName) {
 		t.Errorf("ingress object name not lowercased: %q", ingName)
 	}
 }

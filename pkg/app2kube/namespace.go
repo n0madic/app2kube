@@ -12,9 +12,9 @@ func (app *App) GetNamespace() (namespace *apiv1.Namespace) {
 	if app.Namespace != "" {
 		namespace = &apiv1.Namespace{}
 		namespace.SetName(app.Namespace)
-		if managed, ok := app.Labels["app.kubernetes.io/managed-by"]; ok {
+		if managed, ok := app.Labels[LabelManagedBy]; ok {
 			namespace.Labels = map[string]string{
-				"app.kubernetes.io/managed-by": managed,
+				LabelManagedBy: managed,
 			}
 		}
 	}

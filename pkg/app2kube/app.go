@@ -170,7 +170,7 @@ func (app *App) GetColorLabels() map[string]string {
 		labels[k] = v
 	}
 	if app.Deployment.BlueGreenColor != "" {
-		labels["app.kubernetes.io/color"] = app.Deployment.BlueGreenColor
+		labels[LabelColor] = app.Deployment.BlueGreenColor
 	}
 	return labels
 }
@@ -180,7 +180,7 @@ func (app *App) getAffinity() (*apiv1.Affinity, error) {
 	if app.Common.PodAntiAffinity != "" {
 		var podAffinityTerm []apiv1.PodAffinityTerm
 		for label, value := range app.GetColorLabels() {
-			if label == "app.kubernetes.io/managed-by" {
+			if label == LabelManagedBy {
 				continue
 			}
 			podAffinityTerm = append(podAffinityTerm, apiv1.PodAffinityTerm{
@@ -240,7 +240,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 	app.ensureLabels()
 
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
-	app.Labels["app.kubernetes.io/name"] = truncateName(app.Name)
+	app.Labels[LabelName] = truncateName(app.Name)
 
 	if err := app.applyStaging(); err != nil {
 		return nil, err
@@ -292,9 +292,9 @@ func (app *App) applyStaging() error {
 		app.Deployment.ReplicaCount = 1
 	}
 
-	app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging)
+	app.Labels[LabelInstance] = truncateName(app.Staging)
 	if app.Branch != "" {
-		app.Labels["app.kubernetes.io/instance"] = truncateName(app.Staging + "-" + app.Branch)
+		app.Labels[LabelInstance] = truncateName(app.Staging + "-" + app.Branch)
 	}
 
 	for i, ingress := range app.Ingress {
@@ -316,14 +316,14 @@ func NewApp() *App {
 	app := &App{}
 	// Default settings of App
 	app.Labels = map[string]string{
-		"app.kubernetes.io/instance": "production",
+		LabelInstance: "production",
 	}
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
 	// Read passwords and keys from environment variables
-	app.aesPassword = os.Getenv("APP2KUBE_PASSWORD")
-	app.rsaPublicKey = os.Getenv("APP2KUBE_ENCRYPT_KEY")
-	app.rsaPrivateKey = os.Getenv("APP2KUBE_DECRYPT_KEY")
+	app.aesPassword = os.Getenv(EnvPassword)
+	app.rsaPublicKey = os.Getenv(EnvEncryptKey)
+	app.rsaPrivateKey = os.Getenv(EnvDecryptKey)
 	return app
 }
 
@@ -335,8 +335,8 @@ func (app *App) ensureLabels() {
 	if app.Labels == nil {
 		app.Labels = map[string]string{}
 	}
-	if _, ok := app.Labels["app.kubernetes.io/instance"]; !ok {
-		app.Labels["app.kubernetes.io/instance"] = "production"
+	if _, ok := app.Labels[LabelInstance]; !ok {
+		app.Labels[LabelInstance] = "production"
 	}
 }
 

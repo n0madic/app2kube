@@ -85,7 +85,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		}
 
 		if app.Deployment.BlueGreenColor != "" {
-			deployment.ObjectMeta.Labels = app.GetColorLabels()
+			deployment.Labels = app.GetColorLabels()
 		}
 
 		if app.Common.Image.PullSecrets != "" {
@@ -105,7 +105,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		if app.Common.SharedData != "" &&
 			len(deployment.Spec.Template.Spec.Containers)+len(deployment.Spec.Template.Spec.InitContainers) > 1 {
 			deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name:         "shared-data",
+				Name:         sharedDataVolumeName,
 				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
 			})
 		}

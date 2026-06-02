@@ -41,8 +41,8 @@ func NewCmdBlueGreen() *cobra.Command {
 	addBGSub := func(use, short string, run func(app *app2kube.App) error) {
 		c := &cobra.Command{Use: use, Short: short}
 		opts := addAppFlags(c)
-		c.Flags().MarkHidden("include-namespace")
-		c.Flags().MarkHidden("snapshot")
+		_ = c.Flags().MarkHidden("include-namespace")
+		_ = c.Flags().MarkHidden("snapshot")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
 			app, err := opts.initApp()
 			if err != nil {
@@ -89,7 +89,7 @@ func NewCmdBlueGreen() *cobra.Command {
 				fmt.Printf("Patch service %s in [%s] color\n", service.Name, colorize(app.Deployment.BlueGreenColor))
 				payloadBytes := []byte(`[{
 					"op": "replace",
-					"path": "/spec/selector/app.kubernetes.io~1color",
+					"path": "/spec/selector/` + strings.ReplaceAll(app2kube.LabelColor, "/", "~1") + `",
 					"value": "` + app.Deployment.BlueGreenColor + `"
 				}]`)
 				options := metav1.PatchOptions{}
@@ -178,7 +178,7 @@ func colorFromServices(kcs kubernetes.Interface, namespace, selector string) (st
 		return "", errNoBlueGreenColor
 	}
 
-	if currentColor, ok := svc.Items[0].Spec.Selector["app.kubernetes.io/color"]; ok {
+	if currentColor, ok := svc.Items[0].Spec.Selector[app2kube.LabelColor]; ok {
 		return currentColor, nil
 	}
 	return "", errNoBlueGreenColor

@@ -103,8 +103,8 @@ func NewCmdConfig() *cobra.Command {
 	addConfigSub := func(use, short string, run func(cmd *cobra.Command, app *app2kube.App) error) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short}
 		opts := addAppFlags(c)
-		c.Flags().MarkHidden("include-namespace")
-		c.Flags().MarkHidden("snapshot")
+		_ = c.Flags().MarkHidden("include-namespace")
+		_ = c.Flags().MarkHidden("snapshot")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
 			opts.stringValues = append(opts.stringValues, "name=app")
 			app, err := opts.initApp()
@@ -172,9 +172,9 @@ func NewCmdConfig() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Println("export APP2KUBE_ENCRYPT_KEY=" + publicKey)
+			fmt.Println("export " + app2kube.EnvEncryptKey + "=" + publicKey)
 			fmt.Println()
-			fmt.Println("export APP2KUBE_DECRYPT_KEY=" + privateKey)
+			fmt.Println("export " + app2kube.EnvDecryptKey + "=" + privateKey)
 			fmt.Println()
 			return nil
 		},

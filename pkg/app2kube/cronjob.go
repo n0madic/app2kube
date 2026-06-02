@@ -117,7 +117,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 
 		if app.Common.SharedData != "" && len(cron.Spec.JobTemplate.Spec.Template.Spec.Containers) > 1 {
 			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name:         "shared-data",
+				Name:         sharedDataVolumeName,
 				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
 			})
 		}

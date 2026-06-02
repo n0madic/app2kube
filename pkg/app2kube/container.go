@@ -67,7 +67,7 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 
 		if app.Common.SharedData != "" {
 			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
-				Name:      "shared-data",
+				Name:      sharedDataVolumeName,
 				MountPath: app.Common.SharedData,
 			})
 		}

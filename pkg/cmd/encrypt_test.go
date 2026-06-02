@@ -12,8 +12,7 @@ import (
 // Regression: a blank line inside the secrets: block must not end the section;
 // secrets after it must still be encrypted instead of left in plaintext.
 func TestEncryptBlankLineInSecrets(t *testing.T) {
-	os.Setenv("APP2KUBE_PASSWORD", "pass")
-	defer os.Unsetenv("APP2KUBE_PASSWORD")
+	t.Setenv(app2kube.EnvPassword, "pass")
 
 	dir := t.TempDir()
 	file := filepath.Join(dir, "secrets.yaml")

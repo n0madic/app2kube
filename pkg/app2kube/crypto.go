@@ -271,7 +271,7 @@ func (app *App) GetDecryptedSecrets() (secrets map[string]string, err error) {
 	for key, value := range app.Secrets {
 		if strings.HasPrefix(value, aesPrefix) || strings.HasPrefix(value, cryptPrefix) {
 			if app.aesPassword == "" {
-				return nil, fmt.Errorf("AES password not specified in $APP2KUBE_PASSWORD")
+				return nil, fmt.Errorf("AES password not specified in $%s", EnvPassword)
 			}
 			if strings.HasPrefix(value, aesPrefix) {
 				value = value[len(aesPrefix):]
@@ -280,17 +280,17 @@ func (app *App) GetDecryptedSecrets() (secrets map[string]string, err error) {
 			}
 			decrypted, err := DecryptAES(app.aesPassword, value)
 			if err != nil {
-				return nil, fmt.Errorf("failed to decrypt secret %q, check $APP2KUBE_PASSWORD is correct: %w", key, err)
+				return nil, fmt.Errorf("failed to decrypt secret %q, check $%s is correct: %w", key, EnvPassword, err)
 			}
 			secrets[key] = decrypted
 		} else if strings.HasPrefix(value, rsaPrefix) {
 			if app.rsaPrivateKey == "" {
-				return nil, fmt.Errorf("RSA private key not specified in $APP2KUBE_DECRYPT_KEY")
+				return nil, fmt.Errorf("RSA private key not specified in $%s", EnvDecryptKey)
 			}
 			value = value[len(rsaPrefix):]
 			decrypted, err := DecryptRSA(app.rsaPrivateKey, value)
 			if err != nil {
-				return nil, fmt.Errorf("failed to decrypt secret %q, check $APP2KUBE_DECRYPT_KEY is correct: %w", key, err)
+				return nil, fmt.Errorf("failed to decrypt secret %q, check $%s is correct: %w", key, EnvDecryptKey, err)
 			}
 			secrets[key] = decrypted
 		} else {

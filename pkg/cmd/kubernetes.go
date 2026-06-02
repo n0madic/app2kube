@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
@@ -25,9 +26,9 @@ var (
 func init() {
 	kubeConfigFlags.AddFlags(rootCmd.PersistentFlags())
 
-	rootCmd.PersistentFlags().MarkHidden("as")
-	rootCmd.PersistentFlags().MarkHidden("as-group")
-	rootCmd.PersistentFlags().MarkHidden("cache-dir")
+	_ = rootCmd.PersistentFlags().MarkHidden("as")
+	_ = rootCmd.PersistentFlags().MarkHidden("as-group")
+	_ = rootCmd.PersistentFlags().MarkHidden("cache-dir")
 
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
 	kubeFactory = cmdutil.NewFactory(matchVersionKubeConfigFlags)
@@ -40,10 +41,10 @@ func init() {
 func getSelector(labels map[string]string) string {
 	var selectorList = make([]string, 0, len(labels))
 	if flagAllApplications {
-		selectorList = append(selectorList, "app.kubernetes.io/managed-by=app2kube")
+		selectorList = append(selectorList, app2kube.LabelManagedBy+"="+app2kube.ManagedByValue)
 	} else {
 		for k, v := range labels {
-			if flagAllInstances && k == "app.kubernetes.io/instance" {
+			if flagAllInstances && k == app2kube.LabelInstance {
 				continue
 			}
 			selectorList = append(selectorList, k+"="+v)
@@ -67,8 +68,8 @@ func scopedSelector(labels map[string]string) (string, error) {
 		// Deliberate cluster/namespace-wide app2kube scope requested by the user.
 		return selector, nil
 	}
-	if _, ok := labels["app.kubernetes.io/name"]; !ok {
-		return "", fmt.Errorf("refusing to run a destructive operation: selector %q is not scoped to an application (missing app.kubernetes.io/name)", selector)
+	if _, ok := labels[app2kube.LabelName]; !ok {
+		return "", fmt.Errorf("refusing to run a destructive operation: selector %q is not scoped to an application (missing %s)", selector, app2kube.LabelName)
 	}
 	return selector, nil
 }

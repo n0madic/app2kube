@@ -13,7 +13,6 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
 	github.com/moby/term v0.5.2
-	github.com/rhysd/go-fakeio v1.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/werf/kubedog v0.13.0
 	k8s.io/api v0.29.3

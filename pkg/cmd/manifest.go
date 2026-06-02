@@ -29,7 +29,7 @@ func NewCmdManifest() *cobra.Command {
 		// matching the other subcommands; manifest output is piped to kubectl.
 		cmd.SilenceUsage = true
 
-		app, err := opts.initApp()
+		app, err := opts.initApp(cmd.Context())
 		if err != nil {
 			return err
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/logrusorgru/aurora"
 	"github.com/n0madic/app2kube/pkg/app2kube"
@@ -31,31 +32,32 @@ func NewCmdBlueGreen() *cobra.Command {
 	blueGreenCmd := &cobra.Command{
 		Use:   "blue-green",
 		Short: "Commands for blue-green deployment",
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
-			blueGreenDeploy = true
-		},
 	}
 
-	// addBGSub wires a blue-green subcommand with its own appOptions so no
-	// state is shared between commands.
-	addBGSub := func(use, short string, run func(app *app2kube.App) error) {
+	// addBGSub wires a blue-green subcommand with its own appOptions so no state
+	// is shared between commands. blueGreen tells initApp whether to resolve the
+	// target color: rollback/prune need it, but `color` only reads the current
+	// color and must not trigger a target-color lookup (the previous global
+	// PersistentPreRun forced it on every subcommand, including color).
+	addBGSub := func(use, short string, blueGreen bool, run func(ctx context.Context, app *app2kube.App) error) {
 		c := &cobra.Command{Use: use, Short: short}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
 		_ = c.Flags().MarkHidden("snapshot")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
-			app, err := opts.initApp()
+			blueGreenDeploy = blueGreen
+			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				return err
 			}
 			cmd.SilenceUsage = true
-			return run(app)
+			return run(cmd.Context(), app)
 		}
 		blueGreenCmd.AddCommand(c)
 	}
 
-	addBGSub("color", "Get current Deployment color", func(app *app2kube.App) error {
-		currentColor, err := getCurrentBlueGreenColor(app.Namespace, app.Labels)
+	addBGSub("color", "Get current Deployment color", false, func(ctx context.Context, app *app2kube.App) error {
+		currentColor, err := getCurrentBlueGreenColor(ctx, app.Namespace, app.Labels)
 		if err != nil {
 			return err
 		}
@@ -63,11 +65,13 @@ func NewCmdBlueGreen() *cobra.Command {
 		return nil
 	})
 
-	addBGSub("rollback", "Rollback Deployment to previous color", func(app *app2kube.App) error {
+	addBGSub("rollback", "Rollback Deployment to previous color", true, func(ctx context.Context, app *app2kube.App) error {
 		fmt.Printf("Check Deployment %s with previous color:\n",
 			colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
-		trackTimeout = 1
-		err := trackReady(app.GetDeploymentName(), app.Namespace)
+		// Use a short, local rollback timeout instead of mutating the global
+		// trackTimeout (which previously leaked a permanent 1-minute timeout into
+		// any later track in the process).
+		err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, 1, time.Now())
 		if err != nil {
 			return err
 		}
@@ -77,7 +81,7 @@ func NewCmdBlueGreen() *cobra.Command {
 			return err
 		}
 
-		services, err := kcs.CoreV1().Services(app.Namespace).List(context.TODO(), metav1.ListOptions{
+		services, err := kcs.CoreV1().Services(app.Namespace).List(ctx, metav1.ListOptions{
 			LabelSelector: getSelector(app.Labels),
 		})
 		if err != nil {
@@ -93,7 +97,7 @@ func NewCmdBlueGreen() *cobra.Command {
 					"value": "` + app.Deployment.BlueGreenColor + `"
 				}]`)
 				options := metav1.PatchOptions{}
-				_, err = kcs.CoreV1().Services(app.Namespace).Patch(context.TODO(), service.Name, types.JSONPatchType, payloadBytes, options)
+				_, err = kcs.CoreV1().Services(app.Namespace).Patch(ctx, service.Name, types.JSONPatchType, payloadBytes, options)
 				if err != nil {
 					return err
 				}
@@ -106,8 +110,8 @@ func NewCmdBlueGreen() *cobra.Command {
 		return nil
 	})
 
-	addBGSub("prune", "Prune Deployment with previous color", func(app *app2kube.App) error {
-		if err := deleteDeployment(app.GetDeploymentName(), app.Namespace); err != nil {
+	addBGSub("prune", "Prune Deployment with previous color", true, func(ctx context.Context, app *app2kube.App) error {
+		if err := deleteDeployment(ctx, app.GetDeploymentName(), app.Namespace); err != nil {
 			return err
 		}
 		fmt.Printf("Deployment %s pruned\n", colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
@@ -139,20 +143,20 @@ func nextBlueGreenColor(currentColor string) string {
 }
 
 // getTargetBlueGreenColor return the color for target deployment
-func getTargetBlueGreenColor(namespace string, labels map[string]string) (string, error) {
+func getTargetBlueGreenColor(ctx context.Context, namespace string, labels map[string]string) (string, error) {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return "", err
 	}
-	return targetColorFromServices(kcs, namespace, getSelector(labels))
+	return targetColorFromServices(ctx, kcs, namespace, getSelector(labels))
 }
 
 // targetColorFromServices computes the blue/green color to deploy next from the
 // live services. A genuine API/connectivity error is propagated so the deploy
 // aborts on an unreachable cluster; the benign "no service yet" / "no color"
 // cases are treated as no current color and start the rotation at blue.
-func targetColorFromServices(kcs kubernetes.Interface, namespace, selector string) (string, error) {
-	currentColor, err := colorFromServices(kcs, namespace, selector)
+func targetColorFromServices(ctx context.Context, kcs kubernetes.Interface, namespace, selector string) (string, error) {
+	currentColor, err := colorFromServices(ctx, kcs, namespace, selector)
 	if err != nil {
 		if errors.Is(err, errNoBlueGreenColor) {
 			return nextBlueGreenColor(""), nil
@@ -167,8 +171,8 @@ func targetColorFromServices(kcs kubernetes.Interface, namespace, selector strin
 // with a fake client, without a live cluster. A real API error is returned
 // as-is; the absence of a matching service or color selector is reported via the
 // errNoBlueGreenColor sentinel so callers can tell the two apart.
-func colorFromServices(kcs kubernetes.Interface, namespace, selector string) (string, error) {
-	svc, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
+func colorFromServices(ctx context.Context, kcs kubernetes.Interface, namespace, selector string) (string, error) {
+	svc, err := kcs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: selector,
 	})
 	if err != nil {
@@ -185,10 +189,10 @@ func colorFromServices(kcs kubernetes.Interface, namespace, selector string) (st
 }
 
 // getCurrentBlueGreenColor return the color for current deployment
-func getCurrentBlueGreenColor(namespace string, labels map[string]string) (string, error) {
+func getCurrentBlueGreenColor(ctx context.Context, namespace string, labels map[string]string) (string, error) {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return "", err
 	}
-	return colorFromServices(kcs, namespace, getSelector(labels))
+	return colorFromServices(ctx, kcs, namespace, getSelector(labels))
 }

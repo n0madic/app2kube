@@ -20,7 +20,7 @@ const maxColWidth = 63
 
 type tableFunc struct {
 	name string
-	fn   func(kubernetes.Interface, string, map[string]string) (string, error)
+	fn   func(context.Context, kubernetes.Interface, string, map[string]string) (string, error)
 }
 
 // NewCmdStatus return App status in kubernetes
@@ -30,14 +30,14 @@ func NewCmdStatus() *cobra.Command {
 		Use:   "status",
 		Short: "Show application resources status in kubernetes",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := opts.initApp()
+			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				return err
 			}
 
 			cmd.SilenceUsage = true
 
-			return status(app)
+			return status(cmd.Context(), app)
 		},
 	}
 
@@ -50,7 +50,7 @@ func NewCmdStatus() *cobra.Command {
 	return statusCmd
 }
 
-func status(app *app2kube.App) error {
+func status(ctx context.Context, app *app2kube.App) error {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func status(app *app2kube.App) error {
 	}
 
 	for _, res := range tables {
-		table, err := res.fn(kcs, app.Namespace, app.Labels)
+		table, err := res.fn(ctx, kcs, app.Namespace, app.Labels)
 		if err != nil {
 			return err
 		}
@@ -109,8 +109,8 @@ func status(app *app2kube.App) error {
 	return nil
 }
 
-func getConfigmapStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().ConfigMaps(namespace).List(context.TODO(), metav1.ListOptions{
+func getConfigmapStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -135,8 +135,8 @@ func getConfigmapStatus(kcs kubernetes.Interface, namespace string, labels map[s
 	return table.String(), nil
 }
 
-func getSecretsStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Secrets(namespace).List(context.TODO(), metav1.ListOptions{
+func getSecretsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.CoreV1().Secrets(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -161,8 +161,8 @@ func getSecretsStatus(kcs kubernetes.Interface, namespace string, labels map[str
 	return table.String(), nil
 }
 
-func getCronJobsStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.BatchV1().CronJobs(namespace).List(context.TODO(), metav1.ListOptions{
+func getCronJobsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.BatchV1().CronJobs(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -198,8 +198,8 @@ func getCronJobsStatus(kcs kubernetes.Interface, namespace string, labels map[st
 	return table.String(), nil
 }
 
-func getPVCStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().PersistentVolumeClaims(namespace).List(context.TODO(), metav1.ListOptions{
+func getPVCStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.CoreV1().PersistentVolumeClaims(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -229,12 +229,12 @@ func getPVCStatus(kcs kubernetes.Interface, namespace string, labels map[string]
 	return table.String(), nil
 }
 
-func getDeploymentStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
 	// Resolve the active blue/green color from the same client set, so this
 	// function stays exercisable with a fake client (no live cluster).
-	serviceColor, _ := colorFromServices(kcs, namespace, getSelector(labels))
+	serviceColor, _ := colorFromServices(ctx, kcs, namespace, getSelector(labels))
 
-	list, err := kcs.AppsV1().Deployments(namespace).List(context.TODO(), metav1.ListOptions{
+	list, err := kcs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -270,8 +270,8 @@ func getDeploymentStatus(kcs kubernetes.Interface, namespace string, labels map[
 	return table.String(), nil
 }
 
-func getPodsStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{
+func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -319,8 +319,8 @@ func getPodsStatus(kcs kubernetes.Interface, namespace string, labels map[string
 	return table.String(), nil
 }
 
-func getServicesStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Services(namespace).List(context.TODO(), metav1.ListOptions{
+func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {
@@ -360,8 +360,8 @@ func getServicesStatus(kcs kubernetes.Interface, namespace string, labels map[st
 	return table.String(), nil
 }
 
-func getIngressStatus(kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.NetworkingV1().Ingresses(namespace).List(context.TODO(), metav1.ListOptions{
+func getIngressStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+	list, err := kcs.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
 	})
 	if err != nil {

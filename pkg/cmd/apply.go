@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
-	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -18,6 +18,18 @@ var (
 	applyWithTrack  string
 )
 
+// validateTrackValue checks the --track flag value. The valid set is known at
+// parse time, so an invalid value (a typo like "redy") must be rejected in
+// PreRunE before initApp/apply mutates the cluster (#26).
+func validateTrackValue(v string) error {
+	switch strings.ToLower(v) {
+	case "", "ready", "follow":
+		return nil
+	default:
+		return fmt.Errorf("invalid --track value %q (must be one of: ready, follow)", v)
+	}
+}
+
 // NewCmdApply return apply command
 func NewCmdApply() *cobra.Command {
 	flags := apply.NewApplyFlags(ioStreams)
@@ -27,8 +39,12 @@ func NewCmdApply() *cobra.Command {
 	applyCmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a configuration to a resource in kubernetes",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateTrackValue(applyWithTrack)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app, err := opts.initApp()
+			ctx := cmd.Context()
+			app, err := opts.initApp(ctx)
 			cmdutil.CheckErr(err)
 
 			applyManifest := func(manifest string, prune bool) error {
@@ -61,14 +77,14 @@ func NewCmdApply() *cobra.Command {
 
 				cmdutil.CheckErr(o.Validate())
 
-				fake := fakeio.StdinBytes([]byte{})
-				defer fake.Restore()
-				go func() {
-					fake.StdinBytes([]byte(manifest))
-					fake.CloseStdin()
-				}()
-
-				cmdutil.CheckErr(o.Run())
+				wait, err := withStdin([]byte(manifest))
+				cmdutil.CheckErr(err)
+				runErr := o.Run()
+				feedErr := wait()
+				cmdutil.CheckErr(runErr)
+				if feedErr != nil {
+					return fmt.Errorf("feeding manifest to kubectl apply: %w", feedErr)
+				}
 
 				return nil
 			}
@@ -96,7 +112,7 @@ func NewCmdApply() *cobra.Command {
 				// Pre-delete the (stale) target-color deployment before recreating
 				// it. A NotFound is the expected case on a normal rotation and is
 				// ignored; only real errors (RBAC/connectivity) are surfaced.
-				err := deleteDeployment(app.GetDeploymentName(), app.Namespace)
+				err := deleteDeployment(ctx, app.GetDeploymentName(), app.Namespace)
 				if err != nil && !apierrors.IsNotFound(err) {
 					fmt.Printf("Problem with deleting an old deployment: %s\n", err)
 				}
@@ -108,7 +124,7 @@ func NewCmdApply() *cobra.Command {
 
 				cmdutil.CheckErr(applyManifest(manifest, false))
 
-				err = trackReady(app.GetDeploymentName(), app.Namespace)
+				err = trackReady(ctx, app.GetDeploymentName(), app.Namespace, defaultTrackTimeout, time.Now())
 				if err != nil {
 					return err
 				}
@@ -129,18 +145,16 @@ func NewCmdApply() *cobra.Command {
 			if applyWithTrack != "" && len(app.Deployment.Containers) > 0 {
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
-					err = trackFollow(app.GetDeploymentName(), app.Namespace)
+					err = trackFollow(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
 				case "ready":
-					err = trackReady(app.GetDeploymentName(), app.Namespace)
-				default:
-					err = fmt.Errorf("unknown track parameters: %s", applyWithTrack)
+					err = trackReady(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
 				}
 			}
 			cmdutil.CheckErr(err)
 
 			if applyWithStatus {
 				fmt.Println()
-				cmdutil.CheckErr(status(app))
+				cmdutil.CheckErr(status(ctx, app))
 			}
 
 			return nil

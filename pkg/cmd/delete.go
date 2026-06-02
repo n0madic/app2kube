@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"github.com/n0madic/app2kube/pkg/app2kube"
-	"github.com/rhysd/go-fakeio"
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubectl/pkg/cmd/delete"
@@ -23,7 +22,7 @@ func NewCmdDelete() *cobra.Command {
 				cmdutil.CheckErr(err)
 			}
 
-			app, err := opts.initApp()
+			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				cmdutil.CheckErr(err)
 			}
@@ -31,6 +30,7 @@ func NewCmdDelete() *cobra.Command {
 			o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 			cmdutil.CheckErr(err)
 
+			var waitStdin func() error
 			if opts.includeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
@@ -42,16 +42,18 @@ func NewCmdDelete() *cobra.Command {
 				manifest, err := app.GetManifest("json", app2kube.OutputAll)
 				cmdutil.CheckErr(err)
 
-				fake := fakeio.StdinBytes([]byte{})
-				defer fake.Restore()
-				go func() {
-					fake.StdinBytes([]byte(manifest))
-					fake.CloseStdin()
-				}()
+				waitStdin, err = withStdin([]byte(manifest))
+				cmdutil.CheckErr(err)
 			}
 
 			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))
-			cmdutil.CheckErr(o.RunDelete(kubeFactory))
+			runErr := o.RunDelete(kubeFactory)
+			if waitStdin != nil {
+				if feedErr := waitStdin(); feedErr != nil && runErr == nil {
+					runErr = feedErr
+				}
+			}
+			cmdutil.CheckErr(runErr)
 		},
 	}
 

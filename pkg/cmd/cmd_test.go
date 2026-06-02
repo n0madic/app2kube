@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -22,7 +23,7 @@ func TestInitAppValuesRequired(t *testing.T) {
 	resetAppFlags()
 	defer resetAppFlags()
 	o := &appOptions{}
-	if _, err := o.initApp(); err == nil {
+	if _, err := o.initApp(context.Background()); err == nil {
 		t.Errorf("expected error when no values are provided")
 	}
 }
@@ -34,7 +35,7 @@ func TestInitAppSnapshotMode(t *testing.T) {
 	defer resetAppFlags()
 	snap := filepath.Join(t.TempDir(), "snap.yaml")
 	o := &appOptions{values: []string{"name=app"}, snapshot: snap}
-	if _, err := o.initApp(); err != nil {
+	if _, err := o.initApp(context.Background()); err != nil {
 		t.Fatalf("initApp: %v", err)
 	}
 	fi, err := os.Stat(snap)
@@ -51,7 +52,7 @@ func TestInitAppFromSet(t *testing.T) {
 	defer resetAppFlags()
 	o := &appOptions{values: []string{"name=app"}}
 
-	app, err := o.initApp()
+	app, err := o.initApp(context.Background())
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestInitAppNamespaceOverride(t *testing.T) {
 	o := &appOptions{values: []string{"name=app", "namespace=fromvalues"}}
 	*kubeConfigFlags.Namespace = "fromflag"
 
-	app, err := o.initApp()
+	app, err := o.initApp(context.Background())
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestInitAppAllApplications(t *testing.T) {
 	*kubeConfigFlags.Namespace = "ns"
 
 	o := &appOptions{}
-	app, err := o.initApp()
+	app, err := o.initApp(context.Background())
 	if err != nil {
 		t.Fatalf("initApp: %v", err)
 	}

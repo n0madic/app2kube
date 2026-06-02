@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -63,7 +64,7 @@ func newColorService(name, color string) *apiv1.Service {
 
 func TestColorFromServices(t *testing.T) {
 	kcs := fake.NewSimpleClientset(newColorService("web", "green"))
-	got, err := colorFromServices(kcs, "prod", "")
+	got, err := colorFromServices(context.Background(), kcs, "prod", "")
 	if err != nil {
 		t.Fatalf("colorFromServices: %v", err)
 	}
@@ -74,14 +75,14 @@ func TestColorFromServices(t *testing.T) {
 
 func TestColorFromServicesNoService(t *testing.T) {
 	kcs := fake.NewSimpleClientset()
-	if _, err := colorFromServices(kcs, "prod", ""); err == nil {
+	if _, err := colorFromServices(context.Background(), kcs, "prod", ""); err == nil {
 		t.Errorf("expected 'service not found' error")
 	}
 }
 
 func TestColorFromServicesNoColorSelector(t *testing.T) {
 	kcs := fake.NewSimpleClientset(newColorService("web", ""))
-	if _, err := colorFromServices(kcs, "prod", ""); err == nil {
+	if _, err := colorFromServices(context.Background(), kcs, "prod", ""); err == nil {
 		t.Errorf("expected 'color not found' error when selector lacks color")
 	}
 }
@@ -89,7 +90,7 @@ func TestColorFromServicesNoColorSelector(t *testing.T) {
 func TestColorFromServicesSelectorFilter(t *testing.T) {
 	// A selector that matches no service must yield a not-found error.
 	kcs := fake.NewSimpleClientset(newColorService("web", "blue"))
-	if _, err := colorFromServices(kcs, "prod", "app.kubernetes.io/instance=other"); err == nil {
+	if _, err := colorFromServices(context.Background(), kcs, "prod", "app.kubernetes.io/instance=other"); err == nil {
 		t.Errorf("expected no match for non-matching selector")
 	}
 }
@@ -97,7 +98,7 @@ func TestColorFromServicesSelectorFilter(t *testing.T) {
 // A live service with color=blue must rotate the target to green.
 func TestTargetColorFromServicesBlueToGreen(t *testing.T) {
 	kcs := fake.NewSimpleClientset(newColorService("web", "blue"))
-	got, err := targetColorFromServices(kcs, "prod", "")
+	got, err := targetColorFromServices(context.Background(), kcs, "prod", "")
 	if err != nil {
 		t.Fatalf("targetColorFromServices: %v", err)
 	}
@@ -109,7 +110,7 @@ func TestTargetColorFromServicesBlueToGreen(t *testing.T) {
 // With no service yet (first deploy) the rotation starts at blue, with no error.
 func TestTargetColorFromServicesNoService(t *testing.T) {
 	kcs := fake.NewSimpleClientset()
-	got, err := targetColorFromServices(kcs, "prod", "")
+	got, err := targetColorFromServices(context.Background(), kcs, "prod", "")
 	if err != nil {
 		t.Fatalf("targetColorFromServices: %v", err)
 	}
@@ -125,7 +126,7 @@ func TestTargetColorFromServicesAPIError(t *testing.T) {
 	kcs.PrependReactor("list", "services", func(action k8stesting.Action) (bool, runtime.Object, error) {
 		return true, nil, fmt.Errorf("connection refused")
 	})
-	if _, err := targetColorFromServices(kcs, "prod", ""); err == nil {
+	if _, err := targetColorFromServices(context.Background(), kcs, "prod", ""); err == nil {
 		t.Errorf("expected a real API error to propagate (cluster unreachable must abort)")
 	}
 }

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"strings"
 	"testing"
 
@@ -27,7 +28,7 @@ func TestGetDeploymentStatus(t *testing.T) {
 		Status: appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 1},
 	})
 
-	out, err := getDeploymentStatus(kcs, "ns", labels)
+	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels)
 	if err != nil {
 		t.Fatalf("getDeploymentStatus: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestGetServicesStatus(t *testing.T) {
 		},
 	})
 
-	out, err := getServicesStatus(kcs, "ns", labels)
+	out, err := getServicesStatus(context.Background(), kcs, "ns", labels)
 	if err != nil {
 		t.Fatalf("getServicesStatus: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestGetServicesStatus(t *testing.T) {
 func TestGetServicesStatusEmpty(t *testing.T) {
 	// No matching resources yields an empty table (skipped in output).
 	kcs := fake.NewSimpleClientset()
-	out, err := getServicesStatus(kcs, "ns", statusLabels())
+	out, err := getServicesStatus(context.Background(), kcs, "ns", statusLabels())
 	if err != nil {
 		t.Fatalf("getServicesStatus: %v", err)
 	}

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -68,7 +67,8 @@ func NewCmdBuild() *cobra.Command {
 }
 
 func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
-	app, err := appOpts.initApp()
+	ctx := cmd.Context()
+	app, err := appOpts.initApp(ctx)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result, err := cli.ImageBuild(context.Background(), buildCtx, client.ImageBuildOptions{
+	result, err := cli.ImageBuild(ctx, buildCtx, client.ImageBuildOptions{
 		AuthConfigs:    authConfigs,
 		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs.GetSlice())),
 		Dockerfile:     relDockerfile,
@@ -246,7 +246,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		for _, tag := range tags.GetSlice() {
 			fmt.Printf("\nPush image %s to registry\n", tag)
 
-			res, err := cli.ImagePush(context.Background(), tag, client.ImagePushOptions{
+			res, err := cli.ImagePush(ctx, tag, client.ImagePushOptions{
 				RegistryAuth: encodeAuthToBase64(registryAuth),
 			})
 			if err != nil {

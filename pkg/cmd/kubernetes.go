@@ -74,13 +74,13 @@ func scopedSelector(labels map[string]string) (string, error) {
 	return selector, nil
 }
 
-func deleteDeployment(name, namespace string) error {
+func deleteDeployment(ctx context.Context, name, namespace string) error {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
 		return err
 	}
 
-	err = kcs.AppsV1().Deployments(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err = kcs.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -26,7 +27,7 @@ type appOptions struct {
 	rawVals          []byte // merged values, populated by initApp after a successful load
 }
 
-func (o *appOptions) initApp() (*app2kube.App, error) {
+func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 	if flagAllApplications {
 		return &app2kube.App{
 			Name:      "all",
@@ -73,7 +74,7 @@ func (o *appOptions) initApp() (*app2kube.App, error) {
 	// longer needs to set it explicitly.
 
 	if blueGreenDeploy {
-		app.Deployment.BlueGreenColor, err = getTargetBlueGreenColor(app.Namespace, app.Labels)
+		app.Deployment.BlueGreenColor, err = getTargetBlueGreenColor(ctx, app.Namespace, app.Labels)
 		if err != nil {
 			return nil, err
 		}

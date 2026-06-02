@@ -9,6 +9,20 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// podSecurityContext returns the Pod-level security context to emit: the user's
+// common.securityContext when set (verbatim — an explicit empty one acts as an
+// opt-out), otherwise a conservative default that only sets the non-breaking
+// seccompProfile: RuntimeDefault. runAsNonRoot / fsGroup and other potentially
+// breaking fields are left to explicit configuration.
+func (app *App) podSecurityContext() *apiv1.PodSecurityContext {
+	if app.Common.SecurityContext != nil {
+		return app.Common.SecurityContext
+	}
+	return &apiv1.PodSecurityContext{
+		SeccompProfile: &apiv1.SeccompProfile{Type: apiv1.SeccompProfileTypeRuntimeDefault},
+	}
+}
+
 // GetDeployment resource
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
@@ -63,6 +77,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 						DNSPolicy:                    app.Common.DNSPolicy,
 						EnableServiceLinks:           ptr.To(app.Common.EnableServiceLinks),
 						NodeSelector:                 app.Common.NodeSelector,
+						SecurityContext:              app.podSecurityContext(),
 						Tolerations:                  app.Common.Tolerations,
 					},
 				},

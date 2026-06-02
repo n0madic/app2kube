@@ -88,6 +88,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 								RestartPolicy:                job.RestartPolicy,
 								EnableServiceLinks:           &app.Common.EnableServiceLinks,
 								NodeSelector:                 app.Common.NodeSelector,
+								SecurityContext:              app.podSecurityContext(),
 								Tolerations:                  app.Common.Tolerations,
 							},
 						},

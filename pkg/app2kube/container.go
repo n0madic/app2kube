@@ -8,6 +8,7 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 // processContainer fills in defaults and injected configuration for a container.
@@ -77,6 +78,24 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 				MountPath: volume.MountPath,
 			})
 		}
+
+		// Apply the opt-in common.resources baseline to app-image containers
+		// that declare none. Skipped in staging, where resources are stripped
+		// below regardless.
+		if app.Staging == "" && app.Common.Resources != nil &&
+			len(container.Resources.Requests) == 0 && len(container.Resources.Limits) == 0 {
+			container.Resources = *app.Common.Resources
+		}
+
+		// Emit a conservative, non-breaking container securityContext default
+		// for app-image containers when the user set none. runAsNonRoot /
+		// readOnlyRootFilesystem are intentionally left to explicit config.
+		if container.SecurityContext == nil {
+			container.SecurityContext = &apiv1.SecurityContext{
+				AllowPrivilegeEscalation: ptr.To(false),
+				Capabilities:             &apiv1.Capabilities{Drop: []apiv1.Capability{"ALL"}},
+			}
+		}
 	}
 
 	if container.ImagePullPolicy == "" {
@@ -130,11 +149,25 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 				}
 			}
 
-			// Add missing port to ReadinessProbe
-			if !reflect.ValueOf(container.ReadinessProbe).IsNil() && !reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() {
-				if portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
-					container.ReadinessProbe.HTTPGet.Port = containerPort
+			// Add a ReadinessProbe mirroring the liveness target when none is
+			// configured, so traffic is routed only once the port accepts
+			// connections. Scoped to app-image containers (like the
+			// securityContext/resources defaults): an auto readiness probe on a
+			// third-party sidecar could fail and make the whole pod NotReady,
+			// blocking traffic to the main app. A user-provided readiness probe
+			// still gets a missing HTTPGet port filled, for any container.
+			if reflect.ValueOf(container.ReadinessProbe).IsNil() {
+				if !thirdpartyImage {
+					container.ReadinessProbe = &apiv1.Probe{
+						ProbeHandler: apiv1.ProbeHandler{
+							TCPSocket: &apiv1.TCPSocketAction{
+								Port: containerPort,
+							},
+						},
+					}
 				}
+			} else if !reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() && portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
+				container.ReadinessProbe.HTTPGet.Port = containerPort
 			}
 
 		}

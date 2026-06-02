@@ -57,17 +57,19 @@ type ImageSpec struct {
 
 // CommonSpec holds settings shared by all workloads of an App.
 type CommonSpec struct {
-	CronjobSuspend           bool               `yaml:"cronjobSuspend"`
-	DNSPolicy                apiv1.DNSPolicy    `yaml:"dnsPolicy"`
-	EnableServiceLinks       bool               `yaml:"enableServiceLinks"`
-	GracePeriod              int64              `yaml:"gracePeriod"`
-	Image                    ImageSpec          `yaml:"image"`
-	Ingress                  IngressCommon      `yaml:"ingress"`
-	MountServiceAccountToken bool               `yaml:"mountServiceAccountToken"`
-	NodeSelector             map[string]string  `yaml:"nodeSelector"`
-	PodAntiAffinity          string             `yaml:"podAntiAffinity"`
-	SharedData               string             `yaml:"sharedData"`
-	Tolerations              []apiv1.Toleration `yaml:"tolerations"`
+	CronjobSuspend           bool                        `yaml:"cronjobSuspend"`
+	DNSPolicy                apiv1.DNSPolicy             `yaml:"dnsPolicy"`
+	EnableServiceLinks       bool                        `yaml:"enableServiceLinks"`
+	GracePeriod              int64                       `yaml:"gracePeriod"`
+	Image                    ImageSpec                   `yaml:"image"`
+	Ingress                  IngressCommon               `yaml:"ingress"`
+	MountServiceAccountToken bool                        `yaml:"mountServiceAccountToken"`
+	NodeSelector             map[string]string           `yaml:"nodeSelector"`
+	PodAntiAffinity          string                      `yaml:"podAntiAffinity"`
+	Resources                *apiv1.ResourceRequirements `yaml:"resources"`
+	SecurityContext          *apiv1.PodSecurityContext   `yaml:"securityContext"`
+	SharedData               string                      `yaml:"sharedData"`
+	Tolerations              []apiv1.Toleration          `yaml:"tolerations"`
 }
 
 // CronjobSpec is a single named cronjob definition.

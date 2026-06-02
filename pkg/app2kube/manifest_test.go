@@ -36,8 +36,8 @@ cronjob:
 `)
 
 	cases := []struct {
-		name    string
-		out     OutputResource
+		name     string
+		out      OutputResource
 		mustHave []string
 		mustNot  []string
 	}{

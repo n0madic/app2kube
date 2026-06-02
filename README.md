@@ -8,6 +8,7 @@ The easiest way to create and apply kubernetes manifests for an application
 * There are no built-in manifest templates under the hood, only native kubernetes objects
 * Understandable set of values for configuration in YAML
 * Templating values in YAML file with [sprig](http://masterminds.github.io/sprig/) functions
+* Safe-by-default manifests: automatic liveness/readiness probes and a conservative `securityContext` (all overridable, see [Defaults and hardening](#defaults-and-hardening))
 * Supported Kubernetes resources:
   * ConfigMap
   * CronJob
@@ -177,6 +178,46 @@ deployment:
 Also, aliases for ingress and resource requests for containers (for a denser filling of the staging environment) will not be used.
 
 For ingress domains, prefixes from the above values will be automatically added: `staging.example.com` or `branch.staging.example.com`
+
+## Defaults and hardening
+
+To produce safe-by-default manifests, app2kube fills in a few fields when you do not set them explicitly. All of them are overridable.
+
+**Probes.** A container that exposes exactly one port and has no `livenessProbe` gets a TCP liveness probe on that port. App-image containers additionally get a matching TCP `readinessProbe` when none is set — third-party sidecars are skipped, so a sidecar's probe cannot make the whole pod `NotReady` and block traffic to the app. Init containers never receive auto probes.
+
+**Container securityContext.** App-image containers (those built from `common.image`) that declare no `securityContext` get a conservative, non-breaking default:
+
+```yaml
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: [ALL]
+```
+
+Third-party sidecar images are left untouched. Set a container's own `securityContext` to override (an explicit `securityContext: {}` opts out). The more disruptive `runAsNonRoot` / `readOnlyRootFilesystem` are intentionally not defaulted — enable them where appropriate; together with the pod context below this brings workloads close to the Pod Security "restricted" profile.
+
+**Pod securityContext.** The pod template gets `seccompProfile: { type: RuntimeDefault }` by default. Provide `common.securityContext` (a full Kubernetes `PodSecurityContext`) to take over completely — for example, to enforce non-root:
+
+```yaml
+common:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+```
+
+An explicit `common.securityContext: {}` opts out of the seccomp default.
+
+**Resources.** Set `common.resources` to apply a single baseline `resources` block to every app-image container that defines none (so pods are not `BestEffort` and pass a `LimitRange`):
+
+```yaml
+common:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+```
+
+Per-container `resources` always win. In staging, container resources are still stripped (see [Staging](#staging)).
 
 ## Examples
 

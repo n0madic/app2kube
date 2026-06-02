@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	apiv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
@@ -202,6 +203,219 @@ func TestProcessContainerAutoServiceFromIngress(t *testing.T) {
 	}
 }
 
+// #19: app-image containers without an explicit securityContext get the
+// conservative default (allowPrivilegeEscalation:false, drop ALL). A
+// user-provided context is preserved, and third-party images get nothing.
+func TestProcessContainerDefaultSecurityContext(t *testing.T) {
+	app := NewApp()
+	app.Common.Image.Repository = "example/app"
+
+	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
+	if err := app.processContainer(c, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c.SecurityContext == nil {
+		t.Fatal("expected default SecurityContext, got nil")
+	}
+	if c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation {
+		t.Errorf("expected AllowPrivilegeEscalation=false, got %v", c.SecurityContext.AllowPrivilegeEscalation)
+	}
+	if c.SecurityContext.Capabilities == nil ||
+		len(c.SecurityContext.Capabilities.Drop) != 1 ||
+		c.SecurityContext.Capabilities.Drop[0] != "ALL" {
+		t.Errorf("expected capabilities drop [ALL], got %+v", c.SecurityContext.Capabilities)
+	}
+
+	// A user-provided securityContext is left untouched.
+	runAsUser := int64(1000)
+	userSC := &apiv1.SecurityContext{RunAsUser: &runAsUser}
+	c2 := &apiv1.Container{Name: "app", Image: "example/app:v1", SecurityContext: userSC}
+	if err := app.processContainer(c2, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c2.SecurityContext != userSC {
+		t.Errorf("user SecurityContext overwritten: %+v", c2.SecurityContext)
+	}
+
+	// A third-party image gets no default securityContext.
+	c3 := &apiv1.Container{Name: "side", Image: "other.io/lib:1.0"}
+	if err := app.processContainer(c3, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c3.SecurityContext != nil {
+		t.Errorf("third-party container must not get a default SecurityContext, got %+v", c3.SecurityContext)
+	}
+}
+
+// #20: an opt-in common.resources baseline is applied to app-image containers
+// that declare no resources (non-staging only); user resources and third-party
+// images are untouched, and staging still strips everything.
+func TestProcessContainerCommonResourcesDefault(t *testing.T) {
+	res := apiv1.ResourceRequirements{
+		Requests: apiv1.ResourceList{apiv1.ResourceCPU: resource.MustParse("10m")},
+	}
+	newApp := func() *App {
+		app := NewApp()
+		app.Common.Image.Repository = "example/app"
+		app.Common.Resources = &res
+		return app
+	}
+
+	// App-image container without resources inherits the common default.
+	app := newApp()
+	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
+	if err := app.processContainer(c, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c.Resources.Requests.Cpu().MilliValue() != 10 {
+		t.Errorf("expected default cpu request 10m, got %v", c.Resources.Requests.Cpu())
+	}
+
+	// A container with its own resources is left untouched.
+	app = newApp()
+	own := apiv1.ResourceRequirements{Requests: apiv1.ResourceList{apiv1.ResourceCPU: resource.MustParse("50m")}}
+	c2 := &apiv1.Container{Name: "app", Image: "example/app:v1", Resources: own}
+	if err := app.processContainer(c2, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c2.Resources.Requests.Cpu().MilliValue() != 50 {
+		t.Errorf("expected user cpu request 50m preserved, got %v", c2.Resources.Requests.Cpu())
+	}
+
+	// Third-party images do not inherit the default.
+	app = newApp()
+	c3 := &apiv1.Container{Name: "side", Image: "other.io/lib:1.0"}
+	if err := app.processContainer(c3, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if len(c3.Resources.Requests) != 0 {
+		t.Errorf("third-party container must not inherit common resources, got %+v", c3.Resources)
+	}
+
+	// Staging still strips resources (the common default is not applied there).
+	app = newApp()
+	app.Staging = "stg"
+	c4 := &apiv1.Container{Name: "app", Image: "example/app:v1"}
+	if err := app.processContainer(c4, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if len(c4.Resources.Requests) != 0 || len(c4.Resources.Limits) != 0 {
+		t.Errorf("staging must not carry resources, got %+v", c4.Resources)
+	}
+}
+
+// #21: a single-port container with no readiness probe gets a TCP readiness
+// probe mirroring the auto liveness target. User probes are preserved and init
+// containers get none.
+func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
+	app := NewApp()
+
+	c := &apiv1.Container{
+		Name:  "app",
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
+	}
+	if err := app.processContainer(c, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c.ReadinessProbe == nil || c.ReadinessProbe.TCPSocket == nil {
+		t.Fatalf("expected default TCP readiness probe, got %+v", c.ReadinessProbe)
+	}
+	if got := c.ReadinessProbe.TCPSocket.Port.IntVal; got != 8080 {
+		t.Errorf("readiness probe port: expected 8080, got %d", got)
+	}
+
+	// A user-provided readiness probe is preserved (and its unset port filled).
+	userRP := &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{HTTPGet: &apiv1.HTTPGetAction{Path: "/healthz"}}}
+	c2 := &apiv1.Container{
+		Name:           "app",
+		Image:          "example/app:v1",
+		Ports:          []apiv1.ContainerPort{{ContainerPort: 8080}},
+		ReadinessProbe: userRP,
+	}
+	if err := app.processContainer(c2, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c2.ReadinessProbe.HTTPGet == nil || c2.ReadinessProbe.HTTPGet.Path != "/healthz" {
+		t.Fatalf("user readiness probe overwritten: %+v", c2.ReadinessProbe)
+	}
+	if c2.ReadinessProbe.HTTPGet.Port.IntVal != 8080 {
+		t.Errorf("readiness HTTPGet port not filled: %+v", c2.ReadinessProbe.HTTPGet.Port)
+	}
+
+	// Init containers get no probes at all.
+	c3 := &apiv1.Container{
+		Name:  "init",
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
+	}
+	if err := app.processContainer(c3, true); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c3.ReadinessProbe != nil {
+		t.Errorf("init container must not get a readiness probe, got %+v", c3.ReadinessProbe)
+	}
+
+	// Third-party sidecars get no auto readiness probe (so their probe cannot
+	// gate whole-pod readiness).
+	tpApp := NewApp()
+	tpApp.Common.Image.Repository = "example/app"
+	c4 := &apiv1.Container{
+		Name:  "cache",
+		Image: "redis:latest",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 6379}},
+	}
+	if err := tpApp.processContainer(c4, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c4.ReadinessProbe != nil {
+		t.Errorf("third-party container must not get a readiness probe, got %+v", c4.ReadinessProbe)
+	}
+
+	// Multi-port containers get no auto readiness probe.
+	c5 := &apiv1.Container{
+		Name:  "app",
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}, {ContainerPort: 9090}},
+	}
+	if err := app.processContainer(c5, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c5.ReadinessProbe != nil {
+		t.Errorf("multi-port container must not get a readiness probe, got %+v", c5.ReadinessProbe)
+	}
+
+	// A user liveness probe but no readiness still gets an auto TCP readiness probe.
+	c6 := &apiv1.Container{
+		Name:          "app",
+		Image:         "example/app:v1",
+		Ports:         []apiv1.ContainerPort{{ContainerPort: 8080}},
+		LivenessProbe: &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{HTTPGet: &apiv1.HTTPGetAction{Path: "/live"}}},
+	}
+	if err := app.processContainer(c6, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c6.ReadinessProbe == nil || c6.ReadinessProbe.TCPSocket == nil ||
+		c6.ReadinessProbe.TCPSocket.Port.IntVal != 8080 {
+		t.Errorf("expected auto TCP readiness probe alongside user liveness, got %+v", c6.ReadinessProbe)
+	}
+
+	// A user-provided TCPSocket readiness probe is preserved unchanged.
+	userTCP := &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{TCPSocket: &apiv1.TCPSocketAction{Port: intstr.FromInt(7000)}}}
+	c7 := &apiv1.Container{
+		Name:           "app",
+		Image:          "example/app:v1",
+		Ports:          []apiv1.ContainerPort{{ContainerPort: 8080}},
+		ReadinessProbe: userTCP,
+	}
+	if err := app.processContainer(c7, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+	if c7.ReadinessProbe != userTCP || c7.ReadinessProbe.TCPSocket.Port.IntVal != 7000 {
+		t.Errorf("user TCPSocket readiness probe must be preserved, got %+v", c7.ReadinessProbe)
+	}
+}
+
 func TestGetCronJobsScheduleRequired(t *testing.T) {
 	app := mustUnmarshalApp(t, `
 name: example
@@ -256,6 +470,29 @@ cronjob:
 	c := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers
 	if len(c) != 1 || c[0].Name != "backup-job" {
 		t.Errorf("expected container name backup-job, got %+v", c)
+	}
+}
+
+// #19: cronjob pod templates also carry the conservative default pod
+// securityContext (seccompProfile: RuntimeDefault), shared with the deployment.
+func TestGetCronJobsDefaultPodSecurityContext(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	sc := crons[0].Spec.JobTemplate.Spec.Template.Spec.SecurityContext
+	if sc == nil || sc.SeccompProfile == nil ||
+		sc.SeccompProfile.Type != apiv1.SeccompProfileTypeRuntimeDefault {
+		t.Fatalf("expected default pod securityContext with seccomp RuntimeDefault, got %+v", sc)
 	}
 }
 

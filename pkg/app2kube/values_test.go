@@ -109,6 +109,27 @@ func TestValsSetFile(t *testing.T) {
 	}
 }
 
+// #36: --set-file pointing at a missing file must return an error rather than
+// silently producing an empty/partial value.
+func TestValsSetFileMissingError(t *testing.T) {
+	missing := filepath.Join(t.TempDir(), "nope.txt")
+	if _, err := vals(nil, nil, nil, []string{"password=" + missing}); err == nil {
+		t.Errorf("expected error for --set-file pointing at a missing file")
+	}
+}
+
+// #36: --set-string keeps a numeric-looking value typed as a string (quoted),
+// unlike --set which would render it as a bare integer.
+func TestValsSetStringKeepsNumericAsString(t *testing.T) {
+	out, err := vals(nil, nil, []string{"port=8080"}, nil)
+	if err != nil {
+		t.Fatalf("vals: %v", err)
+	}
+	if string(out) != "port: \"8080\"\n" {
+		t.Errorf("--set-string must keep a numeric value as a string, got %q", string(out))
+	}
+}
+
 // readFile must NOT perform any network fetch. An http:// argument is treated as
 // a local filesystem path (which does not exist), so it errors without hitting
 // the server, and the '?' suffix tolerates the missing "file".

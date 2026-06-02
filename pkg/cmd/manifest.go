@@ -25,6 +25,10 @@ func NewCmdManifest() *cobra.Command {
 	addBlueGreenFlag(manifestCmd)
 
 	manifestCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// Don't print full usage on runtime errors (only on arg-parse errors),
+		// matching the other subcommands; manifest output is piped to kubectl.
+		cmd.SilenceUsage = true
+
 		app, err := opts.initApp()
 		if err != nil {
 			return err

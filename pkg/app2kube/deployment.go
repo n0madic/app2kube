@@ -98,7 +98,12 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			deployment.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
 		}
 
-		if app.Common.SharedData != "" && len(deployment.Spec.Template.Spec.Containers) > 1 {
+		// Count init containers too: an app-image init container also receives the
+		// shared-data VolumeMount in processContainer, so the EmptyDir volume must
+		// exist whenever main+init together exceed one container — otherwise the
+		// init mount references a missing volume and the pod spec is invalid (#18).
+		if app.Common.SharedData != "" &&
+			len(deployment.Spec.Template.Spec.Containers)+len(deployment.Spec.Template.Spec.InitContainers) > 1 {
 			deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, apiv1.Volume{
 				Name:         "shared-data",
 				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},

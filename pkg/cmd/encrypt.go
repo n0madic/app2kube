@@ -89,7 +89,10 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 		}
 
 		if modified {
-			err = os.WriteFile(filePath, []byte(newYAML), 0640)
+			// Write the secrets file owner-only (0600). os.WriteFile keeps an
+			// existing file's mode; 0600 only applies if it must be created, in
+			// which case a secrets file should never be group/world-readable.
+			err = os.WriteFile(filePath, []byte(newYAML), 0600)
 			if err != nil {
 				return fmt.Errorf("file write error: %v", err)
 			}

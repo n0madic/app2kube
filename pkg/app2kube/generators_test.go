@@ -125,6 +125,42 @@ func TestGetDeploymentSharedDataNeedsMultipleContainers(t *testing.T) {
 	}
 }
 
+// #18: a single main container plus an app-image init container, with shared
+// data, must still get the shared-data volume — the init container mounts it in
+// processContainer, so without the volume the pod spec would be invalid.
+func TestGetDeploymentSharedDataWithInitContainer(t *testing.T) {
+	app := deployApp(t)
+	app.Common.SharedData = "/shared"
+	app.Deployment.InitContainers = map[string]apiv1.Container{
+		"migrate": {Image: "example/migrate:v1"},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	var volFound bool
+	for _, v := range dep.Spec.Template.Spec.Volumes {
+		if v.Name == "shared-data" && v.EmptyDir != nil {
+			volFound = true
+		}
+	}
+	if !volFound {
+		t.Fatalf("shared-data volume must exist when an init container mounts it: %+v",
+			dep.Spec.Template.Spec.Volumes)
+	}
+	// The init container mounts shared-data, and now has a matching volume.
+	var mountFound bool
+	for _, m := range dep.Spec.Template.Spec.InitContainers[0].VolumeMounts {
+		if m.Name == "shared-data" {
+			mountFound = true
+		}
+	}
+	if !mountFound {
+		t.Errorf("init container expected to mount shared-data, got %+v",
+			dep.Spec.Template.Spec.InitContainers[0].VolumeMounts)
+	}
+}
+
 func TestGetDeploymentVolumes(t *testing.T) {
 	app := deployApp(t)
 	app.Volumes = map[string]VolumeSpec{

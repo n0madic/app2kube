@@ -82,7 +82,9 @@ func (o *appOptions) initApp() (*app2kube.App, error) {
 		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",
 			rootCmd.Version,
 			time.Now().Format("2006-01-02 15:04:05 MST"))
-		if err := os.WriteFile(o.snapshot, []byte(header+string(rawVals)), 0660); err != nil {
+		// Snapshots embed merged plaintext values (env/configmap/--set data), so
+		// write owner-only to avoid exposing them on shared CI runners.
+		if err := os.WriteFile(o.snapshot, []byte(header+string(rawVals)), 0600); err != nil {
 			return nil, err
 		}
 		fmt.Fprintln(os.Stderr, "Snapshot of values saved in", o.snapshot)

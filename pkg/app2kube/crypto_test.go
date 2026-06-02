@@ -114,6 +114,61 @@ func TestGetDecryptedSecretsPlaintextPassthrough(t *testing.T) {
 	}
 }
 
+// #36: decrypting an RSA secret with a valid-but-wrong private key must produce
+// an actionable error naming the secret and $APP2KUBE_DECRYPT_KEY, not a panic
+// or a cryptic low-level error.
+func TestGetDecryptedSecretsWrongRSAKey(t *testing.T) {
+	pub, _, err := GenerateRSAKeys(2048)
+	if err != nil {
+		t.Fatalf("GenerateRSAKeys: %v", err)
+	}
+	_, wrongPriv, err := GenerateRSAKeys(2048)
+	if err != nil {
+		t.Fatalf("GenerateRSAKeys: %v", err)
+	}
+	blob, err := EncryptRSA(pub, "topsecret")
+	if err != nil {
+		t.Fatalf("EncryptRSA: %v", err)
+	}
+
+	app := NewApp()
+	app.rsaPrivateKey = wrongPriv
+	app.Secrets = map[string]string{"token": rsaPrefix + blob}
+
+	_, err = app.GetDecryptedSecrets()
+	if err == nil {
+		t.Fatalf("expected error decrypting with the wrong RSA private key")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `"token"`) {
+		t.Errorf("error must name the failing secret, got: %v", msg)
+	}
+	if !strings.Contains(msg, "APP2KUBE_DECRYPT_KEY") {
+		t.Errorf("error must hint at $APP2KUBE_DECRYPT_KEY, got: %v", msg)
+	}
+}
+
+// #36: the deprecated CRYPT# prefix (6 chars) must still be stripped correctly
+// and decrypt — an off-by-one in the prefix length would corrupt legacy data.
+func TestGetDecryptedSecretsCryptPrefix(t *testing.T) {
+	blob, err := EncryptAES("pass", "legacy-value")
+	if err != nil {
+		t.Fatalf("EncryptAES: %v", err)
+	}
+
+	app := NewApp()
+	app.aesPassword = "pass"
+	app.Secrets = map[string]string{"pwd": cryptPrefix + blob}
+
+	dec, err := app.GetDecryptedSecrets()
+	if err != nil {
+		t.Fatalf("GetDecryptedSecrets (CRYPT#): %v", err)
+	}
+	if dec["pwd"] != "legacy-value" {
+		t.Errorf("CRYPT# secret must decrypt to original, got %q", dec["pwd"])
+	}
+}
+
 func TestDecryptRSAMalformed(t *testing.T) {
 	_, priv, err := GenerateRSAKeys(2048)
 	if err != nil {

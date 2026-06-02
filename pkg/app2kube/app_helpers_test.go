@@ -75,6 +75,35 @@ func TestGetColorLabels(t *testing.T) {
 	}
 }
 
+func TestGetSelectorLabels(t *testing.T) {
+	app := NewApp()
+	app.Labels = map[string]string{
+		LabelName:      "web",
+		LabelInstance:  "production",
+		LabelManagedBy: "app2kube",
+		"team":         "payments",
+	}
+
+	sel := app.GetSelectorLabels()
+	if sel[LabelName] != "web" || sel[LabelInstance] != "production" {
+		t.Errorf("selector must carry name+instance: %+v", sel)
+	}
+	if _, ok := sel[LabelManagedBy]; ok {
+		t.Errorf("selector must not carry managed-by: %+v", sel)
+	}
+	if _, ok := sel["team"]; ok {
+		t.Errorf("selector must not carry user labels: %+v", sel)
+	}
+	if _, ok := sel[LabelColor]; ok {
+		t.Errorf("selector must not carry color without blue/green: %+v", sel)
+	}
+
+	app.Deployment.BlueGreenColor = "green"
+	if got := app.GetSelectorLabels()[LabelColor]; got != "green" {
+		t.Errorf("selector color: got %q, want green", got)
+	}
+}
+
 func TestTruncateName(t *testing.T) {
 	long := strings.Repeat("a", 70)
 	if got := truncateName(long); len(got) != MaxNameLength {

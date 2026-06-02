@@ -91,6 +91,31 @@ func TestLoadValuesNilLabels(t *testing.T) {
 	}
 }
 
+// Regression (#23): the managed-by label must be applied by the library, not
+// only by the CLI layer. A programmatic consumer building manifests through
+// NewApp/LoadValues must get app.kubernetes.io/managed-by=app2kube so the
+// prune/delete selector (which relies on managed-by) can select the resources.
+func TestManagedByLabelSetByLibrary(t *testing.T) {
+	// Seeded directly by NewApp.
+	if got := NewApp().Labels[LabelManagedBy]; got != ManagedByValue {
+		t.Errorf("NewApp managed-by label: got %q, want %q", got, ManagedByValue)
+	}
+
+	// Re-seeded by ensureLabels even when the user wipes labels with `labels:
+	// null` (which unmarshals to a nil map).
+	path := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(path, []byte("name: web\nlabels: null\n"), 0600); err != nil {
+		t.Fatalf("write values file: %v", err)
+	}
+	app := NewApp()
+	if _, err := app.LoadValues(ValueFiles{path}, nil, nil, nil); err != nil {
+		t.Fatalf("LoadValues returned error: %v", err)
+	}
+	if got := app.Labels[LabelManagedBy]; got != ManagedByValue {
+		t.Errorf("managed-by after labels:null: got %q, want %q", got, ManagedByValue)
+	}
+}
+
 func TestEncryptAndDecryptAES(t *testing.T) {
 	t.Setenv(EnvPassword, "pass")
 

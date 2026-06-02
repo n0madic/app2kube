@@ -62,7 +62,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Replicas:             ptr.To(replicas),
 				RevisionHistoryLimit: ptr.To(app.Deployment.RevisionHistoryLimit),
 				Selector: &metav1.LabelSelector{
-					MatchLabels: app.GetColorLabels(),
+					MatchLabels: app.GetSelectorLabels(),
 				},
 				Strategy: app.Deployment.Strategy,
 				Template: apiv1.PodTemplateSpec{

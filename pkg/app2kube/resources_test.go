@@ -142,6 +142,43 @@ func TestProcessContainerEnvSorted(t *testing.T) {
 	}
 }
 
+// Regression (#17): a global app.Env key that collides with a container-level
+// env var must not be appended again (which emitted a duplicate key, and
+// Kubernetes resolving to the LAST silently let the global value win). The
+// explicit container value must win; global-only keys are still injected.
+func TestProcessContainerEnvContainerWins(t *testing.T) {
+	app := NewApp()
+	app.Env = map[string]string{"FOO": "global", "BAR": "globalbar"}
+	c := &apiv1.Container{
+		Name:  "app",
+		Image: "example/app:v1",
+		Env:   []apiv1.EnvVar{{Name: "FOO", Value: "container"}},
+	}
+	if err := app.processContainer(c, false); err != nil {
+		t.Fatalf("processContainer: %v", err)
+	}
+
+	fooCount, fooVal, hasBar := 0, "", false
+	for _, e := range c.Env {
+		switch e.Name {
+		case "FOO":
+			fooCount++
+			fooVal = e.Value
+		case "BAR":
+			hasBar = e.Value == "globalbar"
+		}
+	}
+	if fooCount != 1 {
+		t.Errorf("expected a single FOO env var, got %d: %+v", fooCount, c.Env)
+	}
+	if fooVal != "container" {
+		t.Errorf("container env must win: got FOO=%q, want container", fooVal)
+	}
+	if !hasBar {
+		t.Errorf("global-only env BAR must still be injected: %+v", c.Env)
+	}
+}
+
 func TestProcessContainerStagingClearsResources(t *testing.T) {
 	app := NewApp()
 	app.Staging = "stg"
@@ -493,6 +530,32 @@ cronjob:
 	if sc == nil || sc.SeccompProfile == nil ||
 		sc.SeccompProfile.Type != apiv1.SeccompProfileTypeRuntimeDefault {
 		t.Fatalf("expected default pod securityContext with seccomp RuntimeDefault, got %+v", sc)
+	}
+}
+
+// Regression (#12): the cronjob pod template must carry the app labels so
+// cronjob-spawned pods match the prune selector and the status pod listing.
+// Without them the pods are invisible to pruning, tracking and status.
+func TestGetCronJobsPodTemplateLabels(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	podLabels := crons[0].Spec.JobTemplate.Spec.Template.Labels
+	if podLabels[LabelManagedBy] != ManagedByValue {
+		t.Errorf("cronjob pod template missing managed-by: %+v", podLabels)
+	}
+	if podLabels[LabelInstance] != "production" {
+		t.Errorf("cronjob pod template missing instance: %+v", podLabels)
 	}
 }
 

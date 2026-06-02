@@ -244,6 +244,60 @@ func TestServiceNodePortRange(t *testing.T) {
 	}
 }
 
+// Regression (#16): a service defined with only internalPort renders a valid
+// Service (external mirrors internal), but GetIngress used to read only
+// ExternalPort/Port and never InternalPort, so it failed with "you must specify
+// a servicePort". The ingress backend port must fall back to InternalPort,
+// mirroring the Service generator.
+func TestIngressBackendPortFromInternalPort(t *testing.T) {
+	app := ingressTestApp()
+	app.Service = map[string]Service{"web": {InternalPort: 8080}}
+	app.Ingress = []Ingress{{Host: "example.com"}}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings) != 1 {
+		t.Fatalf("expected 1 ingress, got %d", len(ings))
+	}
+	got := ings[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port.Number
+	if got != 8080 {
+		t.Errorf("ingress backend port: got %d, want 8080", got)
+	}
+}
+
+// Regression (#15): when the same alias appears on multiple entries of one host,
+// the alias must be a single IngressRule accumulating all paths — not one
+// duplicate rule per entry each carrying a single path.
+func TestIngressAliasDedupAndPathAccumulation(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "example.com", Path: "/a", Aliases: []string{"www.example.com"}},
+		{Host: "example.com", Path: "/b", Aliases: []string{"www.example.com"}},
+	}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	ing := ings[0]
+
+	aliasRules, aliasPaths := 0, 0
+	for _, r := range ing.Spec.Rules {
+		if r.Host == "www.example.com" {
+			aliasRules++
+			aliasPaths = len(r.HTTP.Paths)
+		}
+	}
+	if aliasRules != 1 {
+		t.Errorf("alias must be a single rule, got %d", aliasRules)
+	}
+	if aliasPaths != 2 {
+		t.Errorf("alias rule must accumulate both paths, got %d", aliasPaths)
+	}
+}
+
 func ingressTestApp() *App {
 	app := NewApp()
 	app.Name = "example"

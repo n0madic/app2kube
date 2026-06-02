@@ -43,7 +43,18 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 	}
 
 	if !thirdpartyImage {
+		// Let an explicit container-level env var win over the global app.Env of
+		// the same name: skip colliding keys so the manifest carries no duplicate
+		// (Kubernetes would otherwise resolve to the last, silently letting the
+		// global value override the specific one).
+		declared := make(map[string]bool, len(container.Env))
+		for _, e := range container.Env {
+			declared[e.Name] = true
+		}
 		for _, key := range sortedKeys(app.Env) {
+			if declared[key] {
+				continue
+			}
 			container.Env = append(container.Env, apiv1.EnvVar{Name: key, Value: app.Env[key]})
 		}
 

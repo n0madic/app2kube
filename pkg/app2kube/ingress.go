@@ -28,6 +28,27 @@ func ingressTLSSecretName(explicit, host string) string {
 	return strings.ToLower(name)
 }
 
+// addRuleForHost appends path to the existing IngressRule serving host, or
+// creates a new rule when none exists yet. Routing both the primary host and
+// its aliases through this dedup keeps a host to a single rule that accumulates
+// all of its paths instead of emitting one duplicate rule per entry (#15).
+func addRuleForHost(rules []v1.IngressRule, host string, path v1.HTTPIngressPath) []v1.IngressRule {
+	for i := range rules {
+		if rules[i].Host == host {
+			rules[i].HTTP.Paths = append(rules[i].HTTP.Paths, path)
+			return rules
+		}
+	}
+	return append(rules, v1.IngressRule{
+		Host: host,
+		IngressRuleValue: v1.IngressRuleValue{
+			HTTP: &v1.HTTPIngressRuleValue{
+				Paths: []v1.HTTPIngressPath{path},
+			},
+		},
+	})
+}
+
 // GetIngress resource
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
@@ -71,11 +92,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			if ing.ServiceName != "" {
 				if svc, ok := app.Service[ing.ServiceName]; ok {
 					serviceName = app.getServiceName(ing.ServiceName)
-					if svc.ExternalPort > 0 {
-						servicePort = svc.ExternalPort
-					} else {
-						servicePort = svc.Port
-					}
+					servicePort = svc.effectiveServicePort()
 				} else {
 					return ingress, fmt.Errorf("Service with name %s for the ingress %s not found", ing.ServiceName, ing.Host)
 				}
@@ -83,11 +100,7 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				if app.Common.Ingress.ServiceName == "" && len(app.Service) == 1 {
 					for name, svc := range app.Service {
 						serviceName = app.getServiceName(name)
-						if svc.ExternalPort > 0 {
-							servicePort = svc.ExternalPort
-						} else {
-							servicePort = svc.Port
-						}
+						servicePort = svc.effectiveServicePort()
 					}
 				} else {
 					return ingress, fmt.Errorf("you must specify a serviceName for the ingress %s", ing.Host)
@@ -113,32 +126,10 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 					},
 				},
 			}
-			ingressRule := v1.IngressRule{
-				Host: ing.Host,
-				IngressRuleValue: v1.IngressRuleValue{
-					HTTP: &v1.HTTPIngressRuleValue{
-						Paths: []v1.HTTPIngressPath{ingressPath},
-					},
-				},
-			}
-
-			foundHost := false
-			for i, rule := range newIngress.Spec.Rules {
-				// Only append the path to the rule that serves this host, not to
-				// every existing rule (which would corrupt other hosts/aliases
-				// sharing the same ingress object).
-				if rule.Host == ing.Host {
-					foundHost = true
-					newIngress.Spec.Rules[i].HTTP.Paths = append(
-						newIngress.Spec.Rules[i].HTTP.Paths,
-						ingressPath,
-					)
-				}
-			}
-
-			if !foundHost {
-				newIngress.Spec.Rules = append(newIngress.Spec.Rules, ingressRule)
-			}
+			// Append the path to this host's rule, deduplicating so a host
+			// described by multiple entries keeps a single rule accumulating all
+			// of its paths.
+			newIngress.Spec.Rules = addRuleForHost(newIngress.Spec.Rules, ing.Host, ingressPath)
 
 			tlsIndex := -1
 			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
@@ -166,17 +157,14 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 
 			if app.Staging == "" {
 				for _, alias := range ing.Aliases {
-					newIngress.Spec.Rules = append(newIngress.Spec.Rules, v1.IngressRule{
-						Host: alias,
-						IngressRuleValue: v1.IngressRuleValue{
-							HTTP: &v1.HTTPIngressRuleValue{
-								Paths: []v1.HTTPIngressPath{ingressPath},
-							},
-						},
-					})
+					// Route aliases through the same per-host dedup as the primary
+					// host so a repeated alias accumulates paths on one rule
+					// instead of producing a duplicate rule per entry.
+					newIngress.Spec.Rules = addRuleForHost(newIngress.Spec.Rules, alias, ingressPath)
 					// Attach aliases to the TLS entry created for this host above,
-					// not to a hardcoded TLS[0] that may belong to another host.
-					if tlsIndex >= 0 {
+					// not to a hardcoded TLS[0] that may belong to another host;
+					// dedup so a repeated alias is not listed twice.
+					if tlsIndex >= 0 && !slices.Contains(newIngress.Spec.TLS[tlsIndex].Hosts, alias) {
 						newIngress.Spec.TLS[tlsIndex].Hosts = append(newIngress.Spec.TLS[tlsIndex].Hosts, alias)
 					}
 				}

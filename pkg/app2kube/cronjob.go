@@ -80,6 +80,11 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 						ActiveDeadlineSeconds: job.ActiveDeadlineSeconds,
 						BackoffLimit:          job.BackoffLimit,
 						Template: apiv1.PodTemplateSpec{
+							ObjectMeta: metav1.ObjectMeta{
+								// Label cronjob-spawned pods so they match the prune
+								// selector, status pod listing and tracking (#12).
+								Labels: app.Labels,
+							},
 							Spec: apiv1.PodSpec{
 								Affinity:                     affinity,
 								AutomountServiceAccountToken: &app.Common.MountServiceAccountToken,

@@ -219,6 +219,10 @@ common:
 
 Per-container `resources` always win. In staging, container resources are still stripped (see [Staging](#staging)).
 
+**Labels and selectors.** Every generated object carries the recommended labels `app.kubernetes.io/name`, `app.kubernetes.io/instance` (default `production`, or the staging name) and `app.kubernetes.io/managed-by=app2kube`. These are set by the library itself, so manifests built programmatically (not only via the CLI) are selectable by the prune/delete tooling. Any extra keys under `labels:` are merged in and propagate to objects and pod templates.
+
+The Deployment's `spec.selector` is kept to a minimal, stable identity — `name` + `instance` (plus `app.kubernetes.io/color` for blue/green) — and deliberately excludes `managed-by` and arbitrary user labels, which only live on the object and pod template. This keeps a plain `kubectl apply` working when you add or change labels. `spec.selector` is immutable in Kubernetes, so a Deployment first created by an older app2kube (whose selector copied the full label set) must be deleted and recreated once to adopt the new selector.
+
 ## Examples
 
 Simple web service:

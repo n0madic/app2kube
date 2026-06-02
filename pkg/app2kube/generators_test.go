@@ -201,6 +201,41 @@ func TestGetDeploymentBlueGreenLabels(t *testing.T) {
 	}
 }
 
+// Regression (#24): spec.selector is immutable. It must carry only the stable
+// identity (name + instance, plus color for blue/green) and must NOT include
+// managed-by or arbitrary user labels — otherwise adding/changing any such
+// label, or dropping the color on a later release, makes the apiserver reject a
+// plain `kubectl apply`. The full label set still lives on the object and pod
+// template via GetColorLabels.
+func TestDeploymentSelectorExcludesMutableLabels(t *testing.T) {
+	app := deployApp(t)
+	app.Labels[LabelName] = "example"
+	app.Labels["team"] = "payments" // arbitrary user label
+
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	sel := dep.Spec.Selector.MatchLabels
+
+	if _, ok := sel["team"]; ok {
+		t.Errorf("user label must not be in immutable selector: %+v", sel)
+	}
+	if _, ok := sel[LabelManagedBy]; ok {
+		t.Errorf("managed-by must not be in immutable selector: %+v", sel)
+	}
+	if sel[LabelName] != "example" {
+		t.Errorf("selector must keep name: %+v", sel)
+	}
+	if sel[LabelInstance] != "production" {
+		t.Errorf("selector must keep instance: %+v", sel)
+	}
+	// The pod template must still carry the full label set (incl. the user label).
+	if dep.Spec.Template.Labels["team"] != "payments" {
+		t.Errorf("pod template must keep user labels: %+v", dep.Spec.Template.Labels)
+	}
+}
+
 func TestGetDeploymentAffinity(t *testing.T) {
 	cases := []struct {
 		value     string

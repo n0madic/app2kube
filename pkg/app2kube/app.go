@@ -175,6 +175,27 @@ func (app *App) GetColorLabels() map[string]string {
 	return labels
 }
 
+// GetSelectorLabels returns the minimal, stable label set for the Deployment's
+// immutable spec.selector: only the app identity (name + instance) plus the
+// blue/green color when set. It deliberately excludes managed-by and arbitrary
+// user labels — which still live on the object and pod template via
+// GetColorLabels — so that adding, removing or changing those labels (or
+// dropping the color on a later non-blue/green release) never triggers an
+// immutable-selector rejection on `kubectl apply` (#24).
+func (app *App) GetSelectorLabels() map[string]string {
+	selector := make(map[string]string, 3)
+	if v, ok := app.Labels[LabelName]; ok {
+		selector[LabelName] = v
+	}
+	if v, ok := app.Labels[LabelInstance]; ok {
+		selector[LabelInstance] = v
+	}
+	if app.Deployment.BlueGreenColor != "" {
+		selector[LabelColor] = app.Deployment.BlueGreenColor
+	}
+	return selector
+}
+
 func (app *App) getAffinity() (*apiv1.Affinity, error) {
 	var affinity *apiv1.Affinity
 	if app.Common.PodAntiAffinity != "" {
@@ -316,7 +337,8 @@ func NewApp() *App {
 	app := &App{}
 	// Default settings of App
 	app.Labels = map[string]string{
-		LabelInstance: "production",
+		LabelInstance:  "production",
+		LabelManagedBy: ManagedByValue,
 	}
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
@@ -337,6 +359,9 @@ func (app *App) ensureLabels() {
 	}
 	if _, ok := app.Labels[LabelInstance]; !ok {
 		app.Labels[LabelInstance] = "production"
+	}
+	if _, ok := app.Labels[LabelManagedBy]; !ok {
+		app.Labels[LabelManagedBy] = ManagedByValue
 	}
 }
 

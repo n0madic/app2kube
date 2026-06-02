@@ -7,6 +7,22 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
 
+// effectiveServicePort returns the port the generated Service exposes, resolved
+// the same way GetServices resolves it: ExternalPort, else Port, else
+// InternalPort. GetIngress uses this so a Service defined with only
+// internalPort still wires up a valid ingress backend instead of failing with
+// "you must specify a servicePort" (#16).
+func (svc Service) effectiveServicePort() int32 {
+	switch {
+	case svc.ExternalPort > 0:
+		return svc.ExternalPort
+	case svc.Port > 0:
+		return svc.Port
+	default:
+		return svc.InternalPort
+	}
+}
+
 // GetServices resource
 func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {

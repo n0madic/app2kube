@@ -69,7 +69,8 @@ func (o *appOptions) initApp() (*app2kube.App, error) {
 		app.Namespace = app2kube.NamespaceDefault
 	}
 
-	app.Labels[app2kube.LabelManagedBy] = app2kube.ManagedByValue
+	// managed-by is seeded by the library (NewApp/ensureLabels); the CLI no
+	// longer needs to set it explicitly.
 
 	if blueGreenDeploy {
 		app.Deployment.BlueGreenColor, err = getTargetBlueGreenColor(app.Namespace, app.Labels)

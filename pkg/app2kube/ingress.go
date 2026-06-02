@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -9,11 +10,23 @@ import (
 	v1 "k8s.io/api/networking/v1"
 )
 
+// ingressTLSSecretName derives the TLS Secret name for a host: the explicit
+// name when set, otherwise "tls-"+host (with the wildcard rewrite), always
+// lowercased so the Ingress TLS reference and the emitted Secret share a
+// byte-identical, DNS-1123-valid name.
+func ingressTLSSecretName(explicit, host string) string {
+	name := explicit
+	if name == "" {
+		name = "tls-" + strings.Replace(host, "*", "wildcard", 1)
+	}
+	return strings.ToLower(name)
+}
+
 // GetIngress resource
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
-			ingressName := app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1)
+			ingressName := strings.ToLower(app.Name + "-" + strings.Replace(ing.Host, "*", "wildcard", 1))
 
 			newIngress := &v1.Ingress{
 				ObjectMeta: app.GetObjectMeta(ingressName),
@@ -124,14 +137,25 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			tlsIndex := -1
 			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt || ing.TLSSecretName != "" || (ing.TLSCrt != "" && ing.TLSKey != "") {
 				newIngress.Annotations["nginx.ingress.kubernetes.io/ssl-redirect"] = strconv.FormatBool(app.Common.Ingress.SslRedirect || ing.SslRedirect)
-				if ing.TLSSecretName == "" {
-					ing.TLSSecretName = "tls-" + strings.Replace(ing.Host, "*", "wildcard", 1)
+				secretName := ingressTLSSecretName(ing.TLSSecretName, ing.Host)
+				// Reuse an existing TLS block sharing this secret name instead of
+				// appending a duplicate when the same host repeats across entries;
+				// only ensure this host is listed on it.
+				for i := range newIngress.Spec.TLS {
+					if newIngress.Spec.TLS[i].SecretName == secretName {
+						tlsIndex = i
+						break
+					}
 				}
-				newIngress.Spec.TLS = append(newIngress.Spec.TLS, v1.IngressTLS{
-					Hosts:      []string{ing.Host},
-					SecretName: strings.ToLower(ing.TLSSecretName),
-				})
-				tlsIndex = len(newIngress.Spec.TLS) - 1
+				if tlsIndex < 0 {
+					newIngress.Spec.TLS = append(newIngress.Spec.TLS, v1.IngressTLS{
+						Hosts:      []string{ing.Host},
+						SecretName: secretName,
+					})
+					tlsIndex = len(newIngress.Spec.TLS) - 1
+				} else if !slices.Contains(newIngress.Spec.TLS[tlsIndex].Hosts, ing.Host) {
+					newIngress.Spec.TLS[tlsIndex].Hosts = append(newIngress.Spec.TLS[tlsIndex].Hosts, ing.Host)
+				}
 			}
 
 			if app.Staging == "" {
@@ -163,17 +187,23 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 // GetIngressSecrets return TLS secrets for ingress
 func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
+		emitted := make(map[string]bool)
 		for _, ingress := range app.Ingress {
 			// Only emit a TLS Secret when actual certificate material is
 			// provided. With letsencrypt (or an externally referenced
 			// TLSSecretName) the Secret is managed by cert-manager; emitting an
 			// empty kubernetes.io/tls Secret here would be rejected as invalid.
 			if ingress.TLSCrt != "" && ingress.TLSKey != "" {
-				if ingress.TLSSecretName == "" {
-					ingress.TLSSecretName = "tls-" + strings.Replace(ingress.Host, "*", "wildcard", 1)
+				// Share the lowercasing helper with GetIngress so the emitted
+				// Secret name is byte-identical to the Ingress TLS reference, and
+				// skip duplicates when the same host (secret name) repeats.
+				secretName := ingressTLSSecretName(ingress.TLSSecretName, ingress.Host)
+				if emitted[secretName] {
+					continue
 				}
+				emitted[secretName] = true
 				secret := &apiv1.Secret{
-					ObjectMeta: app.GetObjectMeta(ingress.TLSSecretName),
+					ObjectMeta: app.GetObjectMeta(secretName),
 					Data: map[string][]byte{
 						"tls.crt": []byte(ingress.TLSCrt),
 						"tls.key": []byte(ingress.TLSKey),

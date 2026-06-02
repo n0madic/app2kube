@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"encoding/base64"
+	"strings"
 	"testing"
 
 	"github.com/ghodss/yaml"
@@ -307,6 +308,73 @@ func TestIngressPathsAndAliasTLS(t *testing.T) {
 	}
 	if !aliasFound {
 		t.Errorf("alias www.example.com not attached to any TLS entry: %+v", ing.Spec.TLS)
+	}
+}
+
+// Regression (#13/#14): the TLS Secret name must be byte-identical between the
+// Ingress TLS reference and the emitted Secret object, and every host-derived
+// name (Ingress object + TLS Secret) must be lowercased so it stays DNS-1123
+// valid even when the host carries uppercase letters.
+func TestIngressTLSNamesLowercasedAndConsistent(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "Cert.Example.COM", TLSCrt: "CRT", TLSKey: "KEY"},
+	}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings) != 1 {
+		t.Fatalf("expected 1 ingress, got %d", len(ings))
+	}
+	if len(ings[0].Spec.TLS) != 1 {
+		t.Fatalf("expected 1 TLS block, got %d", len(ings[0].Spec.TLS))
+	}
+	refName := ings[0].Spec.TLS[0].SecretName
+
+	secrets := app.GetIngressSecrets()
+	if len(secrets) != 1 {
+		t.Fatalf("expected 1 TLS secret, got %d", len(secrets))
+	}
+	secretName := secrets[0].Name
+
+	if refName != secretName {
+		t.Errorf("TLS reference %q does not match emitted Secret name %q", refName, secretName)
+	}
+	if refName != strings.ToLower(refName) {
+		t.Errorf("TLS reference name not lowercased: %q", refName)
+	}
+	if secretName != strings.ToLower(secretName) {
+		t.Errorf("Secret object name not lowercased: %q", secretName)
+	}
+	if ingName := ings[0].ObjectMeta.Name; ingName != strings.ToLower(ingName) {
+		t.Errorf("ingress object name not lowercased: %q", ingName)
+	}
+}
+
+// Regression (#10): when the same host repeats across ingress entries each
+// carrying TLS material, only one IngressTLS block and one TLS Secret may be
+// emitted; duplicates with an identical name/kind/namespace break kubectl apply.
+func TestIngressDeduplicatesRepeatedHostTLS(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "example.com", Path: "/a", TLSCrt: "C", TLSKey: "K"},
+		{Host: "example.com", Path: "/b", TLSCrt: "C", TLSKey: "K"},
+	}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings) != 1 {
+		t.Fatalf("expected 1 ingress, got %d", len(ings))
+	}
+	if got := len(ings[0].Spec.TLS); got != 1 {
+		t.Errorf("expected 1 TLS block for repeated host, got %d", got)
+	}
+	if got := len(app.GetIngressSecrets()); got != 1 {
+		t.Errorf("expected 1 TLS secret for repeated host, got %d", got)
 	}
 }
 

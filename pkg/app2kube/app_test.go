@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,39 @@ func TestLoadValues(t *testing.T) {
 			}
 			if app.Name != "example" {
 				t.Errorf("expected name example, got %s", app.Name)
+			}
+		})
+	}
+}
+
+// Regression (#11/#43): an explicit `labels: null` or a bare `labels:` in a
+// values file makes ghodss/yaml replace app.Labels with a nil map. LoadValues
+// then wrote app.Labels["app.kubernetes.io/name"] into that nil map and
+// panicked ("assignment to entry in nil map") on untrusted input. ensureLabels
+// must re-seed a writable map carrying the default instance label.
+func TestLoadValuesNilLabels(t *testing.T) {
+	cases := map[string]string{
+		"explicit null": "name: web\nlabels: null\n",
+		"bare key":      "name: web\nlabels:\n",
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "values.yaml")
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatalf("write values file: %v", err)
+			}
+			app := NewApp()
+			if _, err := app.LoadValues(ValueFiles{path}, nil, nil, nil); err != nil {
+				t.Fatalf("LoadValues returned error: %v", err)
+			}
+			if app.Labels == nil {
+				t.Fatal("app.Labels is nil after LoadValues")
+			}
+			if got := app.Labels["app.kubernetes.io/instance"]; got != "production" {
+				t.Errorf("instance label: expected production, got %q", got)
+			}
+			if app.Name != "web" {
+				t.Errorf("name: expected web, got %q", app.Name)
 			}
 		})
 	}

@@ -235,6 +235,8 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 		return nil, err
 	}
 
+	app.ensureLabels()
+
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
 	app.Labels["app.kubernetes.io/name"] = truncateName(app.Name)
 
@@ -269,6 +271,8 @@ func (app *App) validate() error {
 // image pull policy when a staging environment is configured; otherwise it just
 // normalizes the blue/green color.
 func (app *App) applyStaging() error {
+	app.ensureLabels()
+
 	if app.Staging == "" {
 		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
 		return nil
@@ -319,6 +323,19 @@ func NewApp() *App {
 	app.rsaPublicKey = os.Getenv("APP2KUBE_ENCRYPT_KEY")
 	app.rsaPrivateKey = os.Getenv("APP2KUBE_DECRYPT_KEY")
 	return app
+}
+
+// ensureLabels guarantees app.Labels is a writable map carrying the default
+// instance label, so a `labels: null` / bare `labels:` in user YAML (which
+// ghodss/yaml unmarshals into a nil map) cannot leave it nil and panic on the
+// next label assignment. It is idempotent and safe for non-NewApp consumers.
+func (app *App) ensureLabels() {
+	if app.Labels == nil {
+		app.Labels = map[string]string{}
+	}
+	if _, ok := app.Labels["app.kubernetes.io/instance"]; !ok {
+		app.Labels["app.kubernetes.io/instance"] = "production"
+	}
 }
 
 func truncateName(name string) string {

@@ -92,21 +92,40 @@ func TestGetDeploymentPullSecretsAndGracePeriod(t *testing.T) {
 	}
 }
 
-func TestGetDeploymentSharedDataNeedsMultipleContainers(t *testing.T) {
-	// SharedData with a single container must NOT add the shared-data volume.
+func TestGetDeploymentSharedDataVolumeMatchesMount(t *testing.T) {
+	// #18 edge: processContainer mounts shared-data on every app-image container
+	// whenever SharedData is set, so the EmptyDir volume must exist even with a
+	// single container — otherwise the pod references a missing volume (invalid
+	// spec). The volume is keyed off SharedData, not the container count.
 	app := deployApp(t)
 	app.Common.SharedData = "/shared"
 	dep, err := app.GetDeployment()
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)
 	}
-	for _, v := range dep.Spec.Template.Spec.Volumes {
-		if v.Name == "shared-data" {
-			t.Errorf("shared-data volume must not be added for a single container")
+
+	var mountFound bool
+	for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
+		if m.Name == "shared-data" {
+			mountFound = true
 		}
 	}
+	if !mountFound {
+		t.Fatalf("single container must mount shared-data: %+v",
+			dep.Spec.Template.Spec.Containers[0].VolumeMounts)
+	}
+	var volFound bool
+	for _, v := range dep.Spec.Template.Spec.Volumes {
+		if v.Name == "shared-data" && v.EmptyDir != nil {
+			volFound = true
+		}
+	}
+	if !volFound {
+		t.Errorf("shared-data volume must exist to match the single container's mount: %+v",
+			dep.Spec.Template.Spec.Volumes)
+	}
 
-	// With two containers it is added and mounted.
+	// With two containers it is still added and mounted.
 	app = deployApp(t)
 	app.Common.SharedData = "/shared"
 	app.Deployment.Containers["sidecar"] = apiv1.Container{Image: "example/side:v1"}
@@ -122,6 +141,46 @@ func TestGetDeploymentSharedDataNeedsMultipleContainers(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("shared-data emptyDir volume expected with two containers")
+	}
+}
+
+// #18 edge (cronjob): a single-container cronjob with shared-data set must also
+// get the EmptyDir volume to match the mount processContainer adds.
+func TestGetCronJobsSharedDataVolumeMatchesMount(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+common:
+  sharedData: /shared
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	spec := crons[0].Spec.JobTemplate.Spec.Template.Spec
+
+	var mountFound bool
+	for _, m := range spec.Containers[0].VolumeMounts {
+		if m.Name == "shared-data" {
+			mountFound = true
+		}
+	}
+	if !mountFound {
+		t.Fatalf("cronjob container must mount shared-data: %+v", spec.Containers[0].VolumeMounts)
+	}
+	var volFound bool
+	for _, v := range spec.Volumes {
+		if v.Name == "shared-data" && v.EmptyDir != nil {
+			volFound = true
+		}
+	}
+	if !volFound {
+		t.Errorf("cronjob shared-data volume must exist to match the mount: %+v", spec.Volumes)
 	}
 }
 

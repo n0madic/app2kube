@@ -98,6 +98,70 @@ service:
 	}
 }
 
+// #38: lock the two-phase blue/green apply contract. Phase 1
+// (OutputAllForDeployment) must carry the Deployment and the config it depends
+// on (Secret/ConfigMap/PVC) but NOT the traffic resources (Service/Ingress),
+// which phase 2 (OutputAllOther) applies only after the new color is ready.
+// A future edit moving the Service into phase 1 would switch traffic before
+// readiness — this test fails loudly if the membership changes.
+func TestGetManifestPhaseSplit(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+configmap:
+  KEY: value
+secrets:
+  pwd: plain
+deployment:
+  containers:
+    app:
+      image: example/app:v1
+service:
+  web:
+    port: 80
+ingress:
+  - host: example.com
+volumes:
+  data:
+    mountPath: /data
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [echo]
+`)
+
+	phase1, err := app.GetManifest("yaml", OutputAllForDeployment)
+	if err != nil {
+		t.Fatalf("GetManifest phase 1: %v", err)
+	}
+	for _, s := range []string{"# Deployment: example", "# Secret: example", "# ConfigMap: example", "# PersistentVolumeClaim: example-data"} {
+		if !strings.Contains(phase1, s) {
+			t.Errorf("phase 1 (OutputAllForDeployment) missing %q:\n%s", s, phase1)
+		}
+	}
+	for _, s := range []string{"# Service:", "# Ingress:", "# CronJob:"} {
+		if strings.Contains(phase1, s) {
+			t.Errorf("phase 1 must NOT contain %q (traffic/other belongs to phase 2):\n%s", s, phase1)
+		}
+	}
+
+	phase2, err := app.GetManifest("yaml", OutputAllOther)
+	if err != nil {
+		t.Fatalf("GetManifest phase 2: %v", err)
+	}
+	for _, s := range []string{"# Service: example-web", "# Ingress: example-example.com", "# CronJob: example-backup"} {
+		if !strings.Contains(phase2, s) {
+			t.Errorf("phase 2 (OutputAllOther) missing %q:\n%s", s, phase2)
+		}
+	}
+	for _, s := range []string{"# Deployment:", "# ConfigMap:", "# PersistentVolumeClaim:", "# Secret: example"} {
+		if strings.Contains(phase2, s) {
+			t.Errorf("phase 2 must NOT contain %q (it belongs to phase 1):\n%s", s, phase2)
+		}
+	}
+}
+
 func TestGetManifestJSONFormat(t *testing.T) {
 	app := mustUnmarshalApp(t, `
 name: example

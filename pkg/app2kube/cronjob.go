@@ -120,7 +120,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(app.Common.GracePeriod)
 		}
 
-		if app.Common.SharedData != "" && len(cron.Spec.JobTemplate.Spec.Template.Spec.Containers) > 1 {
+		// The EmptyDir volume must exist whenever SharedData is set, to match the
+		// mount processContainer adds to every app-image container — even a single
+		// one — otherwise the pod spec references a missing volume (#18).
+		if app.Common.SharedData != "" {
 			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
 				Name:         sharedDataVolumeName,
 				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},

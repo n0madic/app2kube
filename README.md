@@ -223,6 +223,8 @@ Per-container `resources` always win. In staging, container resources are still 
 
 The Deployment's `spec.selector` is kept to a minimal, stable identity — `name` + `instance` (plus `app.kubernetes.io/color` for blue/green) — and deliberately excludes `managed-by` and arbitrary user labels, which only live on the object and pod template. This keeps a plain `kubectl apply` working when you add or change labels. `spec.selector` is immutable in Kubernetes, so a Deployment first created by an older app2kube (whose selector copied the full label set) must be deleted and recreated once to adopt the new selector.
 
+**Init containers and shared data.** App-image init containers inherit the same injected configuration as the main app containers — the global `env`, the `envFrom` references to the release ConfigMap/Secret, the PVC mounts, and the `common.sharedData` mount — so an init step (e.g. a migration) sees the app's config without repeating it. When `common.sharedData` is set, the `shared-data` `emptyDir` volume is always emitted (even for a single container) so every mount has a matching volume. Third-party sidecar/init images are never injected into.
+
 ## Examples
 
 Simple web service:

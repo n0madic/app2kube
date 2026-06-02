@@ -109,6 +109,22 @@ func status(ctx context.Context, app *app2kube.App) error {
 	return nil
 }
 
+// renderTable builds a uitable with the given column width and header row, lets
+// the caller append the data rows, and returns the rendered string. It
+// centralizes the uitable/MaxColWidth/header scaffolding the status renderers
+// used to duplicate across eight functions (#34).
+func renderTable(maxWidth uint, header []string, addRows func(table *uitable.Table)) string {
+	table := uitable.New()
+	table.MaxColWidth = maxWidth
+	cells := make([]interface{}, len(header))
+	for i, h := range header {
+		cells[i] = h
+	}
+	table.AddRow(cells...)
+	addRows(table)
+	return table.String()
+}
+
 func getConfigmapStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
 	list, err := kcs.CoreV1().ConfigMaps(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
@@ -116,23 +132,18 @@ func getConfigmapStatus(ctx context.Context, kcs kubernetes.Interface, namespace
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "DATA", "AGE")
-	for _, configmap := range list.Items {
-		table.AddRow(
-			configmap.Name,
-			len(configmap.Data)+len(configmap.BinaryData),
-			metatable.ConvertToHumanReadableDateType(configmap.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	return renderTable(maxColWidth, []string{"NAME", "DATA", "AGE"}, func(table *uitable.Table) {
+		for _, configmap := range list.Items {
+			table.AddRow(
+				configmap.Name,
+				len(configmap.Data)+len(configmap.BinaryData),
+				metatable.ConvertToHumanReadableDateType(configmap.CreationTimestamp),
+			)
+		}
+	}), nil
 }
 
 func getSecretsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -142,23 +153,18 @@ func getSecretsStatus(ctx context.Context, kcs kubernetes.Interface, namespace s
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "DATA", "AGE")
-	for _, secret := range list.Items {
-		table.AddRow(
-			secret.Name,
-			len(secret.Data),
-			metatable.ConvertToHumanReadableDateType(secret.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	return renderTable(maxColWidth, []string{"NAME", "DATA", "AGE"}, func(table *uitable.Table) {
+		for _, secret := range list.Items {
+			table.AddRow(
+				secret.Name,
+				len(secret.Data),
+				metatable.ConvertToHumanReadableDateType(secret.CreationTimestamp),
+			)
+		}
+	}), nil
 }
 
 func getCronJobsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -168,34 +174,29 @@ func getCronJobsStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE")
-	for _, cron := range list.Items {
-		var lastScheduleTime string
-		if cron.Status.LastScheduleTime != nil {
-			lastScheduleTime = cron.Status.LastScheduleTime.String()
+	return renderTable(maxColWidth, []string{"NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE"}, func(table *uitable.Table) {
+		for _, cron := range list.Items {
+			var lastScheduleTime string
+			if cron.Status.LastScheduleTime != nil {
+				lastScheduleTime = cron.Status.LastScheduleTime.String()
+			}
+			suspend := false
+			if cron.Spec.Suspend != nil {
+				suspend = *cron.Spec.Suspend
+			}
+			table.AddRow(
+				cron.Name,
+				cron.Spec.Schedule,
+				suspend,
+				len(cron.Status.Active),
+				lastScheduleTime,
+				metatable.ConvertToHumanReadableDateType(cron.CreationTimestamp),
+			)
 		}
-		suspend := false
-		if cron.Spec.Suspend != nil {
-			suspend = *cron.Spec.Suspend
-		}
-		table.AddRow(
-			cron.Name,
-			cron.Spec.Schedule,
-			suspend,
-			len(cron.Status.Active),
-			lastScheduleTime,
-			metatable.ConvertToHumanReadableDateType(cron.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	}), nil
 }
 
 func getPVCStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -205,28 +206,23 @@ func getPVCStatus(ctx context.Context, kcs kubernetes.Interface, namespace strin
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESS MODES", "STORAGECLASS", "AGE")
-	for _, pvc := range list.Items {
-		capacity := pvc.Status.Capacity[apiv1.ResourceStorage]
-		table.AddRow(
-			pvc.Name,
-			pvc.Status.Phase,
-			pvc.Spec.VolumeName,
-			capacity.String(),
-			storageutil.GetAccessModesAsString(pvc.Status.AccessModes),
-			storageutil.GetPersistentVolumeClaimClass(&pvc),
-			metatable.ConvertToHumanReadableDateType(pvc.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	return renderTable(maxColWidth, []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESS MODES", "STORAGECLASS", "AGE"}, func(table *uitable.Table) {
+		for _, pvc := range list.Items {
+			capacity := pvc.Status.Capacity[apiv1.ResourceStorage]
+			table.AddRow(
+				pvc.Name,
+				pvc.Status.Phase,
+				pvc.Spec.VolumeName,
+				capacity.String(),
+				storageutil.GetAccessModesAsString(pvc.Status.AccessModes),
+				storageutil.GetPersistentVolumeClaimClass(&pvc),
+				metatable.ConvertToHumanReadableDateType(pvc.CreationTimestamp),
+			)
+		}
+	}), nil
 }
 
 func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -240,34 +236,29 @@ func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespac
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE")
-	for _, deployment := range list.Items {
-		activeMark := ""
-		currentColor := deployment.Spec.Selector.MatchLabels[app2kube.LabelColor]
-		if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
-			activeMark = "*"
+	return renderTable(maxColWidth, []string{"NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"}, func(table *uitable.Table) {
+		for _, deployment := range list.Items {
+			activeMark := ""
+			currentColor := deployment.Spec.Selector.MatchLabels[app2kube.LabelColor]
+			if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
+				activeMark = "*"
+			}
+			if currentColor != "" {
+				deployment.Name = colorize(currentColor, deployment.Name)
+			}
+			ready := fmt.Sprintf("%d/%d", deployment.Status.ReadyReplicas, deployment.Status.Replicas)
+			table.AddRow(
+				deployment.Name+activeMark,
+				ready,
+				deployment.Status.UpdatedReplicas,
+				deployment.Status.AvailableReplicas,
+				metatable.ConvertToHumanReadableDateType(deployment.CreationTimestamp),
+			)
 		}
-		if currentColor != "" {
-			deployment.Name = colorize(currentColor, deployment.Name)
-		}
-		ready := fmt.Sprintf("%d/%d", deployment.Status.ReadyReplicas, deployment.Status.Replicas)
-		table.AddRow(
-			deployment.Name+activeMark,
-			ready,
-			deployment.Status.UpdatedReplicas,
-			deployment.Status.AvailableReplicas,
-			metatable.ConvertToHumanReadableDateType(deployment.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	}), nil
 }
 
 func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -277,46 +268,41 @@ func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace stri
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE")
-	for _, pod := range list.Items {
-		currentColor := pod.Labels[app2kube.LabelColor]
-		if currentColor != "" {
-			pod.Name = colorize(currentColor, pod.Name)
-		}
-		var readyCount, restartCount int
-		for _, container := range pod.Status.ContainerStatuses {
-			restartCount += int(container.RestartCount)
-			if container.Ready && container.State.Running != nil {
-				readyCount++
+	return renderTable(maxColWidth, []string{"NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE"}, func(table *uitable.Table) {
+		for _, pod := range list.Items {
+			currentColor := pod.Labels[app2kube.LabelColor]
+			if currentColor != "" {
+				pod.Name = colorize(currentColor, pod.Name)
 			}
+			var readyCount, restartCount int
+			for _, container := range pod.Status.ContainerStatuses {
+				restartCount += int(container.RestartCount)
+				if container.Ready && container.State.Running != nil {
+					readyCount++
+				}
+			}
+			reason := string(pod.Status.Phase)
+			if pod.Status.Reason != "" {
+				reason = pod.Status.Reason
+			}
+			if pod.DeletionTimestamp != nil && pod.Status.Reason == "NodeLost" {
+				reason = "Unknown"
+			} else if pod.DeletionTimestamp != nil {
+				reason = "Terminating"
+			}
+			table.AddRow(
+				pod.Name,
+				reason,
+				fmt.Sprintf("%d/%d", readyCount, len(pod.Spec.Containers)),
+				restartCount,
+				metatable.ConvertToHumanReadableDateType(pod.CreationTimestamp),
+				pod.Spec.NodeName,
+			)
 		}
-		reason := string(pod.Status.Phase)
-		if pod.Status.Reason != "" {
-			reason = pod.Status.Reason
-		}
-		if pod.DeletionTimestamp != nil && pod.Status.Reason == "NodeLost" {
-			reason = "Unknown"
-		} else if pod.DeletionTimestamp != nil {
-			reason = "Terminating"
-		}
-		table.AddRow(
-			pod.Name,
-			reason,
-			fmt.Sprintf("%d/%d", readyCount, len(pod.Spec.Containers)),
-			restartCount,
-			metatable.ConvertToHumanReadableDateType(pod.CreationTimestamp),
-			pod.Spec.NodeName,
-		)
-	}
-
-	return table.String(), nil
+	}), nil
 }
 
 func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -326,38 +312,33 @@ func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = maxColWidth
-	table.AddRow("NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE")
-	for _, svc := range list.Items {
-		externalIPs := "<none>"
-		if len(svc.Spec.ExternalIPs) > 0 {
-			externalIPs = strings.Join(svc.Spec.ExternalIPs, ",")
+	return renderTable(maxColWidth, []string{"NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}, func(table *uitable.Table) {
+		for _, svc := range list.Items {
+			externalIPs := "<none>"
+			if len(svc.Spec.ExternalIPs) > 0 {
+				externalIPs = strings.Join(svc.Spec.ExternalIPs, ",")
+			}
+			var ports []string
+			for _, port := range svc.Spec.Ports {
+				ports = append(ports, strconv.Itoa(int(port.Port)))
+			}
+			currentColor := svc.Spec.Selector[app2kube.LabelColor]
+			if currentColor != "" {
+				svc.Name = colorize(currentColor, svc.Name)
+			}
+			table.AddRow(
+				svc.Name,
+				svc.Spec.Type,
+				svc.Spec.ClusterIP,
+				externalIPs,
+				strings.Join(ports, ","),
+				metatable.ConvertToHumanReadableDateType(svc.CreationTimestamp),
+			)
 		}
-		var ports []string
-		for _, port := range svc.Spec.Ports {
-			ports = append(ports, strconv.Itoa(int(port.Port)))
-		}
-		currentColor := svc.Spec.Selector[app2kube.LabelColor]
-		if currentColor != "" {
-			svc.Name = colorize(currentColor, svc.Name)
-		}
-		table.AddRow(
-			svc.Name,
-			svc.Spec.Type,
-			svc.Spec.ClusterIP,
-			externalIPs,
-			strings.Join(ports, ","),
-			metatable.ConvertToHumanReadableDateType(svc.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	}), nil
 }
 
 func getIngressStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -367,25 +348,23 @@ func getIngressStatus(ctx context.Context, kcs kubernetes.Interface, namespace s
 	if err != nil {
 		return "", err
 	}
-
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-
-	table := uitable.New()
-	table.MaxColWidth = 100
-	table.AddRow("NAME", "HOSTS", "AGE")
-	for _, ingress := range list.Items {
-		hosts := []string{}
-		for _, rule := range ingress.Spec.Rules {
-			hosts = append(hosts, rule.Host)
+	// Ingress keeps a wider column than maxColWidth: the HOSTS cell is a
+	// comma-joined host list that is often long, and uitable wraps narrow
+	// columns across many lines.
+	return renderTable(100, []string{"NAME", "HOSTS", "AGE"}, func(table *uitable.Table) {
+		for _, ingress := range list.Items {
+			hosts := []string{}
+			for _, rule := range ingress.Spec.Rules {
+				hosts = append(hosts, rule.Host)
+			}
+			table.AddRow(
+				ingress.Name,
+				strings.Join(hosts, ","),
+				metatable.ConvertToHumanReadableDateType(ingress.CreationTimestamp),
+			)
 		}
-		table.AddRow(
-			ingress.Name,
-			strings.Join(hosts, ","),
-			metatable.ConvertToHumanReadableDateType(ingress.CreationTimestamp),
-		)
-	}
-
-	return table.String(), nil
+	}), nil
 }

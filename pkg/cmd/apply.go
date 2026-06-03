@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -11,6 +12,13 @@ import (
 	"k8s.io/kubectl/pkg/cmd/apply"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
+
+// blueGreenNotSwitchedMsg explains that a blue/green deploy created (or updated)
+// the new color but did not switch live traffic to it, and that re-running is
+// safe — the stale target-color Deployment is replaced on the next run (#60).
+func blueGreenNotSwitchedMsg(color string) string {
+	return fmt.Sprintf("[%s] was deployed but traffic was NOT switched; the live color is unchanged. Re-run the blue-green deploy to retry — the stale %s deployment will be replaced.", color, color)
+}
 
 var (
 	applyWithStatus bool
@@ -120,19 +128,28 @@ func NewCmdApply() *cobra.Command {
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
 				cmdutil.CheckErr(err)
 
-				fmt.Printf("• Pre-deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
+				// Progress/diagnostics go to stderr so piped manifest/data on stdout
+				// stays clean (#61).
+				fmt.Fprintf(os.Stderr, "• Pre-deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 
-				cmdutil.CheckErr(applyManifest(manifest, false))
-
-				err = trackReady(ctx, app.GetDeploymentName(), app.Namespace, defaultTrackTimeout, time.Now())
-				if err != nil {
+				// Phase 1 deploys the new color; phase 2 (below) switches the
+				// Service/Ingress once it is ready. If either step fails the live
+				// color is unchanged — report that traffic was not switched and
+				// return; re-running replaces the stale target-color deployment (#60).
+				if err := applyManifest(manifest, false); err != nil {
+					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
 					return err
 				}
 
-				manifest, err = app.GetManifest("json", (app2kube.OutputAllOther))
+				if err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, defaultTrackTimeout, time.Now()); err != nil {
+					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
+					return err
+				}
+
+				manifest, err = app.GetManifest("json", app2kube.OutputAllOther)
 				cmdutil.CheckErr(err)
 
-				fmt.Printf("• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
+				fmt.Fprintf(os.Stderr, "• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 
 				cmdutil.CheckErr(applyManifest(manifest, false))
 			} else {

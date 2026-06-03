@@ -1,6 +1,8 @@
 package app2kube
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -122,7 +124,14 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			})
 		}
 
-		for volName := range app.Volumes {
+		for volName, vol := range app.Volumes {
+			// A ReadWriteOnce(-only) PVC can be bound on a single node; mounting it
+			// into a multi-replica Deployment makes pods on other nodes unschedulable
+			// (a StatefulSet would be correct but is out of scope). Warn instead of
+			// silently emitting a spec that deadlocks (#48).
+			if replicas > 1 && len(vol.Spec.AccessModes) > 0 && !pvcAllowsMultiAttach(vol.Spec.AccessModes) {
+				fmt.Fprintf(os.Stderr, "WARNING: PVC %q (%v) is mounted into a %d-replica Deployment; pods on different nodes cannot share a ReadWriteOnce volume and scheduling will block (use a single replica or a ReadWriteMany volume; StatefulSet is out of scope)\n", volName, vol.Spec.AccessModes, replicas)
+			}
 			deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, apiv1.Volume{
 				Name: volName,
 				VolumeSource: apiv1.VolumeSource{

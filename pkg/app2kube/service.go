@@ -2,10 +2,19 @@ package app2kube
 
 import (
 	"fmt"
+	"os"
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 )
+
+// nodePortInRange reports whether p is a valid Kubernetes node port (the default
+// service-node-port-range, 30000-32767). A requested NodePort outside it cannot
+// be pinned — the apiserver would reject it — so it is left unset for
+// auto-assignment (#49).
+func nodePortInRange(p int32) bool {
+	return p >= 30000 && p <= 32767
+}
 
 // effectiveServicePort returns the port the generated Service exposes, resolved
 // the same way GetServices resolves it: ExternalPort, else Port, else
@@ -65,9 +74,14 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 			// Only pin a node port when the requested ExternalPort falls inside
 			// the default node-port range; otherwise leave it unset so the
 			// apiserver auto-assigns a valid port instead of rejecting the
-			// Service (e.g. ExternalPort=80 is not a valid node port).
-			if svc.Type == apiv1.ServiceTypeNodePort && svc.ExternalPort >= 30000 && svc.ExternalPort <= 32767 {
-				service.Spec.Ports[0].NodePort = svc.ExternalPort
+			// Service (e.g. ExternalPort=80 is not a valid node port). Warn rather
+			// than dropping it silently (#49).
+			if svc.Type == apiv1.ServiceTypeNodePort {
+				if nodePortInRange(svc.ExternalPort) {
+					service.Spec.Ports[0].NodePort = svc.ExternalPort
+				} else if svc.ExternalPort > 0 {
+					fmt.Fprintf(os.Stderr, "WARNING: service %q requests node port %d outside the valid range 30000-32767; leaving it unset for the apiserver to auto-assign\n", name, svc.ExternalPort)
+				}
 			}
 
 			services = append(services, service)

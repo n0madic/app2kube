@@ -607,6 +607,33 @@ func TestGetPersistentVolumeClaimsMissingMountPath(t *testing.T) {
 	}
 }
 
+// #48: an omitted accessModes produces a PVC the apiserver rejects; fail fast
+// with a clear error at generation time instead.
+func TestGetPersistentVolumeClaimsMissingAccessModes(t *testing.T) {
+	app := NewApp()
+	app.Name = "example"
+	app.Volumes = map[string]VolumeSpec{
+		"data": {MountPath: "/data"}, // no AccessModes
+	}
+	if _, err := app.GetPersistentVolumeClaims(); err == nil {
+		t.Errorf("expected error when accessModes is empty")
+	}
+}
+
+// #48: only ReadWriteMany/ReadOnlyMany let more than one pod mount a volume; a
+// ReadWriteOnce(-only) volume cannot, so it must not be reported multi-attach.
+func TestPVCAllowsMultiAttach(t *testing.T) {
+	if pvcAllowsMultiAttach([]apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce}) {
+		t.Errorf("ReadWriteOnce must not be multi-attach")
+	}
+	if !pvcAllowsMultiAttach([]apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteMany}) {
+		t.Errorf("ReadWriteMany must be multi-attach")
+	}
+	if !pvcAllowsMultiAttach([]apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce, apiv1.ReadOnlyMany}) {
+		t.Errorf("ReadOnlyMany must be multi-attach")
+	}
+}
+
 func TestGetNamespace(t *testing.T) {
 	app := NewApp()
 

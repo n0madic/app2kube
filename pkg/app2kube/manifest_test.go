@@ -27,6 +27,9 @@ ingress:
 volumes:
   data:
     mountPath: /data
+    spec:
+      accessModes:
+        - ReadWriteOnce
 cronjob:
   backup:
     schedule: "* * * * *"
@@ -123,6 +126,9 @@ ingress:
 volumes:
   data:
     mountPath: /data
+    spec:
+      accessModes:
+        - ReadWriteOnce
 cronjob:
   backup:
     schedule: "* * * * *"

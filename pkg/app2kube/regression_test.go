@@ -244,6 +244,21 @@ func TestServiceNodePortRange(t *testing.T) {
 	}
 }
 
+// #49: the node-port range gate is a pure predicate so the Service generator and
+// its warning share one definition of "valid node port".
+func TestNodePortInRange(t *testing.T) {
+	for _, p := range []int32{30000, 31000, 32767} {
+		if !nodePortInRange(p) {
+			t.Errorf("%d must be in the node-port range", p)
+		}
+	}
+	for _, p := range []int32{0, 80, 29999, 32768} {
+		if nodePortInRange(p) {
+			t.Errorf("%d must be outside the node-port range", p)
+		}
+	}
+}
+
 // Regression (#16): a service defined with only internalPort renders a valid
 // Service (external mirrors internal), but GetIngress used to read only
 // ExternalPort/Port and never InternalPort, so it failed with "you must specify
@@ -429,6 +444,33 @@ func TestIngressDeduplicatesRepeatedHostTLS(t *testing.T) {
 	}
 	if got := len(app.GetIngressSecrets()); got != 1 {
 		t.Errorf("expected 1 TLS secret for repeated host, got %d", got)
+	}
+}
+
+// #58: two entries for the same host that resolve to the same ingress object but
+// request different ingressClasses cannot be represented (IngressClassName is
+// ingress-wide) — error instead of silently letting the last entry win. The same
+// class on both entries must still merge cleanly.
+func TestIngressConflictingClassError(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "example.com", IngressCommon: IngressCommon{Class: "alpha"}},
+		{Host: "example.com", Path: "/api", IngressCommon: IngressCommon{Class: "beta"}},
+	}
+	if _, err := app.GetIngress(); err == nil {
+		t.Errorf("expected an error for conflicting ingressClass on the same host")
+	}
+
+	app.Ingress = []Ingress{
+		{Host: "example.com", IngressCommon: IngressCommon{Class: "alpha"}},
+		{Host: "example.com", Path: "/api", IngressCommon: IngressCommon{Class: "alpha"}},
+	}
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("same class on both entries must not conflict: %v", err)
+	}
+	if len(ings) != 1 || len(ings[0].Spec.Rules[0].HTTP.Paths) != 2 {
+		t.Errorf("same-host same-class entries must merge into one rule with both paths, got %+v", ings)
 	}
 }
 

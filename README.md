@@ -227,6 +227,10 @@ The Deployment's `spec.selector` is kept to a minimal, stable identity — `name
 
 **Config rollout.** Kubernetes does not restart pods when a ConfigMap/Secret consumed via `envFrom` changes, so an `apply` of changed config would otherwise leave pods running stale values. To fix this, the pod template of any workload that actually references the config gets `checksum/configmap` and/or `checksum/secret` annotations (a sha256 of the referenced data). Changing a `configmap:`/`secrets:` value changes the checksum, which changes the pod template, so `kubectl apply` rolls the Deployment (and cronjob pods). Workloads that do not consume the config — e.g. a pod built only from a third-party image — get no checksum and are never rolled by an unrelated change. The secret checksum is taken over the stored value (ciphertext or plaintext), so rendering never requires the decrypt key.
 
+**Persistent volumes.** Each `volumes:` entry must set `spec.accessModes` (an empty value yields a PVC the apiserver rejects, so app2kube fails fast with a clear error). A PVC is mounted into the **Deployment**, so a `ReadWriteOnce` volume mounted into a multi-replica Deployment cannot be shared across nodes and scheduling blocks — app2kube warns about this on stderr. Use a single replica or a `ReadWriteMany` volume; generating a `StatefulSet` is out of scope.
+
+**Services.** For a `NodePort` service the requested external port is pinned as the node port only when it falls inside the valid range `30000-32767`; an out-of-range value is left for the apiserver to auto-assign and a warning is printed to stderr (rather than silently dropping it). When several `ingress:` entries share the same host they are merged into one Ingress object; because `ingressClassName` is ingress-wide, two entries for the same host requesting **different** classes is an error.
+
 ## Examples
 
 Simple web service:

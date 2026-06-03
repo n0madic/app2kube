@@ -12,6 +12,11 @@ func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeCla
 		if volume.MountPath == "" {
 			return claims, fmt.Errorf("mount path required for PVC: %s", volName)
 		}
+		// An omitted accessModes yields a PVC the apiserver rejects; fail fast
+		// here with a clear, attributable error instead (#48).
+		if len(volume.Spec.AccessModes) == 0 {
+			return claims, fmt.Errorf("accessModes required for PVC: %s", volName)
+		}
 
 		claimName := app.GetReleaseName() + "-" + volName
 
@@ -23,4 +28,17 @@ func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeCla
 		claims = append(claims, claim)
 	}
 	return
+}
+
+// pvcAllowsMultiAttach reports whether the access modes let more than one pod
+// (potentially on different nodes) mount the volume — i.e. ReadWriteMany or
+// ReadOnlyMany. A ReadWriteOnce(-Pod) volume cannot, so mounting it into a
+// multi-replica Deployment deadlocks scheduling (#48).
+func pvcAllowsMultiAttach(modes []apiv1.PersistentVolumeAccessMode) bool {
+	for _, m := range modes {
+		if m == apiv1.ReadWriteMany || m == apiv1.ReadOnlyMany {
+			return true
+		}
+	}
+	return false
 }

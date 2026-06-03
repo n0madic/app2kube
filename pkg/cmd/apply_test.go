@@ -1,6 +1,21 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
+
+// #60: on a blue/green phase-1 or trackReady failure the operator must be told
+// the new color was deployed but traffic was NOT switched, and that re-running
+// is safe.
+func TestBlueGreenNotSwitchedMsg(t *testing.T) {
+	msg := strings.ToLower(blueGreenNotSwitchedMsg("green"))
+	for _, want := range []string{"green", "not switched", "re-run"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q must mention %q", msg, want)
+		}
+	}
+}
 
 // Regression (#26): the --track value must be validated at parse time (before
 // the cluster is mutated), accepting only "", "ready", "follow" (case-insensitive)

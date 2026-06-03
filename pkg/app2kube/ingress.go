@@ -88,6 +88,14 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				}
 			}
 
+			// When this host's ingress object is reused for a repeated entry, its
+			// IngressClassName is already set from the first entry. IngressClassName
+			// is ingress-wide, so a second entry asking for a different class cannot
+			// be represented — error instead of silently letting the last entry win
+			// (#58).
+			if foundIngress && newIngress.Spec.IngressClassName != nil && *newIngress.Spec.IngressClassName != ing.Class {
+				return ingress, fmt.Errorf("ingress %s: conflicting ingressClass %q and %q for the same host", ingressName, *newIngress.Spec.IngressClassName, ing.Class)
+			}
 			newIngress.Spec.IngressClassName = &ing.Class
 			// GetObjectMeta leaves Annotations nil (#67); the ingress is the only
 			// resource that adds annotations, so initialize the map lazily here

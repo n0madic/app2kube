@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/client-go/kubernetes"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
@@ -86,4 +88,17 @@ func deleteDeployment(ctx context.Context, name, namespace string) error {
 	}
 
 	return nil
+}
+
+// preDeleteDeployment removes the stale target-color Deployment before a
+// blue/green rotation recreates it. A NotFound is the expected case — on the
+// first (zero) deploy of a color there is nothing to delete — and is ignored;
+// any other error (RBAC, connectivity) is returned so the caller aborts instead
+// of proceeding into an apply the same problem would also break (#65).
+func preDeleteDeployment(ctx context.Context, kcs kubernetes.Interface, name, namespace string) error {
+	err := kcs.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }

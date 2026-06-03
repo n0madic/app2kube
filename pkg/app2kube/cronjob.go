@@ -64,6 +64,11 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			return nil, err
 		}
 
+		// Roll cronjob pods when the config they consume changes (#22), mirroring
+		// the Deployment; only the config actually wired into these containers is
+		// hashed.
+		checksums := app.configChecksumAnnotations(containers)
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
@@ -83,7 +88,8 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 							ObjectMeta: metav1.ObjectMeta{
 								// Label cronjob-spawned pods so they match the prune
 								// selector, status pod listing and tracking (#12).
-								Labels: app.Labels,
+								Labels:      app.Labels,
+								Annotations: checksums,
 							},
 							Spec: apiv1.PodSpec{
 								Affinity:                     affinity,

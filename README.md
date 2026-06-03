@@ -225,6 +225,8 @@ The Deployment's `spec.selector` is kept to a minimal, stable identity — `name
 
 **Init containers and shared data.** App-image init containers inherit the same injected configuration as the main app containers — the global `env`, the `envFrom` references to the release ConfigMap/Secret, the PVC mounts, and the `common.sharedData` mount — so an init step (e.g. a migration) sees the app's config without repeating it. When `common.sharedData` is set, the `shared-data` `emptyDir` volume is always emitted (even for a single container) so every mount has a matching volume. Third-party sidecar/init images are never injected into.
 
+**Config rollout.** Kubernetes does not restart pods when a ConfigMap/Secret consumed via `envFrom` changes, so an `apply` of changed config would otherwise leave pods running stale values. To fix this, the pod template of any workload that actually references the config gets `checksum/configmap` and/or `checksum/secret` annotations (a sha256 of the referenced data). Changing a `configmap:`/`secrets:` value changes the checksum, which changes the pod template, so `kubectl apply` rolls the Deployment (and cronjob pods). Workloads that do not consume the config — e.g. a pod built only from a third-party image — get no checksum and are never rolled by an unrelated change. The secret checksum is taken over the stored value (ciphertext or plaintext), so rendering never requires the decrypt key.
+
 ## Examples
 
 Simple web service:

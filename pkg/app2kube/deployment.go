@@ -56,6 +56,12 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			return nil, err
 		}
 
+		// Roll the Deployment when the config it consumes changes: a checksum of
+		// the referenced ConfigMap/Secret in the pod template makes an envFrom
+		// change part of the template (#22). Computed from the rendered
+		// containers, so only the config actually wired in is hashed.
+		checksums := app.configChecksumAnnotations(append(append([]apiv1.Container{}, containers...), initContainers...))
+
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
@@ -67,7 +73,8 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Strategy: app.Deployment.Strategy,
 				Template: apiv1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
-						Labels: app.GetColorLabels(),
+						Labels:      app.GetColorLabels(),
+						Annotations: checksums,
 					},
 					Spec: apiv1.PodSpec{
 						Affinity:                     affinity,

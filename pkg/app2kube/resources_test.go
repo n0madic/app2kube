@@ -559,6 +559,32 @@ cronjob:
 	}
 }
 
+// #22: the cronjob pod template must also carry the checksum/configmap
+// annotation so a config change rolls the cronjob pods, mirroring the
+// deployment.
+func TestGetCronJobsConfigChecksumAnnotations(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: web
+configmap:
+  LOG_LEVEL: info
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/web:v1
+      command: [echo]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	ann := crons[0].Spec.JobTemplate.Spec.Template.Annotations
+	want := dataChecksum(map[string][]byte{"LOG_LEVEL": []byte("info")})
+	if ann["checksum/configmap"] != want {
+		t.Errorf("cronjob checksum/configmap: got %q, want %q", ann["checksum/configmap"], want)
+	}
+}
+
 func TestGetCronJobsTimeZone(t *testing.T) {
 	app := mustUnmarshalApp(t, `
 name: example

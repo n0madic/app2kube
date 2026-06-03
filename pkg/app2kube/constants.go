@@ -29,3 +29,10 @@ const (
 	// tlsSecretPrefix prefixes a host-derived TLS Secret name.
 	tlsSecretPrefix = "tls-"
 )
+
+// Pod-template annotation keys carrying the sha256 of the referenced config, so
+// a change to the ConfigMap/Secret content rolls the workload (#22).
+const (
+	annotationChecksumConfigMap = "checksum/configmap"
+	annotationChecksumSecret    = "checksum/secret"
+)

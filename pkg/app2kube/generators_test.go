@@ -144,6 +144,92 @@ func TestGetDeploymentSharedDataVolumeMatchesMount(t *testing.T) {
 	}
 }
 
+// #22: the Deployment pod template must carry checksum/configmap and
+// checksum/secret annotations (sha256 of the rendered data) so a config/secret
+// change rolls the Deployment. The values must match the hash of the actual
+// data the ConfigMap/Secret objects carry.
+func TestGetDeploymentConfigChecksumAnnotations(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: web
+configmap:
+  LOG_LEVEL: info
+secrets:
+  DB_PASSWORD: s3cr3t
+deployment:
+  containers:
+    app:
+      image: example/web:v1
+`)
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	ann := dep.Spec.Template.Annotations
+
+	wantCM := dataChecksum(map[string][]byte{"LOG_LEVEL": []byte("info")})
+	if ann["checksum/configmap"] != wantCM {
+		t.Errorf("checksum/configmap: got %q, want %q", ann["checksum/configmap"], wantCM)
+	}
+	wantSecret := dataChecksum(map[string][]byte{"DB_PASSWORD": []byte("s3cr3t")})
+	if ann["checksum/secret"] != wantSecret {
+		t.Errorf("checksum/secret: got %q, want %q", ann["checksum/secret"], wantSecret)
+	}
+}
+
+// #22: the secret checksum is computed over the values as loaded (ciphertext or
+// plaintext), so rendering a Deployment that references encrypted secrets never
+// requires the decrypt key, and the digest stays deterministic across renders.
+func TestGetDeploymentSecretChecksumNeedsNoDecryptKey(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: web
+secrets:
+  TOKEN: "AES#not-a-real-ciphertext"
+deployment:
+  containers:
+    app:
+      image: example/web:v1
+`)
+	// No decrypt key is configured, so decrypting would fail; the checksum must
+	// still render without error (it hashes the raw loaded value).
+	app.aesPassword = ""
+	app.rsaPrivateKey = ""
+
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment must not require the decrypt key for the checksum: %v", err)
+	}
+	want := dataChecksum(map[string][]byte{"TOKEN": []byte("AES#not-a-real-ciphertext")})
+	if got := dep.Spec.Template.Annotations["checksum/secret"]; got != want {
+		t.Errorf("checksum/secret over raw value: got %q, want %q", got, want)
+	}
+}
+
+// #22 refinement: the checksum annotation is added only to workloads whose
+// containers actually reference the config via envFrom. A workload built solely
+// from a third-party image (no envFrom injection) must get no checksum.
+func TestGetDeploymentChecksumOnlyWhenConfigWired(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: web
+common:
+  image:
+    repository: example/app
+configmap:
+  LOG_LEVEL: info
+deployment:
+  containers:
+    side:
+      image: other.io/lib:1.0
+`)
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if _, ok := dep.Spec.Template.Annotations["checksum/configmap"]; ok {
+		t.Errorf("third-party-only workload must not get a config checksum: %+v",
+			dep.Spec.Template.Annotations)
+	}
+}
+
 // #18 edge (cronjob): a single-container cronjob with shared-data set must also
 // get the EmptyDir volume to match the mount processContainer adds.
 func TestGetCronJobsSharedDataVolumeMatchesMount(t *testing.T) {

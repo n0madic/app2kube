@@ -92,7 +92,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 		}
 
 		if err := yaml.Unmarshal(bytes, &currentMap); err != nil {
-			return []byte{}, fmt.Errorf("failed to parse %s: %s", filePath, err)
+			return []byte{}, fmt.Errorf("failed to parse %s: %w", filePath, err)
 		}
 		// Merge with the previous map
 		base = mergeValues(base, currentMap)
@@ -101,14 +101,14 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	// User specified a value via --set
 	for _, value := range values {
 		if err := strvals.ParseInto(value, base); err != nil {
-			return []byte{}, fmt.Errorf("failed parsing --set data: %s", err)
+			return []byte{}, fmt.Errorf("failed parsing --set data: %w", err)
 		}
 	}
 
 	// User specified a value via --set-string
 	for _, value := range stringValues {
 		if err := strvals.ParseIntoString(value, base); err != nil {
-			return []byte{}, fmt.Errorf("failed parsing --set-string data: %s", err)
+			return []byte{}, fmt.Errorf("failed parsing --set-string data: %w", err)
 		}
 	}
 
@@ -119,7 +119,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 			return strings.TrimSpace(string(bytes)), err
 		}
 		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
-			return []byte{}, fmt.Errorf("failed parsing --set-file data: %s", err)
+			return []byte{}, fmt.Errorf("failed parsing --set-file data: %w", err)
 		}
 	}
 

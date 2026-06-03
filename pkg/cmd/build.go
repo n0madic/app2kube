@@ -176,13 +176,13 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		// Dockerfile is outside of build-context; read the Dockerfile and pass it as dockerfileCtx
 		dockerfileCtx, err = os.Open(dockerfileName)
 		if err != nil {
-			return fmt.Errorf("unable to open Dockerfile: %v", err)
+			return fmt.Errorf("unable to open Dockerfile: %w", err)
 		}
 		defer func() { _ = dockerfileCtx.Close() }()
 	}
 
 	if err != nil {
-		return fmt.Errorf("unable to prepare context: %s", err)
+		return fmt.Errorf("unable to prepare context: %w", err)
 	}
 
 	// read from a directory into tar archive
@@ -195,7 +195,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	excludes = append(excludes, ".git*", "*/.git*")
 
 	if err := build.ValidateContextDirectory(contextDir, excludes); err != nil {
-		return fmt.Errorf("error checking context: '%s'", err)
+		return fmt.Errorf("error checking context: '%w'", err)
 	}
 
 	// canonicalize dockerfile name to a platform-independent one
@@ -236,7 +236,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		Version:        buildtypes.BuilderV1,
 	})
 	if err != nil {
-		return fmt.Errorf("docker image build error: %s", err)
+		return fmt.Errorf("docker image build error: %w", err)
 	}
 	defer func() { _ = result.Body.Close() }()
 

@@ -31,7 +31,7 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 
 		content, err := os.ReadFile(filePath)
 		if err != nil {
-			return fmt.Errorf("file open error: %v", err)
+			return fmt.Errorf("file open error: %w", err)
 		}
 
 		scanner := bufio.NewScanner(strings.NewReader(string(content)))
@@ -94,7 +94,7 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 			// which case a secrets file should never be group/world-readable.
 			err = os.WriteFile(filePath, []byte(newYAML), 0600)
 			if err != nil {
-				return fmt.Errorf("file write error: %v", err)
+				return fmt.Errorf("file write error: %w", err)
 			}
 		}
 	}

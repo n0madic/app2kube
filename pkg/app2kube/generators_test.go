@@ -639,7 +639,9 @@ func TestGetObjectMeta(t *testing.T) {
 	if meta.Labels["foo"] != "bar" {
 		t.Errorf("labels not propagated: %+v", meta.Labels)
 	}
-	if meta.Annotations == nil {
-		t.Errorf("annotations map must be initialized")
+	// #67: annotations are left nil by default so resources that carry none do
+	// not render a noisy `annotations: {}`; only the ingress generator adds them.
+	if meta.Annotations != nil {
+		t.Errorf("annotations must be nil by default, got %v", meta.Annotations)
 	}
 }

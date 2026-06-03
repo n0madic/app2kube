@@ -98,10 +98,10 @@ func status(ctx context.Context, app *app2kube.App) error {
 
 			fmt.Println("  ", getURL(ingress.Host, ingress.Path))
 
-			if app.Staging == "" {
-				for _, alias := range ingress.Aliases {
-					fmt.Println("  ", getURL(alias, ingress.Path))
-				}
+			// Alias suppression under staging is centralized in IngressAliases,
+			// shared with the ingress generator, so the rule lives in one place (#69).
+			for _, alias := range app.IngressAliases(ingress) {
+				fmt.Println("  ", getURL(alias, ingress.Path))
 			}
 		}
 	}

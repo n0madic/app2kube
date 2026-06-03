@@ -126,13 +126,15 @@ type App struct {
 	Volumes       map[string]VolumeSpec  `yaml:"volumes"`
 }
 
-// GetObjectMeta return App metadata
+// GetObjectMeta return App metadata. Annotations is left nil by default so
+// resources that carry none don't render a noisy `annotations: {}`; the only
+// caller that adds annotations (the ingress generator) initializes the map
+// lazily before writing to it (#67).
 func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 	return metav1.ObjectMeta{
-		Name:        name,
-		Namespace:   app.Namespace,
-		Labels:      app.Labels,
-		Annotations: make(map[string]string),
+		Name:      name,
+		Namespace: app.Namespace,
+		Labels:    app.Labels,
 	}
 }
 
@@ -157,7 +159,12 @@ func (app *App) GetDeploymentName() string {
 	return strings.ToLower(deploymentName)
 }
 
-func (app *App) getServiceName(name string) string {
+// GetServiceName returns the cluster Service name for a named service entry:
+// the release name when name is empty, otherwise "<release>-<name>" lowercased.
+// Exported alongside GetReleaseName/GetDeploymentName because Service names are
+// part of the public contract — Ingress backends reference them and callers may
+// want to predict them (#66).
+func (app *App) GetServiceName(name string) string {
 	if name == "" {
 		return app.GetReleaseName()
 	}
@@ -293,7 +300,7 @@ func (app *App) parseValues(valueFiles ValueFiles, values, stringValues, fileVal
 // validate checks required fields after parsing.
 func (app *App) validate() error {
 	if app.Name == "" {
-		return errors.New("App name is required")
+		return errors.New("app name is required")
 	}
 	return nil
 }

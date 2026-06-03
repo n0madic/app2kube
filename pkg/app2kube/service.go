@@ -47,7 +47,7 @@ func (app *App) GetServices() (services []*apiv1.Service, err error) {
 				svc.InternalPort = svc.ExternalPort
 			}
 
-			serviceName := app.getServiceName(name)
+			serviceName := app.GetServiceName(name)
 
 			service := &apiv1.Service{
 				ObjectMeta: app.GetObjectMeta(serviceName),

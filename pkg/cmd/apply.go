@@ -143,14 +143,19 @@ func NewCmdApply() *cobra.Command {
 			}
 
 			if applyWithTrack != "" && len(app.Deployment.Containers) > 0 {
+				// Scope the tracking error to its own variable instead of reusing
+				// the outer err, and CheckErr it inside the block. Reusing err meant
+				// any future early path leaving err non-nil before here would be
+				// re-surfaced via CheckErr's os.Exit even when tracking ran fine (#68).
+				var trackErr error
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
-					err = trackFollow(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
+					trackErr = trackFollow(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
 				case "ready":
-					err = trackReady(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
+					trackErr = trackReady(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
 				}
+				cmdutil.CheckErr(trackErr)
 			}
-			cmdutil.CheckErr(err)
 
 			if applyWithStatus {
 				fmt.Println()

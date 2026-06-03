@@ -43,11 +43,28 @@ func TestGetDeploymentName(t *testing.T) {
 func TestGetServiceName(t *testing.T) {
 	app := NewApp()
 	app.Name = "app"
-	if got := app.getServiceName(""); got != "app" {
+	if got := app.GetServiceName(""); got != "app" {
 		t.Errorf("empty name: got %q, want app", got)
 	}
-	if got := app.getServiceName("Web"); got != "app-web" {
+	if got := app.GetServiceName("Web"); got != "app-web" {
 		t.Errorf("named: got %q, want app-web", got)
+	}
+}
+
+// #69: alias suppression under staging lives in one place (IngressAliases), so
+// the ingress generator and the status printer share the rule.
+func TestIngressAliases(t *testing.T) {
+	app := NewApp()
+	ing := Ingress{Host: "example.com", Aliases: []string{"www.example.com"}}
+
+	app.Staging = ""
+	if got := app.IngressAliases(ing); len(got) != 1 || got[0] != "www.example.com" {
+		t.Errorf("non-staging must return aliases, got %v", got)
+	}
+
+	app.Staging = "stg"
+	if got := app.IngressAliases(ing); got != nil {
+		t.Errorf("staging must suppress aliases, got %v", got)
 	}
 }
 
@@ -120,8 +137,14 @@ func TestTruncateName(t *testing.T) {
 
 func TestLoadValuesNameRequired(t *testing.T) {
 	app := NewApp()
-	if _, err := app.LoadValues(nil, nil, nil, nil); err == nil {
-		t.Errorf("expected error when app name is missing")
+	_, err := app.LoadValues(nil, nil, nil, nil)
+	if err == nil {
+		t.Fatalf("expected error when app name is missing")
+	}
+	// #52: error strings start lowercase (ST1005), since they may be wrapped or
+	// printed mid-sentence.
+	if !strings.HasPrefix(err.Error(), "app name") {
+		t.Errorf("error must start lowercase, got %q", err.Error())
 	}
 }
 

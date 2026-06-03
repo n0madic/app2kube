@@ -94,7 +94,7 @@ func kubedogInit() error {
 func trackFollow(ctx context.Context, name, namespace string, timeout int, logsFrom time.Time) error {
 	err := kubedogInit()
 	if err != nil {
-		return fmt.Errorf("unable to initialize kubedog: %s", err)
+		return fmt.Errorf("unable to initialize kubedog: %w", err)
 	}
 
 	return follow.TrackDeployment(
@@ -112,7 +112,7 @@ func trackFollow(ctx context.Context, name, namespace string, timeout int, logsF
 func trackReady(ctx context.Context, name, namespace string, timeout int, logsFrom time.Time) error {
 	err := kubedogInit()
 	if err != nil {
-		return fmt.Errorf("unable to initialize kubedog: %s", err)
+		return fmt.Errorf("unable to initialize kubedog: %w", err)
 	}
 
 	return multitrack.Multitrack(kube.Kubernetes, multitrack.MultitrackSpecs{

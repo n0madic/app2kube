@@ -49,6 +49,18 @@ func addRuleForHost(rules []v1.IngressRule, host string, path v1.HTTPIngressPath
 	})
 }
 
+// IngressAliases returns the additional hostnames (aliases) to serve alongside
+// ing.Host. Aliases are suppressed when a staging environment is configured: a
+// staging host is environment-specific and must not also claim the production
+// aliases. Centralizing the rule here keeps the ingress generator and the
+// status printer from each re-implementing the Staging == "" gate (#69).
+func (app *App) IngressAliases(ing Ingress) []string {
+	if app.Staging != "" {
+		return nil
+	}
+	return ing.Aliases
+}
+
 // GetIngress resource
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
@@ -77,6 +89,12 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			}
 
 			newIngress.Spec.IngressClassName = &ing.Class
+			// GetObjectMeta leaves Annotations nil (#67); the ingress is the only
+			// resource that adds annotations, so initialize the map lazily here
+			// before writing to it (a nil map write would panic).
+			if newIngress.Annotations == nil {
+				newIngress.Annotations = make(map[string]string)
+			}
 			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt {
 				newIngress.Annotations["kubernetes.io/tls-acme"] = "true"
 			}
@@ -87,19 +105,19 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				newIngress.Annotations[key] = value
 			}
 
-			serviceName := app.getServiceName(app.Common.Ingress.ServiceName)
+			serviceName := app.GetServiceName(app.Common.Ingress.ServiceName)
 			servicePort := app.Common.Ingress.ServicePort
 			if ing.ServiceName != "" {
 				if svc, ok := app.Service[ing.ServiceName]; ok {
-					serviceName = app.getServiceName(ing.ServiceName)
+					serviceName = app.GetServiceName(ing.ServiceName)
 					servicePort = svc.effectiveServicePort()
 				} else {
-					return ingress, fmt.Errorf("Service with name %s for the ingress %s not found", ing.ServiceName, ing.Host)
+					return ingress, fmt.Errorf("service with name %s for the ingress %s not found", ing.ServiceName, ing.Host)
 				}
 			} else {
 				if app.Common.Ingress.ServiceName == "" && len(app.Service) == 1 {
 					for name, svc := range app.Service {
-						serviceName = app.getServiceName(name)
+						serviceName = app.GetServiceName(name)
 						servicePort = svc.effectiveServicePort()
 					}
 				} else {
@@ -155,18 +173,18 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				}
 			}
 
-			if app.Staging == "" {
-				for _, alias := range ing.Aliases {
-					// Route aliases through the same per-host dedup as the primary
-					// host so a repeated alias accumulates paths on one rule
-					// instead of producing a duplicate rule per entry.
-					newIngress.Spec.Rules = addRuleForHost(newIngress.Spec.Rules, alias, ingressPath)
-					// Attach aliases to the TLS entry created for this host above,
-					// not to a hardcoded TLS[0] that may belong to another host;
-					// dedup so a repeated alias is not listed twice.
-					if tlsIndex >= 0 && !slices.Contains(newIngress.Spec.TLS[tlsIndex].Hosts, alias) {
-						newIngress.Spec.TLS[tlsIndex].Hosts = append(newIngress.Spec.TLS[tlsIndex].Hosts, alias)
-					}
+			// Aliases (suppressed under staging) come from IngressAliases — the
+			// single source of that rule, shared with the status printer (#69).
+			for _, alias := range app.IngressAliases(ing) {
+				// Route aliases through the same per-host dedup as the primary
+				// host so a repeated alias accumulates paths on one rule
+				// instead of producing a duplicate rule per entry.
+				newIngress.Spec.Rules = addRuleForHost(newIngress.Spec.Rules, alias, ingressPath)
+				// Attach aliases to the TLS entry created for this host above,
+				// not to a hardcoded TLS[0] that may belong to another host;
+				// dedup so a repeated alias is not listed twice.
+				if tlsIndex >= 0 && !slices.Contains(newIngress.Spec.TLS[tlsIndex].Hosts, alias) {
+					newIngress.Spec.TLS[tlsIndex].Hosts = append(newIngress.Spec.TLS[tlsIndex].Hosts, alias)
 				}
 			}
 

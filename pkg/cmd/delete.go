@@ -1,12 +1,31 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubectl/pkg/cmd/delete"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
+
+// deleteArgs accepts no positional arguments or exactly "all"; anything else
+// (which delete used to forward verbatim to kubectl with no app-aware selector)
+// is rejected (#63).
+func deleteArgs(cmd *cobra.Command, args []string) error {
+	switch len(args) {
+	case 0:
+		return nil
+	case 1:
+		if args[0] == "all" {
+			return nil
+		}
+		return fmt.Errorf("invalid argument %q (the only accepted positional argument is \"all\")", args[0])
+	default:
+		return fmt.Errorf("accepts at most one argument (\"all\"), received %d", len(args))
+	}
+}
 
 // NewCmdDelete return delete command
 func NewCmdDelete() *cobra.Command {
@@ -16,6 +35,7 @@ func NewCmdDelete() *cobra.Command {
 	deleteCmd := &cobra.Command{
 		Use:   "delete",
 		Short: "Delete resources from kubernetes",
+		Args:  deleteArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			o, err := deleteFlags.ToOptions(nil, ioStreams)
 			if err != nil {

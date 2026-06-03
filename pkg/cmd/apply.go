@@ -46,6 +46,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a configuration to a resource in kubernetes",
+		Args:  cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return validateTrackValue(applyWithTrack)
 		},

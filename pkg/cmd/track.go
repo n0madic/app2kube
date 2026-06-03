@@ -57,7 +57,7 @@ func NewCmdTrack() *cobra.Command {
 	// the resolved deployment name/namespace, the timeout and the log start time
 	// computed at execution time (trackFollow/trackReady match this signature).
 	addTrackSub := func(use, short string, run func(ctx context.Context, name, namespace string, timeout int, logsFrom time.Time) error) {
-		c := &cobra.Command{Use: use, Short: short}
+		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		addBlueGreenFlag(c)
 		_ = c.Flags().MarkHidden("include-namespace")

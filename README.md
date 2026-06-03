@@ -148,12 +148,18 @@ To encrypt a single value:
 app2kube config encrypt --string "secret"
 ```
 
+Passing the plaintext on the command line lands it in your shell history and `ps` output. To avoid that, use `--string -` to read the value from stdin:
+```shell
+printf '%s' "secret" | app2kube config encrypt --string -
+```
+
 Encrypted values are prefixed with `AES#` or `RSA#` depending on the encryption algorithm. It is possible to use both encryption algorithms in one file.
 
 To decrypt, set environment variable `APP2KUBE_PASSWORD` or `APP2KUBE_DECRYPT_KEY`.
 ```shell
 app2kube config secrets
 ```
+`config secrets` and `config dotenv` print **decrypted** secrets to stdout — redirect them with care.
 
 ## Staging
 
@@ -230,6 +236,10 @@ The Deployment's `spec.selector` is kept to a minimal, stable identity — `name
 **Persistent volumes.** Each `volumes:` entry must set `spec.accessModes` (an empty value yields a PVC the apiserver rejects, so app2kube fails fast with a clear error). A PVC is mounted into the **Deployment**, so a `ReadWriteOnce` volume mounted into a multi-replica Deployment cannot be shared across nodes and scheduling blocks — app2kube warns about this on stderr. Use a single replica or a `ReadWriteMany` volume; generating a `StatefulSet` is out of scope.
 
 **Services.** For a `NodePort` service the requested external port is pinned as the node port only when it falls inside the valid range `30000-32767`; an out-of-range value is left for the apiserver to auto-assign and a warning is printed to stderr (rather than silently dropping it). When several `ingress:` entries share the same host they are merged into one Ingress object; because `ingressClassName` is ingress-wide, two entries for the same host requesting **different** classes is an error.
+
+**Service account.** `automountServiceAccountToken` defaults to `false`. If you set `common.mountServiceAccountToken: true` without a dedicated account, the pod mounts the namespace **default** ServiceAccount token, which often has broader access than intended — set `common.serviceAccountName` to bind a least-privilege account instead.
+
+**Namespace precedence.** The namespace is resolved as `--namespace` flag > value-file `namespace:` > `default`. An explicitly-set `--namespace` wins even when empty, so `--namespace ""` forces the `default` namespace over a value-file setting.
 
 ## Examples
 

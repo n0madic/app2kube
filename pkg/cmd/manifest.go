@@ -17,6 +17,7 @@ func NewCmdManifest() *cobra.Command {
 	manifestCmd := &cobra.Command{
 		Use:   "manifest",
 		Short: "Generate kubernetes manifests for an application",
+		Args:  cobra.NoArgs,
 	}
 
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")

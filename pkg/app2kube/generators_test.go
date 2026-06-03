@@ -20,6 +20,56 @@ func deployApp(t *testing.T) *App {
 	return app
 }
 
+// cronApp returns a minimal App with one valid cronjob, ready for generation.
+func cronApp(t *testing.T) *App {
+	t.Helper()
+	app := deployApp(t)
+	app.Cronjob = map[string]CronjobSpec{
+		"backup": {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"echo"}}},
+	}
+	return app
+}
+
+// #50: an optional common.serviceAccountName must be propagated to both the
+// Deployment and CronJob pod specs so workloads can run as a dedicated SA.
+func TestServiceAccountNameSet(t *testing.T) {
+	app := cronApp(t)
+	app.Common.ServiceAccountName = "my-sa"
+
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if dep.Spec.Template.Spec.ServiceAccountName != "my-sa" {
+		t.Errorf("deployment serviceAccountName: got %q, want my-sa", dep.Spec.Template.Spec.ServiceAccountName)
+	}
+
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if got := crons[0].Spec.JobTemplate.Spec.Template.Spec.ServiceAccountName; got != "my-sa" {
+		t.Errorf("cronjob serviceAccountName: got %q, want my-sa", got)
+	}
+}
+
+// #51: cronjob pointer fields must be copies (ptr.To), not aliases of the live
+// App field — mutating app.Common after generation must not change the object.
+func TestCronJobPointerFieldsAreCopies(t *testing.T) {
+	app := cronApp(t)
+	app.Common.EnableServiceLinks = true
+
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	app.Common.EnableServiceLinks = false // mutate the live field after generation
+
+	if got := *crons[0].Spec.JobTemplate.Spec.Template.Spec.EnableServiceLinks; got != true {
+		t.Errorf("EnableServiceLinks aliased the live App field (got %v after mutation)", got)
+	}
+}
+
 func TestGetDeploymentNilWhenNoContainers(t *testing.T) {
 	app := NewApp()
 	app.Name = "example"

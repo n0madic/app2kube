@@ -69,6 +69,7 @@ type CommonSpec struct {
 	PodAntiAffinity          string                      `yaml:"podAntiAffinity"`
 	Resources                *apiv1.ResourceRequirements `yaml:"resources"`
 	SecurityContext          *apiv1.PodSecurityContext   `yaml:"securityContext"`
+	ServiceAccountName       string                      `yaml:"serviceAccountName"`
 	SharedData               string                      `yaml:"sharedData"`
 	Tolerations              []apiv1.Toleration          `yaml:"tolerations"`
 }

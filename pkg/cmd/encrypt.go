@@ -3,12 +3,24 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 )
+
+// resolveEncryptString returns the plaintext to encrypt for `config encrypt
+// --string`. A literal value is returned as-is; the sentinel "-" reads the
+// secret from stdin (bounded, trailing newline trimmed) so it never lands in
+// shell history or ps output via argv (#64), mirroring build's --password-stdin.
+func resolveEncryptString(s string, stdin io.Reader) (string, error) {
+	if s == "-" {
+		return readStdinSecret(stdin)
+	}
+	return s, nil
+}
 
 // runEncrypt encrypts the given string and/or the secrets sections of the
 // provided value files in place.

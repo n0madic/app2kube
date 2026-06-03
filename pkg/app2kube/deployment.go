@@ -93,6 +93,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 						EnableServiceLinks:           ptr.To(app.Common.EnableServiceLinks),
 						NodeSelector:                 app.Common.NodeSelector,
 						SecurityContext:              app.podSecurityContext(),
+						ServiceAccountName:           app.Common.ServiceAccountName,
 						Tolerations:                  app.Common.Tolerations,
 					},
 				},

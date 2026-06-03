@@ -29,6 +29,7 @@ func NewCmdStatus() *cobra.Command {
 	statusCmd := &cobra.Command{
 		Use:   "status",
 		Short: "Show application resources status in kubernetes",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			app, err := opts.initApp(cmd.Context())
 			if err != nil {

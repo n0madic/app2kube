@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
 
@@ -101,7 +102,7 @@ func NewCmdConfig() *cobra.Command {
 	// addConfigSub wires a config subcommand with its own appOptions. These
 	// commands inject a default application name so they work without one.
 	addConfigSub := func(use, short string, run func(cmd *cobra.Command, app *app2kube.App) error) *cobra.Command {
-		c := &cobra.Command{Use: use, Short: short}
+		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
 		_ = c.Flags().MarkHidden("snapshot")
@@ -155,11 +156,16 @@ func NewCmdConfig() *cobra.Command {
 		Use:   "encrypt",
 		Short: "Encrypt secret values",
 		Long:  "Encrypts values in secrets section for specified YAML files. The result is written to the same file.\nSet the APP2KUBE_PASSWORD environment variable to encrypt with AES.\nSet the APP2KUBE_ENCRYPT_KEY environment variable to encrypt with RSA.\nUse the `config generate-keys` command to generate RSA keys.\nRSA has priority over AES if both keys are specified.",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runEncrypt(encryptString, encryptFiles)
+			str, err := resolveEncryptString(encryptString, os.Stdin)
+			if err != nil {
+				return err
+			}
+			return runEncrypt(str, encryptFiles)
 		},
 	}
-	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string")
+	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string ('-' reads it from stdin to keep it out of shell history)")
 	encryptCmd.Flags().VarP(&encryptFiles, "values", "f", "Encrypt secrets in a file (can specify multiple)")
 	configCmd.AddCommand(encryptCmd)
 
@@ -167,6 +173,7 @@ func NewCmdConfig() *cobra.Command {
 		Use:   "generate-keys",
 		Short: "Generate RSA keys",
 		Long:  "Generates RSA-2048 encrypt and decrypt keys",
+		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			publicKey, privateKey, err := app2kube.GenerateRSAKeys(2048)
 			if err != nil {

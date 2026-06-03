@@ -40,7 +40,7 @@ func NewCmdBlueGreen() *cobra.Command {
 	// color and must not trigger a target-color lookup (the previous global
 	// PersistentPreRun forced it on every subcommand, including color).
 	addBGSub := func(use, short string, blueGreen bool, run func(ctx context.Context, app *app2kube.App) error) {
-		c := &cobra.Command{Use: use, Short: short}
+		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
 		_ = c.Flags().MarkHidden("snapshot")

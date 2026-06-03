@@ -60,15 +60,12 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
 	}
 
-	if *kubeConfigFlags.Namespace == "" && app.Namespace != "" {
-		*kubeConfigFlags.Namespace = app.Namespace
-	} else if *kubeConfigFlags.Namespace != "" {
-		app.Namespace = *kubeConfigFlags.Namespace
-	}
-
-	if app.Namespace == "" {
-		app.Namespace = app2kube.NamespaceDefault
-	}
+	// Namespace precedence: flag > file > default. An explicitly-set --namespace
+	// wins even when empty (forcing the default), so it is distinguishable from an
+	// absent flag (#59). Sync the resolved value back so downstream kubectl ops
+	// use it.
+	app.Namespace = resolveNamespace(rootCmd.PersistentFlags().Changed("namespace"), *kubeConfigFlags.Namespace, app.Namespace)
+	*kubeConfigFlags.Namespace = app.Namespace
 
 	// managed-by is seeded by the library (NewApp/ensureLabels); the CLI no
 	// longer needs to set it explicitly.
@@ -93,6 +90,20 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 	}
 
 	return app, nil
+}
+
+// resolveNamespace applies the namespace precedence flag > file > default. An
+// explicitly-set --namespace wins even when empty (forcing the default), which
+// is why the caller passes flagChanged separately from the value (#59).
+func resolveNamespace(flagChanged bool, flagNs, fileNs string) string {
+	ns := fileNs
+	if flagChanged {
+		ns = flagNs
+	}
+	if ns == "" {
+		return app2kube.NamespaceDefault
+	}
+	return ns
 }
 
 func addAppFlags(cmd *cobra.Command) *appOptions {

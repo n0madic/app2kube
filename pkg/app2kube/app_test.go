@@ -116,6 +116,35 @@ func TestManagedByLabelSetByLibrary(t *testing.T) {
 	}
 }
 
+// #44: an omitted image.tag keeps the "latest" default, and an explicit empty
+// tag must NOT clobber it to "" (which would yield a malformed "repo:" image
+// reference). An explicit non-empty tag is preserved.
+func TestLoadValuesImageTagDefault(t *testing.T) {
+	cases := map[string]struct {
+		yaml string
+		want string
+	}{
+		"omitted":        {"name: web\n", "latest"},
+		"explicit empty": {"name: web\ncommon:\n  image:\n    tag: \"\"\n", "latest"},
+		"explicit value": {"name: web\ncommon:\n  image:\n    tag: v2\n", "v2"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "values.yaml")
+			if err := os.WriteFile(path, []byte(tc.yaml), 0600); err != nil {
+				t.Fatalf("write values file: %v", err)
+			}
+			app := NewApp()
+			if _, err := app.LoadValues(ValueFiles{path}, nil, nil, nil); err != nil {
+				t.Fatalf("LoadValues: %v", err)
+			}
+			if app.Common.Image.Tag != tc.want {
+				t.Errorf("image tag: got %q, want %q", app.Common.Image.Tag, tc.want)
+			}
+		})
+	}
+}
+
 func TestEncryptAndDecryptAES(t *testing.T) {
 	t.Setenv(EnvPassword, "pass")
 

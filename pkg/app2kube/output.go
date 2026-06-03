@@ -3,7 +3,6 @@ package app2kube
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"reflect"
 	"strings"
 
@@ -229,21 +228,7 @@ func PrintObj(obj runtime.Object, output string) (string, error) {
 		return "", err
 	}
 
-	// remove 'creationTimestamp: null' from manifest
-	filtered := bytes.NewBuffer([]byte{})
-	for {
-		line, err := out.ReadBytes('\n')
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return "", err
-			}
-		}
-		if !bytes.Contains(line, []byte("creationTimestamp")) {
-			filtered.Write(line)
-		}
-	}
+	filtered := stripCreationTimestamp(out.Bytes())
 
 	name := ""
 	if acc, err := meta.Accessor(obj); err == nil {
@@ -259,4 +244,27 @@ func PrintObj(obj runtime.Object, output string) (string, error) {
 		name,
 		filtered,
 	), nil
+}
+
+// stripCreationTimestamp removes every line containing "creationTimestamp" from
+// a rendered manifest. It preserves the final line even when the input has no
+// trailing newline — reading line-by-line with ReadBytes('\n') previously
+// dropped that unterminated last line on io.EOF, silently losing data from any
+// serialization not ending in a newline (#55).
+func stripCreationTimestamp(in []byte) []byte {
+	buf := bytes.NewBuffer(in)
+	filtered := bytes.NewBuffer([]byte{})
+	for {
+		line, err := buf.ReadBytes('\n')
+		// ReadBytes returns the data read so far together with io.EOF when the
+		// stream ends without a delimiter, so the final unterminated line must be
+		// processed before breaking.
+		if len(line) > 0 && !bytes.Contains(line, []byte("creationTimestamp")) {
+			filtered.Write(line)
+		}
+		if err != nil {
+			break
+		}
+	}
+	return filtered.Bytes()
 }

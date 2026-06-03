@@ -5,6 +5,7 @@ import (
 
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/utils/ptr"
 )
 
 // deployApp returns a minimal App with a single named container, ready for
@@ -63,13 +64,38 @@ func TestGetDeploymentDefaults(t *testing.T) {
 
 func TestGetDeploymentReplicaCount(t *testing.T) {
 	app := deployApp(t)
-	app.Deployment.ReplicaCount = 5
+	app.Deployment.ReplicaCount = ptr.To(int32(5))
 	dep, err := app.GetDeployment()
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)
 	}
 	if *dep.Spec.Replicas != 5 {
 		t.Errorf("replicas: got %d, want 5", *dep.Spec.Replicas)
+	}
+}
+
+// #42: an unset replicaCount defaults to 1, but an explicit 0 must be honored
+// (scale-to-zero), which is only distinguishable because the field is *int32.
+func TestGetDeploymentReplicaCountZeroAndDefault(t *testing.T) {
+	// Explicit 0 → 0 replicas.
+	app := deployApp(t)
+	app.Deployment.ReplicaCount = ptr.To(int32(0))
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if *dep.Spec.Replicas != 0 {
+		t.Errorf("explicit replicaCount 0: got %d, want 0", *dep.Spec.Replicas)
+	}
+
+	// Unset (nil) → default 1.
+	app = deployApp(t)
+	dep, err = app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if *dep.Spec.Replicas != 1 {
+		t.Errorf("unset replicaCount: got %d, want 1", *dep.Spec.Replicas)
 	}
 }
 

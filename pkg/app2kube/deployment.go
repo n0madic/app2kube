@@ -26,9 +26,15 @@ func (app *App) podSecurityContext() *apiv1.PodSecurityContext {
 // GetDeployment resource
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
-		replicas := app.Deployment.ReplicaCount
-		if replicas < 1 {
-			replicas = 1
+		// An unset replicaCount defaults to 1; an explicit value (including 0, for
+		// scale-to-zero) is honored. The field is *int32 so unset is
+		// distinguishable from an explicit 0 (#42).
+		replicas := int32(1)
+		if app.Deployment.ReplicaCount != nil {
+			replicas = *app.Deployment.ReplicaCount
+			if replicas < 0 {
+				replicas = 0
+			}
 		}
 
 		var containers []apiv1.Container

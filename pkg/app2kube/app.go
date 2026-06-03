@@ -12,6 +12,7 @@ import (
 	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/ptr"
 )
 
 // MaxNameLength of App
@@ -92,7 +93,7 @@ type DeploymentSpec struct {
 	BlueGreenColor       string                     `yaml:"blueGreenColor"`
 	Containers           map[string]apiv1.Container `yaml:"containers"`
 	InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
-	ReplicaCount         int32                      `yaml:"replicaCount"`
+	ReplicaCount         *int32                     `yaml:"replicaCount"`
 	ReplicaCountStaging  int32                      `yaml:"replicaCountStaging"`
 	RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
 	Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
@@ -263,6 +264,13 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
 	app.Labels[LabelName] = truncateName(app.Name)
 
+	// An explicit `image.tag: ""` in the values overwrites the seeded "latest"
+	// default with empty, yielding a malformed "repo:" image reference. Restore
+	// the default when the tag ends up empty (#44).
+	if app.Common.Image.Tag == "" {
+		app.Common.Image.Tag = "latest"
+	}
+
 	if err := app.applyStaging(); err != nil {
 		return nil, err
 	}
@@ -308,9 +316,9 @@ func (app *App) applyStaging() error {
 	app.Branch = strings.ToLower(app.Branch)
 
 	if app.Deployment.ReplicaCountStaging > 0 {
-		app.Deployment.ReplicaCount = app.Deployment.ReplicaCountStaging
+		app.Deployment.ReplicaCount = ptr.To(app.Deployment.ReplicaCountStaging)
 	} else {
-		app.Deployment.ReplicaCount = 1
+		app.Deployment.ReplicaCount = ptr.To(int32(1))
 	}
 
 	app.Labels[LabelInstance] = truncateName(app.Staging)

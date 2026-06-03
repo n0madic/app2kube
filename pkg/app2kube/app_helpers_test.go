@@ -149,8 +149,8 @@ func TestLoadValuesStagingDefaults(t *testing.T) {
 		t.Errorf("staging not lowercased: %q", app.Staging)
 	}
 	// Staging forces replicaCount=1 and pull policy Always.
-	if app.Deployment.ReplicaCount != 1 {
-		t.Errorf("staging replicaCount: got %d, want 1", app.Deployment.ReplicaCount)
+	if app.Deployment.ReplicaCount == nil || *app.Deployment.ReplicaCount != 1 {
+		t.Errorf("staging replicaCount: got %v, want 1", app.Deployment.ReplicaCount)
 	}
 	if string(app.Common.Image.PullPolicy) != "Always" {
 		t.Errorf("staging pull policy: got %q, want Always", app.Common.Image.PullPolicy)

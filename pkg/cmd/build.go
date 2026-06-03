@@ -126,13 +126,18 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		username = os.Getenv("APP2KUBE_DOCKER_USERNAME")
 	}
 
+	// --password-stdin and a Dockerfile from stdin both consume os.Stdin, and a
+	// piped password is useless without a username; reject these up front (#41).
+	if err := validatePasswordStdin(flagPassStdin, dockerfileName == "-", username); err != nil {
+		return err
+	}
+
 	if username != "" {
 		if flagPassStdin {
-			bytes, err := io.ReadAll(os.Stdin)
+			password, err = readStdinSecret(os.Stdin)
 			if err != nil {
 				return err
 			}
-			password = string(bytes)
 		} else {
 			password = os.Getenv("APP2KUBE_DOCKER_PASSWORD")
 			if password == "" {
@@ -243,20 +248,21 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	}
 
 	if flagPush {
-		for _, tag := range tags.GetSlice() {
+		// Push every tag, continuing past a failure so the operator learns which
+		// tags did and did not reach the registry rather than seeing only the
+		// first error (#56).
+		err = pushTags(tags.GetSlice(), func(tag string) error {
 			fmt.Printf("\nPush image %s to registry\n", tag)
-
 			res, err := cli.ImagePush(ctx, tag, client.ImagePushOptions{
 				RegistryAuth: encodeAuthToBase64(registryAuth),
 			})
 			if err != nil {
-				return fmt.Errorf("docker image push error: %s", err)
-			}
-
-			err = jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)
-			if err != nil {
 				return err
 			}
+			return jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)
+		})
+		if err != nil {
+			return fmt.Errorf("docker image push error: %w", err)
 		}
 	}
 	return nil
@@ -265,4 +271,51 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 func encodeAuthToBase64(authConfig registrytypes.AuthConfig) string {
 	buf, _ := json.Marshal(authConfig)
 	return base64.URLEncoding.EncodeToString(buf)
+}
+
+// maxStdinSecretBytes bounds a secret read from stdin (--password-stdin); a
+// registry password is tiny, so 1 MiB is a generous cap that still prevents an
+// unbounded read (DoS) from a misdirected/huge stdin (#41).
+const maxStdinSecretBytes = 1 << 20
+
+// validatePasswordStdin rejects flag combinations that misuse --password-stdin:
+// it cannot share stdin with a Dockerfile read from stdin (--file -), and it is
+// meaningless without a username (the password would be silently discarded)
+// (#41).
+func validatePasswordStdin(passStdin, dockerfileFromStdin bool, username string) error {
+	if !passStdin {
+		return nil
+	}
+	if dockerfileFromStdin {
+		return errors.New("--password-stdin cannot be combined with --file - (both read stdin)")
+	}
+	if username == "" {
+		return errors.New("--password-stdin requires a username (set --user or $APP2KUBE_DOCKER_USERNAME)")
+	}
+	return nil
+}
+
+// readStdinSecret reads a secret (e.g. a registry password) from r, bounded to
+// maxStdinSecretBytes to avoid an unbounded read, and trims the trailing newline
+// a pipe/heredoc adds so it does not corrupt authentication (#41).
+func readStdinSecret(r io.Reader) (string, error) {
+	raw, err := io.ReadAll(io.LimitReader(r, maxStdinSecretBytes))
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(raw), "\r\n"), nil
+}
+
+// pushTags pushes each tag via push, continuing past a failing tag and
+// aggregating the errors, so a partial-push state (some tags already in the
+// registry) is reported instead of being masked by the first error. Docker
+// pushes are idempotent, so re-running after a partial failure is safe (#56).
+func pushTags(tags []string, push func(tag string) error) error {
+	var errs []error
+	for _, tag := range tags {
+		if err := push(tag); err != nil {
+			errs = append(errs, fmt.Errorf("push %s: %w", tag, err))
+		}
+	}
+	return errors.Join(errs...)
 }

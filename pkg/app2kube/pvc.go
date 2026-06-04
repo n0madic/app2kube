@@ -18,7 +18,7 @@ func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeCla
 			return claims, fmt.Errorf("accessModes required for PVC: %s", volName)
 		}
 
-		claimName := app.GetReleaseName() + "-" + volName
+		claimName := app.GetVolumeClaimName(volName)
 
 		claim := &apiv1.PersistentVolumeClaim{
 			ObjectMeta: app.GetObjectMeta(claimName),

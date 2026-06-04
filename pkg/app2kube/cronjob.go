@@ -13,7 +13,7 @@ import (
 // GetCronJobs resource
 func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 	for cronName, job := range app.Cronjob {
-		cronJobName := app.GetReleaseName() + "-" + cronName
+		cronJobName := truncateName(app.GetReleaseName() + "-" + cronName)
 
 		if job.Schedule == "" {
 			return crons, fmt.Errorf("schedule required for cron: %s", cronName)
@@ -155,7 +155,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 				Name: volName,
 				VolumeSource: apiv1.VolumeSource{
 					PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: app.GetReleaseName() + "-" + volName,
+						ClaimName: app.GetVolumeClaimName(volName),
 					},
 				},
 			})

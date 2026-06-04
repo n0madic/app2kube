@@ -114,6 +114,15 @@ func NewCmdBlueGreen() *cobra.Command {
 		if err := deleteDeployment(ctx, app.GetDeploymentName(), app.Namespace); err != nil {
 			return err
 		}
+		// Remove the matching per-color PodDisruptionBudget too (multi-replica
+		// deploys only); otherwise it is orphaned by the prune.
+		kcs, err := kubeFactory.KubernetesClientSet()
+		if err != nil {
+			return err
+		}
+		if err := prunePodDisruptionBudget(ctx, kcs, app.GetDeploymentName(), app.Namespace); err != nil {
+			return err
+		}
 		fmt.Printf("Deployment %s pruned\n", colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
 		return nil
 	})

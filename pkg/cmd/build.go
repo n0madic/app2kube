@@ -154,7 +154,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		}
 		authConfigs[registryDomain] = registryAuth
 	} else {
-		auth, err := configFile.GetAuthConfig(registryDomain)
+		auth, err := configFile.GetAuthConfig(registryAuthKey(registryDomain))
 		if err == nil {
 			registryAuth = registrytypes.AuthConfig(auth)
 		}
@@ -266,6 +266,19 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
+}
+
+// registryAuthKey maps an image's registry domain to the key its credentials
+// are stored under in the Docker config. `docker login` to Docker Hub (and the
+// "docker.io" domain that reference.Domain reports) saves the credential under
+// the legacy index address "https://index.docker.io/v1/", so a plain GetAuthConfig
+// lookup keyed on "docker.io" misses it and the push goes out unauthenticated.
+// Translate Docker Hub to its index key; every other registry is keyed by domain.
+func registryAuthKey(domain string) string {
+	if domain == "docker.io" {
+		return "https://index.docker.io/v1/"
+	}
+	return domain
 }
 
 func encodeAuthToBase64(authConfig registrytypes.AuthConfig) string {

@@ -342,6 +342,95 @@ func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
 	}
 }
 
+// With letsencrypt, app2kube no longer emits the TLS Secret itself — instead it
+// must wire the Ingress so cert-manager's ingress-shim creates and populates it:
+// the kubernetes.io/tls-acme annotation plus a TLS block referencing the secret
+// name. This locks the contract that "cert-manager creates the secret if missing".
+func TestIngressLetsencryptTriggersCertManager(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings) != 1 {
+		t.Fatalf("expected 1 ingress, got %d", len(ings))
+	}
+	if ings[0].Annotations["kubernetes.io/tls-acme"] != "true" {
+		t.Errorf("letsencrypt ingress must carry kubernetes.io/tls-acme=true for cert-manager, got %v", ings[0].Annotations)
+	}
+	if len(ings[0].Spec.TLS) != 1 || ings[0].Spec.TLS[0].SecretName != "tls-le.example.com" {
+		t.Errorf("letsencrypt ingress must reference the TLS secret cert-manager fills, got %+v", ings[0].Spec.TLS)
+	}
+
+	// app2kube must NOT emit the secret itself — cert-manager owns it.
+	secrets, err := app.GetIngressSecrets()
+	if err != nil {
+		t.Fatalf("GetIngressSecrets: %v", err)
+	}
+	if len(secrets) != 0 {
+		t.Errorf("letsencrypt must not emit a TLS secret (cert-manager creates it), got %d", len(secrets))
+	}
+}
+
+// Object names combining the release name with a user-controlled key
+// (service/volume/cron/ingress) must be truncated to the 63-char DNS-1123 limit
+// so a long app name plus a long key is not rejected by the apiserver on apply.
+func TestObjectNamesTruncatedTo63(t *testing.T) {
+	longKey := strings.Repeat("b", 40)
+
+	app := NewApp()
+	app.Name = strings.Repeat("a", 50)
+
+	if got := app.GetServiceName(longKey); len(got) > MaxNameLength {
+		t.Errorf("service name not truncated: len=%d (%q)", len(got), got)
+	}
+	if got := app.GetVolumeClaimName(longKey); len(got) > MaxNameLength {
+		t.Errorf("claim name not truncated: len=%d (%q)", len(got), got)
+	}
+
+	// The PVC object name and the pod volume reference must use the same helper,
+	// so they stay byte-identical even after truncation.
+	app.Volumes = map[string]VolumeSpec{
+		longKey: {MountPath: "/data", Spec: apiv1.PersistentVolumeClaimSpec{
+			AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce},
+		}},
+	}
+	claims, err := app.GetPersistentVolumeClaims()
+	if err != nil {
+		t.Fatalf("GetPersistentVolumeClaims: %v", err)
+	}
+	if claims[0].Name != app.GetVolumeClaimName(longKey) {
+		t.Errorf("PVC object name %q must equal GetVolumeClaimName %q", claims[0].Name, app.GetVolumeClaimName(longKey))
+	}
+
+	// CronJob object name truncated.
+	app.Common.Image.Repository = "example/app"
+	app.Cronjob = map[string]CronjobSpec{
+		longKey: {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
+	}
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if len(crons[0].Name) > MaxNameLength {
+		t.Errorf("cronjob name not truncated: len=%d (%q)", len(crons[0].Name), crons[0].Name)
+	}
+
+	// Ingress object name truncated.
+	app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
+	app.Service = map[string]Service{"web": {Port: 80}}
+	app.Ingress = []Ingress{{Host: strings.Repeat("h", 60) + ".example.com"}}
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	if len(ings[0].Name) > MaxNameLength {
+		t.Errorf("ingress name not truncated: len=%d (%q)", len(ings[0].Name), ings[0].Name)
+	}
+}
+
 // Regression: when the same host is described by multiple ingress entries, paths
 // must accumulate on that host's rule only, and aliases must attach to the TLS
 // entry created in their own iteration (not a hardcoded TLS[0]).

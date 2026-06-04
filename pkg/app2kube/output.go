@@ -179,6 +179,54 @@ var manifestGenerators = []generator{
 	},
 }
 
+// EmittedKind pairs the two identifiers the destructive CLI operations need for
+// one resource kind app2kube renders: the GVK string `apply --prune` expects and
+// the plural kubectl resource name `delete` uses.
+type EmittedKind struct {
+	GVK      string
+	Resource string
+}
+
+// emittedKinds is the single source of truth for the resource kinds app2kube
+// renders (see manifestGenerators above), used by `apply --prune` and `delete
+// all` so neither can drift from the generators. The Namespace is intentionally
+// excluded — it is never pruned and is deleted only on explicit request. When a
+// new generator is added to manifestGenerators, add its kind here too.
+var emittedKinds = []EmittedKind{
+	{"/v1/ConfigMap", "configmaps"},
+	{"/v1/PersistentVolumeClaim", "persistentvolumeclaims"},
+	{"/v1/Secret", "secrets"},
+	{"/v1/Service", "services"},
+	{"apps/v1/Deployment", "deployments"},
+	{"batch/v1/CronJob", "cronjobs"},
+	{"networking.k8s.io/v1/Ingress", "ingresses"},
+	{"policy/v1/PodDisruptionBudget", "poddisruptionbudgets"},
+}
+
+// PruneWhitelist returns the "group/version/Kind" list for `kubectl apply
+// --prune`: every kind app2kube can emit must be prunable, otherwise a resource
+// that drops out of the manifest (e.g. a PDB when replicas scale back to 1) is
+// orphaned.
+func PruneWhitelist() []string {
+	out := make([]string, 0, len(emittedKinds))
+	for _, k := range emittedKinds {
+		out = append(out, k.GVK)
+	}
+	return out
+}
+
+// DeleteResourceTypes returns the comma-separated kubectl resource list for
+// `delete all`. kubectl's own "all" category omits the namespaced extras
+// app2kube emits (configmaps, secrets, pvc, ingress, PDB), so every kind is
+// named explicitly; pods/replicasets/jobs are cascade-deleted with their owners.
+func DeleteResourceTypes() string {
+	names := make([]string, 0, len(emittedKinds))
+	for _, k := range emittedKinds {
+		names = append(names, k.Resource)
+	}
+	return strings.Join(names, ",")
+}
+
 // GetManifest returns a manifest with the specified resource types.
 func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (string, error) {
 	var manifest string

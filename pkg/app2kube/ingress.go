@@ -66,7 +66,7 @@ func (app *App) IngressAliases(ing Ingress) []string {
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
-			ingressName := strings.ToLower(app.Name + "-" + wildcardHost(ing.Host))
+			ingressName := truncateName(strings.ToLower(app.Name + "-" + wildcardHost(ing.Host)))
 
 			newIngress := &v1.Ingress{
 				ObjectMeta: app.GetObjectMeta(ingressName),

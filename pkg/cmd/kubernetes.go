@@ -90,6 +90,21 @@ func deleteDeployment(ctx context.Context, name, namespace string) error {
 	return nil
 }
 
+// prunePodDisruptionBudget removes the PodDisruptionBudget that accompanies a
+// blue/green color's Deployment (it carries the same per-color name). A PDB is
+// only emitted for a multi-replica deployment, so a NotFound is the expected
+// single-replica case and is ignored; any other error is returned so the caller
+// aborts. Without this, `blue-green prune` would delete the color's Deployment
+// but leave its PDB orphaned (apply --blue-green forbids --prune, so prune never
+// cleans it up either).
+func prunePodDisruptionBudget(ctx context.Context, kcs kubernetes.Interface, name, namespace string) error {
+	err := kcs.PolicyV1().PodDisruptionBudgets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
+}
+
 // preDeleteDeployment removes the stale target-color Deployment before a
 // blue/green rotation recreates it. A NotFound is the expected case — on the
 // first (zero) deploy of a color there is nothing to delete — and is ignored;

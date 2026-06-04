@@ -241,7 +241,9 @@ func TestProcessContainerAutoServiceFromIngress(t *testing.T) {
 }
 
 // #19: app-image containers without an explicit securityContext get the
-// conservative default (allowPrivilegeEscalation:false, drop ALL). A
+// conservative default (allowPrivilegeEscalation:false). Capabilities are NOT
+// dropped — dropping ALL would break workloads that need default Linux
+// capabilities (e.g. a root nginx binding :80 via NET_BIND_SERVICE). A
 // user-provided context is preserved, and third-party images get nothing.
 func TestProcessContainerDefaultSecurityContext(t *testing.T) {
 	app := NewApp()
@@ -257,10 +259,9 @@ func TestProcessContainerDefaultSecurityContext(t *testing.T) {
 	if c.SecurityContext.AllowPrivilegeEscalation == nil || *c.SecurityContext.AllowPrivilegeEscalation {
 		t.Errorf("expected AllowPrivilegeEscalation=false, got %v", c.SecurityContext.AllowPrivilegeEscalation)
 	}
-	if c.SecurityContext.Capabilities == nil ||
-		len(c.SecurityContext.Capabilities.Drop) != 1 ||
-		c.SecurityContext.Capabilities.Drop[0] != "ALL" {
-		t.Errorf("expected capabilities drop [ALL], got %+v", c.SecurityContext.Capabilities)
+	// Capabilities must be left untouched so privileged-port binders keep working.
+	if c.SecurityContext.Capabilities != nil {
+		t.Errorf("default securityContext must not drop capabilities, got %+v", c.SecurityContext.Capabilities)
 	}
 
 	// A user-provided securityContext is left untouched.

@@ -42,6 +42,25 @@ func TestGetDeploymentStatus(t *testing.T) {
 	}
 }
 
+// A Deployment matched by the app labels but carrying a nil spec.selector
+// (foreign / hand-edited object) must not panic getDeploymentStatus.
+func TestGetDeploymentStatusNilSelector(t *testing.T) {
+	labels := statusLabels()
+	kcs := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "foreign", Namespace: "ns", Labels: labels},
+		Spec:       appsv1.DeploymentSpec{Selector: nil},
+		Status:     appsv1.DeploymentStatus{Replicas: 1, ReadyReplicas: 1},
+	})
+
+	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels)
+	if err != nil {
+		t.Fatalf("getDeploymentStatus with nil selector: %v", err)
+	}
+	if !strings.Contains(out, "foreign") {
+		t.Errorf("expected deployment name in output, got %q", out)
+	}
+}
+
 func TestGetServicesStatus(t *testing.T) {
 	labels := statusLabels()
 	kcs := fake.NewSimpleClientset(&apiv1.Service{

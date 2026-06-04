@@ -11,12 +11,11 @@ import (
 )
 
 // deleteAllResourceTypes is the comma-separated kubectl resource list `delete
-// all` removes by app label selector. kubectl's "all" category does not cover
-// the namespaced extras app2kube emits, so each is named explicitly; it must
-// stay in sync with the resource generators (output.go) — notably
-// poddisruptionbudgets, which "all" excludes and which would otherwise survive
-// teardown and keep blocking node drains.
-const deleteAllResourceTypes = "all,ingress,configmap,secret,pvc,poddisruptionbudgets"
+// all` removes by app label selector. It is derived from the app2kube generator
+// registry (output.go) so it cannot drift from what is emitted — notably
+// poddisruptionbudgets, which kubectl's "all" category excludes and which would
+// otherwise survive teardown and keep blocking node drains.
+var deleteAllResourceTypes = app2kube.DeleteResourceTypes()
 
 // deleteArgs accepts no positional arguments or exactly "all"; anything else
 // (which delete used to forward verbatim to kubectl with no app-aware selector)

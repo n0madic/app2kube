@@ -196,11 +196,9 @@ To produce safe-by-default manifests, app2kube fills in a few fields when you do
 ```yaml
 securityContext:
   allowPrivilegeEscalation: false
-  capabilities:
-    drop: [ALL]
 ```
 
-Third-party sidecar images are left untouched. Set a container's own `securityContext` to override (an explicit `securityContext: {}` opts out). The more disruptive `runAsNonRoot` / `readOnlyRootFilesystem` are intentionally not defaulted — enable them where appropriate; together with the pod context below this brings workloads close to the Pod Security "restricted" profile.
+Capabilities are intentionally **not** dropped: dropping `ALL` breaks common workloads that rely on default Linux capabilities (a root `nginx` binding `:80` needs `NET_BIND_SERVICE`, and its master needs `SETUID`/`SETGID` to spawn workers), and no single minimal add-set fits every image. Drop capabilities explicitly via the container's own `securityContext` where you know what a workload needs. Third-party sidecar images are left untouched. Set a container's own `securityContext` to override (an explicit `securityContext: {}` opts out). The more disruptive `runAsNonRoot` / `readOnlyRootFilesystem` are intentionally not defaulted — enable them where appropriate.
 
 **Pod securityContext.** The pod template gets `seccompProfile: { type: RuntimeDefault }` by default. Provide `common.securityContext` (a full Kubernetes `PodSecurityContext`) to take over completely — for example, to enforce non-root:
 

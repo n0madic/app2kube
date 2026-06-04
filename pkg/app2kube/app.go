@@ -168,9 +168,19 @@ func (app *App) GetDeploymentName() string {
 // want to predict them (#66).
 func (app *App) GetServiceName(name string) string {
 	if name == "" {
-		return app.GetReleaseName()
+		return truncateName(app.GetReleaseName())
 	}
-	return app.GetReleaseName() + "-" + strings.ToLower(name)
+	return truncateName(app.GetReleaseName() + "-" + strings.ToLower(name))
+}
+
+// GetVolumeClaimName returns the PersistentVolumeClaim name for a named volume,
+// "<release>-<volName>", truncated to a DNS-1123-valid length. It is the single
+// source of this rule so the emitted PVC object (pvc.go) and the pod volume
+// references (deployment.go, cronjob.go) cannot drift to mismatched names —
+// a mismatch would make pods fail to schedule with "persistentvolumeclaim not
+// found".
+func (app *App) GetVolumeClaimName(volName string) string {
+	return truncateName(app.GetReleaseName() + "-" + volName)
 }
 
 // GetColorLabels returns a copy of the app labels, adding the blue/green color
@@ -293,10 +303,9 @@ func (app *App) validate() error {
 
 // applyStaging rewrites replica counts, instance labels, ingress hosts and
 // image pull policy when a staging environment is configured; otherwise it just
-// normalizes the blue/green color.
+// normalizes the blue/green color. It assumes app.Labels is already initialized
+// (LoadValues and NewApp both run ensureLabels first).
 func (app *App) applyStaging() error {
-	app.ensureLabels()
-
 	if app.Staging == "" {
 		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
 		return nil

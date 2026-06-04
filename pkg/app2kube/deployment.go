@@ -165,7 +165,25 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			})
 		}
 
+		// Attach a PVC volume only when a container actually mounts it, mirroring
+		// GetCronJobs: processContainer mounts app.Volumes solely on app-image
+		// containers, so a Deployment built entirely from third-party images
+		// references none and must not carry a dangling volume.
+		mounted := make(map[string]bool)
+		for _, c := range containers {
+			for _, vm := range c.VolumeMounts {
+				mounted[vm.Name] = true
+			}
+		}
+		for _, c := range initContainers {
+			for _, vm := range c.VolumeMounts {
+				mounted[vm.Name] = true
+			}
+		}
 		for volName, vol := range app.Volumes {
+			if !mounted[volName] {
+				continue
+			}
 			// A ReadWriteOnce(-only) PVC can be bound on a single node; mounting it
 			// into a multi-replica Deployment makes pods on other nodes unschedulable
 			// (a StatefulSet would be correct but is out of scope). Warn instead of
@@ -177,7 +195,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Name: volName,
 				VolumeSource: apiv1.VolumeSource{
 					PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: app.GetReleaseName() + "-" + volName,
+						ClaimName: app.GetVolumeClaimName(volName),
 					},
 				},
 			})

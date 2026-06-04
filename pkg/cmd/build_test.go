@@ -6,6 +6,23 @@ import (
 	"testing"
 )
 
+// #10 regression: Docker Hub credentials from `docker login` are stored under
+// the legacy index key; a lookup keyed on the "docker.io" domain must be
+// translated to that key, while every other registry is keyed by its domain.
+func TestRegistryAuthKey(t *testing.T) {
+	cases := map[string]string{
+		"docker.io":           "https://index.docker.io/v1/",
+		"registry.gitlab.com": "registry.gitlab.com",
+		"ghcr.io":             "ghcr.io",
+		"registry.io:5000":    "registry.io:5000",
+	}
+	for domain, want := range cases {
+		if got := registryAuthKey(domain); got != want {
+			t.Errorf("registryAuthKey(%q): got %q, want %q", domain, got, want)
+		}
+	}
+}
+
 // #41: --password-stdin must reject flag combinations that misuse stdin and
 // require a username to be meaningful.
 func TestValidatePasswordStdin(t *testing.T) {

@@ -100,13 +100,17 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 			container.Resources = *app.Common.Resources.DeepCopy()
 		}
 
-		// Emit a conservative, non-breaking container securityContext default
-		// for app-image containers when the user set none. runAsNonRoot /
-		// readOnlyRootFilesystem are intentionally left to explicit config.
+		// Emit a conservative, non-breaking container securityContext default for
+		// app-image containers when the user set none: only disable privilege
+		// escalation. Capabilities are deliberately NOT dropped — dropping ALL
+		// breaks common workloads that legitimately rely on default Linux
+		// capabilities (a root nginx binding :80 needs NET_BIND_SERVICE, and its
+		// master needs SETUID/SETGID to spawn workers), and no single minimal
+		// add-set covers every app image. runAsNonRoot / readOnlyRootFilesystem
+		// are likewise left to explicit config.
 		if container.SecurityContext == nil {
 			container.SecurityContext = &apiv1.SecurityContext{
 				AllowPrivilegeEscalation: ptr.To(false),
-				Capabilities:             &apiv1.Capabilities{Drop: []apiv1.Capability{"ALL"}},
 			}
 		}
 	}

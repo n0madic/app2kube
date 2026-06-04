@@ -243,7 +243,13 @@ func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespac
 	return renderTable(maxColWidth, []string{"NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"}, func(table *uitable.Table) {
 		for _, deployment := range list.Items {
 			activeMark := ""
-			currentColor := deployment.Spec.Selector.MatchLabels[app2kube.LabelColor]
+			// Spec.Selector is a pointer and MatchLabels a map; a foreign or
+			// hand-edited Deployment that matched the app labels but carries a nil
+			// selector must not panic `app2kube status`.
+			currentColor := ""
+			if sel := deployment.Spec.Selector; sel != nil {
+				currentColor = sel.MatchLabels[app2kube.LabelColor]
+			}
 			if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
 				activeMark = "*"
 			}

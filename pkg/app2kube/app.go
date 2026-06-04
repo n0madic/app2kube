@@ -140,7 +140,11 @@ func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 	}
 }
 
-// GetReleaseName of App
+// GetReleaseName of App. It backs the ConfigMap/Secret object names and their
+// envFrom references, so it is truncated to a DNS-1123-valid length here — the
+// single source of that rule — keeping it consistent with the Service/PVC/cron
+// name helpers (which build on it) instead of leaving the ConfigMap/Secret names
+// over-length where a long app name would be rejected by the apiserver on apply.
 func (app *App) GetReleaseName() string {
 	releaseName := app.Name
 	if app.Staging != "" {
@@ -149,16 +153,18 @@ func (app *App) GetReleaseName() string {
 			releaseName = app.Name + "-" + app.Branch
 		}
 	}
-	return strings.ToLower(releaseName)
+	return truncateName(strings.ToLower(releaseName))
 }
 
-// GetDeploymentName of App
+// GetDeploymentName of App. Truncated like GetReleaseName so the Deployment and
+// PDB object names stay DNS-1123-valid even when the color suffix pushes a long
+// release name past the limit.
 func (app *App) GetDeploymentName() string {
 	deploymentName := app.GetReleaseName()
 	if app.Deployment.BlueGreenColor != "" {
 		deploymentName += "-" + app.Deployment.BlueGreenColor
 	}
-	return strings.ToLower(deploymentName)
+	return truncateName(strings.ToLower(deploymentName))
 }
 
 // GetServiceName returns the cluster Service name for a named service entry:

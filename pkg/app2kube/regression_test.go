@@ -8,6 +8,7 @@ import (
 	"github.com/ghodss/yaml"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/utils/ptr"
 )
 
 func mustUnmarshalApp(t *testing.T, y string) *App {
@@ -321,9 +322,12 @@ func ingressTestApp() *App {
 	return app
 }
 
-// Regression: a TLS Secret must only be emitted when certificate material is
-// actually provided. With letsencrypt the Secret is managed by cert-manager and
-// emitting an empty kubernetes.io/tls Secret would be invalid.
+// Regression: a TLS Secret is emitted for both a letsencrypt ingress (an empty
+// kubernetes.io/tls placeholder, later populated by cert-manager) and an ingress
+// carrying inline certificate material. The placeholder must exist so it stays
+// in the apply set and `apply --prune` does not delete a cert-manager-populated
+// Secret created by an earlier release (see
+// TestIngressLetsencryptSecretEmittedForPrune).
 func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
 	app := ingressTestApp()
 	app.Ingress = []Ingress{
@@ -334,18 +338,33 @@ func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetIngressSecrets: %v", err)
 	}
-	if len(secrets) != 1 {
-		t.Fatalf("expected 1 TLS secret (only the one with crt/key), got %d", len(secrets))
+	if len(secrets) != 2 {
+		t.Fatalf("expected 2 TLS secrets (letsencrypt placeholder + inline cert), got %d", len(secrets))
 	}
-	if string(secrets[0].Data["tls.crt"]) != "CRT" || string(secrets[0].Data["tls.key"]) != "KEY" {
-		t.Errorf("unexpected TLS secret data: %v", secrets[0].Data)
+	byName := map[string]*apiv1.Secret{}
+	for _, s := range secrets {
+		byName[s.Name] = s
+	}
+	le := byName["tls-le.example.com"]
+	if le == nil {
+		t.Fatalf("missing letsencrypt placeholder secret, got %v", byName)
+	}
+	if le.Type != apiv1.SecretTypeTLS {
+		t.Errorf("letsencrypt secret type: got %q, want kubernetes.io/tls", le.Type)
+	}
+	if len(le.Data["tls.crt"]) != 0 || len(le.Data["tls.key"]) != 0 {
+		t.Errorf("letsencrypt placeholder must carry empty cert material, got %v", le.Data)
+	}
+	cert := byName["tls-cert.example.com"]
+	if cert == nil || string(cert.Data["tls.crt"]) != "CRT" || string(cert.Data["tls.key"]) != "KEY" {
+		t.Errorf("unexpected inline TLS secret data: %v", byName)
 	}
 }
 
-// With letsencrypt, app2kube no longer emits the TLS Secret itself — instead it
-// must wire the Ingress so cert-manager's ingress-shim creates and populates it:
-// the kubernetes.io/tls-acme annotation plus a TLS block referencing the secret
-// name. This locks the contract that "cert-manager creates the secret if missing".
+// With letsencrypt, app2kube wires the Ingress for cert-manager's ingress-shim
+// (the kubernetes.io/tls-acme annotation plus a TLS block referencing the secret
+// name) AND emits an empty placeholder Secret of that name so prune cannot orphan
+// the cert cert-manager later writes into it.
 func TestIngressLetsencryptTriggersCertManager(t *testing.T) {
 	app := ingressTestApp()
 	app.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
@@ -364,13 +383,41 @@ func TestIngressLetsencryptTriggersCertManager(t *testing.T) {
 		t.Errorf("letsencrypt ingress must reference the TLS secret cert-manager fills, got %+v", ings[0].Spec.TLS)
 	}
 
-	// app2kube must NOT emit the secret itself — cert-manager owns it.
 	secrets, err := app.GetIngressSecrets()
 	if err != nil {
 		t.Fatalf("GetIngressSecrets: %v", err)
 	}
-	if len(secrets) != 0 {
-		t.Errorf("letsencrypt must not emit a TLS secret (cert-manager creates it), got %d", len(secrets))
+	if len(secrets) != 1 || secrets[0].Name != "tls-le.example.com" {
+		t.Fatalf("letsencrypt must emit one placeholder secret named tls-le.example.com, got %+v", secrets)
+	}
+	if secrets[0].Type != apiv1.SecretTypeTLS {
+		t.Errorf("placeholder secret type: got %q, want kubernetes.io/tls", secrets[0].Type)
+	}
+}
+
+// Regression (#1, backward-compat): an earlier app2kube release emitted the
+// letsencrypt `tls-<host>` Secret under the app's recommended labels; cert-manager
+// then populated it. The Secret therefore matches the `apply --prune` label
+// selector, so if the current release stops emitting it, prune deletes the live
+// certificate on the first upgrade. The placeholder must be emitted and must
+// carry the app labels so it is recognised as part of the app's manifest set.
+func TestIngressLetsencryptSecretEmittedForPrune(t *testing.T) {
+	app := ingressTestApp()
+	app.ensureLabels()
+	app.Labels[LabelName] = truncateName(app.Name)
+	app.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+
+	secrets, err := app.GetIngressSecrets()
+	if err != nil {
+		t.Fatalf("GetIngressSecrets: %v", err)
+	}
+	if len(secrets) != 1 {
+		t.Fatalf("letsencrypt must emit a prune-protecting placeholder secret, got %d", len(secrets))
+	}
+	for _, k := range []string{LabelManagedBy, LabelInstance, LabelName} {
+		if _, ok := secrets[0].Labels[k]; !ok {
+			t.Errorf("placeholder secret missing prune-selector label %q: %v", k, secrets[0].Labels)
+		}
 	}
 }
 
@@ -428,6 +475,64 @@ func TestObjectNamesTruncatedTo63(t *testing.T) {
 	}
 	if len(ings[0].Name) > MaxNameLength {
 		t.Errorf("ingress name not truncated: len=%d (%q)", len(ings[0].Name), ings[0].Name)
+	}
+}
+
+// Regression (truncateName consistency): a long app name must yield DNS-1123-valid
+// (<=63 char) names for EVERY object, not just Service/PVC. GetReleaseName backs
+// the ConfigMap/Secret names (and their envFrom refs) and GetDeploymentName backs
+// the Deployment/PDB names; if those skipped truncation a long name would produce
+// objects the apiserver rejects while the Service/PVC for the same app were
+// truncated — splitting the app across mismatched names.
+func TestLongNameAllObjectNamesValid(t *testing.T) {
+	app := NewApp()
+	app.Name = strings.Repeat("a", 70)
+	app.Namespace = "default"
+	app.ensureLabels()
+	app.Labels[LabelName] = truncateName(app.Name)
+	app.Deployment.Containers = map[string]apiv1.Container{"app": {Image: "x/y:1"}}
+	app.Deployment.ReplicaCount = ptr.To(int32(2))
+	app.Deployment.BlueGreenColor = "green"
+	app.ConfigMap = map[string]string{"K": "v"}
+	app.Secrets = map[string]string{"s": "v"}
+
+	if n := app.GetReleaseName(); len(n) > MaxNameLength {
+		t.Errorf("release name over %d-char limit: %d (%q)", MaxNameLength, len(n), n)
+	}
+	if n := app.GetDeploymentName(); len(n) > MaxNameLength {
+		t.Errorf("deployment name over %d-char limit: %d (%q)", MaxNameLength, len(n), n)
+	}
+
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if len(dep.Name) > MaxNameLength || dep.Name != app.GetDeploymentName() {
+		t.Errorf("deployment object name %q (len %d)", dep.Name, len(dep.Name))
+	}
+
+	pdb, err := app.GetPodDisruptionBudget()
+	if err != nil {
+		t.Fatalf("GetPodDisruptionBudget: %v", err)
+	}
+	if pdb == nil || pdb.Name != dep.Name {
+		t.Errorf("PDB name must match the Deployment name; got %+v", pdb)
+	}
+
+	cm, err := app.GetConfigMap()
+	if err != nil {
+		t.Fatalf("GetConfigMap: %v", err)
+	}
+	if cm.Name != app.GetReleaseName() || len(cm.Name) > MaxNameLength {
+		t.Errorf("configmap object name %q (len %d)", cm.Name, len(cm.Name))
+	}
+
+	sec, err := app.GetSecret()
+	if err != nil {
+		t.Fatalf("GetSecret: %v", err)
+	}
+	if sec.Name != app.GetReleaseName() || len(sec.Name) > MaxNameLength {
+		t.Errorf("secret object name %q (len %d)", sec.Name, len(sec.Name))
 	}
 }
 

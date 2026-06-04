@@ -308,11 +308,14 @@ func PrintObj(obj runtime.Object, output string) (string, error) {
 	), nil
 }
 
-// stripCreationTimestamp removes every line containing "creationTimestamp" from
-// a rendered manifest. It preserves the final line even when the input has no
-// trailing newline — reading line-by-line with ReadBytes('\n') previously
-// dropped that unterminated last line on io.EOF, silently losing data from any
-// serialization not ending in a newline (#55).
+// stripCreationTimestamp removes the metadata `creationTimestamp: null` line
+// that the serializer always emits, at any indentation. It matches the whole
+// trimmed line rather than the bare substring: a substring match would also
+// delete ConfigMap/Secret data values that merely contain the word (e.g. a
+// stored Kubernetes manifest), silently corrupting them. It preserves the final
+// line even when the input has no trailing newline — reading line-by-line with
+// ReadBytes('\n') previously dropped that unterminated last line on io.EOF,
+// silently losing data from any serialization not ending in a newline (#55).
 func stripCreationTimestamp(in []byte) []byte {
 	buf := bytes.NewBuffer(in)
 	filtered := bytes.NewBuffer([]byte{})
@@ -321,8 +324,11 @@ func stripCreationTimestamp(in []byte) []byte {
 		// ReadBytes returns the data read so far together with io.EOF when the
 		// stream ends without a delimiter, so the final unterminated line must be
 		// processed before breaking.
-		if len(line) > 0 && !bytes.Contains(line, []byte("creationTimestamp")) {
-			filtered.Write(line)
+		if len(line) > 0 {
+			trimmed := bytes.TrimLeft(bytes.TrimRight(line, "\r\n"), " \t")
+			if !bytes.Equal(trimmed, []byte("creationTimestamp: null")) {
+				filtered.Write(line)
+			}
 		}
 		if err != nil {
 			break

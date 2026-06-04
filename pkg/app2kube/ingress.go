@@ -205,43 +205,56 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	return ingress, nil
 }
 
-// GetIngressSecrets return TLS secrets for ingress
+// GetIngressSecrets returns the TLS Secrets for the app's ingresses. It emits a
+// kubernetes.io/tls Secret for every ingress that enables letsencrypt/ACME (an
+// empty placeholder later populated by cert-manager) and for every ingress
+// carrying inline certificate material.
+//
+// The letsencrypt placeholder is emitted on purpose. It keeps the Secret in the
+// `apply` set so `apply --prune` does not delete the cert-manager-populated
+// Secret that an earlier app2kube release created under the app's labels: that
+// Secret matches the prune label selector, and once it is absent from the
+// rendered manifest prune removes it — dropping the live certificate and
+// breaking HTTPS until cert-manager re-issues. Re-applying the empty placeholder
+// is safe: the 3-way apply merge sees no delta on tls.crt/tls.key between runs
+// (both empty in app2kube's config), so cert-manager's data is preserved.
 func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		emitted := make(map[string]*apiv1.Secret)
 		for _, ingress := range app.Ingress {
-			// Only emit a TLS Secret when actual certificate material is
-			// provided. With letsencrypt (or an externally referenced
-			// TLSSecretName) the Secret is managed by cert-manager; emitting an
-			// empty kubernetes.io/tls Secret here would be rejected as invalid.
-			if ingress.TLSCrt != "" && ingress.TLSKey != "" {
-				// Share the lowercasing helper with GetIngress so the emitted
-				// Secret name is byte-identical to the Ingress TLS reference.
-				secretName := ingressTLSSecretName(ingress.TLSSecretName, ingress.Host)
-				crt := []byte(ingress.TLSCrt)
-				key := []byte(ingress.TLSKey)
-				if prev, ok := emitted[secretName]; ok {
-					// The same secret name was already emitted. An identical
-					// duplicate is fine (repeated host), but conflicting
-					// certificate material is a fatal misconfiguration: only one
-					// Secret can carry a given name, so the second cert would be
-					// silently dropped and the wrong certificate served.
-					if !bytes.Equal(prev.Data["tls.crt"], crt) || !bytes.Equal(prev.Data["tls.key"], key) {
-						return nil, fmt.Errorf("conflicting TLS certificates for secret %q", secretName)
-					}
-					continue
-				}
-				secret := &apiv1.Secret{
-					ObjectMeta: app.GetObjectMeta(secretName),
-					Data: map[string][]byte{
-						"tls.crt": crt,
-						"tls.key": key,
-					},
-					Type: apiv1.SecretTypeTLS,
-				}
-				emitted[secretName] = secret
-				secrets = append(secrets, secret)
+			letsencrypt := app.Common.Ingress.Letsencrypt || ingress.Letsencrypt
+			// Emit for letsencrypt (placeholder) or when inline certificate
+			// material is provided. A bare externally referenced TLSSecretName
+			// without letsencrypt is managed elsewhere and is left untouched.
+			if !letsencrypt && (ingress.TLSCrt == "" || ingress.TLSKey == "") {
+				continue
 			}
+			// Share the lowercasing helper with GetIngress so the emitted
+			// Secret name is byte-identical to the Ingress TLS reference.
+			secretName := ingressTLSSecretName(ingress.TLSSecretName, ingress.Host)
+			crt := []byte(ingress.TLSCrt)
+			key := []byte(ingress.TLSKey)
+			if prev, ok := emitted[secretName]; ok {
+				// The same secret name was already emitted. An identical
+				// duplicate is fine (repeated host), but conflicting
+				// certificate material is a fatal misconfiguration: only one
+				// Secret can carry a given name, so the second cert would be
+				// silently dropped and the wrong certificate served.
+				if !bytes.Equal(prev.Data["tls.crt"], crt) || !bytes.Equal(prev.Data["tls.key"], key) {
+					return nil, fmt.Errorf("conflicting TLS certificates for secret %q", secretName)
+				}
+				continue
+			}
+			secret := &apiv1.Secret{
+				ObjectMeta: app.GetObjectMeta(secretName),
+				Data: map[string][]byte{
+					"tls.crt": crt,
+					"tls.key": key,
+				},
+				Type: apiv1.SecretTypeTLS,
+			}
+			emitted[secretName] = secret
+			secrets = append(secrets, secret)
 		}
 	}
 	return secrets, nil

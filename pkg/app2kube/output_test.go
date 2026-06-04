@@ -108,6 +108,17 @@ func TestStripCreationTimestamp(t *testing.T) {
 			in:   "",
 			want: "",
 		},
+		// #8: only the whole `creationTimestamp: null` metadata line is dropped,
+		// at any indentation — not arbitrary data values that merely contain the
+		// word, which a substring match would corrupt (e.g. a stored manifest).
+		"indented metadata line stripped": {
+			in:   "metadata:\n  creationTimestamp: null\n  name: cfg\n",
+			want: "metadata:\n  name: cfg\n",
+		},
+		"data value containing the word kept": {
+			in:   "data:\n  note: creationTimestamp is a field\n  ts: \"2020 creationTimestamp\"\n",
+			want: "data:\n  note: creationTimestamp is a field\n  ts: \"2020 creationTimestamp\"\n",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -46,7 +46,10 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			}
 			containers = append(containers, job.Container)
 		}
-		for name, container := range job.Containers {
+		// Sorted iteration keeps the rendered container list stable across runs;
+		// a map-random order would reroll the cron's pod template on every apply.
+		for _, name := range sortedKeys(job.Containers) {
+			container := job.Containers[name]
 			container.Name = strings.ToLower(name)
 			err = app.processContainer(&container, false)
 			if err != nil {
@@ -147,7 +150,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 				mounted[vm.Name] = true
 			}
 		}
-		for volName := range app.Volumes {
+		for _, volName := range sortedKeys(app.Volumes) {
 			if !mounted[volName] {
 				continue
 			}

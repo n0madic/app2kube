@@ -49,8 +49,12 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			}
 		}
 
+		// Iterate in sorted key order so the rendered container list is stable
+		// across runs; an unsorted (map-random) order would change the pod
+		// template on every render and roll the Deployment on each apply.
 		var containers []apiv1.Container
-		for name, container := range app.Deployment.Containers {
+		for _, name := range sortedKeys(app.Deployment.Containers) {
+			container := app.Deployment.Containers[name]
 			container.Name = strings.ToLower(name)
 			err = app.processContainer(&container, false)
 			if err != nil {
@@ -60,7 +64,8 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		}
 
 		var initContainers []apiv1.Container
-		for name, icontainer := range app.Deployment.InitContainers {
+		for _, name := range sortedKeys(app.Deployment.InitContainers) {
+			icontainer := app.Deployment.InitContainers[name]
 			icontainer.Name = strings.ToLower(name)
 			err = app.processContainer(&icontainer, true)
 			if err != nil {
@@ -180,7 +185,8 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				mounted[vm.Name] = true
 			}
 		}
-		for volName, vol := range app.Volumes {
+		for _, volName := range sortedKeys(app.Volumes) {
+			vol := app.Volumes[volName]
 			if !mounted[volName] {
 				continue
 			}

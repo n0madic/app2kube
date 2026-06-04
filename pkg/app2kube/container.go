@@ -83,10 +83,12 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 			})
 		}
 
-		for volName, volume := range app.Volumes {
+		// Sorted so a container's volumeMounts list is stable across renders;
+		// map-random order would reroll the pod template on every apply.
+		for _, volName := range sortedKeys(app.Volumes) {
 			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
 				Name:      volName,
-				MountPath: volume.MountPath,
+				MountPath: app.Volumes[volName].MountPath,
 			})
 		}
 
@@ -205,12 +207,15 @@ func portIsUnset(p intstr.IntOrString) bool {
 	return p.IntVal == 0 && p.StrVal == ""
 }
 
-func sortedKeys(m map[string]string) []string {
-	keys := make([]string, len(m))
-	i := 0
+// sortedKeys returns the keys of m in ascending order. Generic over the value
+// type so it gives every map-driven generator (env, containers, volumes) a
+// deterministic iteration order — Go randomizes map ranging, and an unsorted
+// containers/volumes list reorders the pod template on each render, which
+// kubectl sees as a change and rolls the workload on every apply.
+func sortedKeys[V any](m map[string]V) []string {
+	keys := make([]string, 0, len(m))
 	for k := range m {
-		keys[i] = k
-		i++
+		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	return keys

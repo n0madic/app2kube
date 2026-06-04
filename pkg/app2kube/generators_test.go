@@ -1,6 +1,7 @@
 package app2kube
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -928,5 +929,117 @@ func TestGetObjectMeta(t *testing.T) {
 	// not render a noisy `annotations: {}`; only the ingress generator adds them.
 	if meta.Annotations != nil {
 		t.Errorf("annotations must be nil by default, got %v", meta.Annotations)
+	}
+}
+
+// Regression (#6): the rendered container list must be ordered deterministically.
+// Ranging app.Deployment.Containers (a map) without sorting yields a different
+// order on each render, which kubectl sees as a pod-template change and rolls the
+// Deployment on every apply.
+func TestDeploymentContainerOrderDeterministic(t *testing.T) {
+	app := deployApp(t)
+	app.Deployment.Containers = map[string]apiv1.Container{
+		"zeta":  {Image: "example/app:v1"},
+		"alpha": {Image: "example/app:v1"},
+		"mid":   {Image: "example/app:v1"},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	var got []string
+	for _, c := range dep.Spec.Template.Spec.Containers {
+		got = append(got, c.Name)
+	}
+	want := []string{"alpha", "mid", "zeta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("container order: got %v, want %v (sorted by name)", got, want)
+	}
+}
+
+// Regression (#6): init containers must also render in a stable order.
+func TestDeploymentInitContainerOrderDeterministic(t *testing.T) {
+	app := deployApp(t)
+	app.Deployment.InitContainers = map[string]apiv1.Container{
+		"zinit": {Image: "example/app:v1", Command: []string{"a"}},
+		"ainit": {Image: "example/app:v1", Command: []string{"a"}},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	var got []string
+	for _, c := range dep.Spec.Template.Spec.InitContainers {
+		got = append(got, c.Name)
+	}
+	want := []string{"ainit", "zinit"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("init container order: got %v, want %v (sorted by name)", got, want)
+	}
+}
+
+// Regression (#6): both the pod-level PVC volumes and each container's
+// volumeMounts must render in a stable order — either reordering changes the pod
+// template and rolls the workload on every apply.
+func TestDeploymentVolumeOrderDeterministic(t *testing.T) {
+	rwo := apiv1.PersistentVolumeClaimSpec{
+		AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce},
+	}
+	app := deployApp(t)
+	app.Volumes = map[string]VolumeSpec{
+		"zdata": {MountPath: "/z", Spec: rwo},
+		"adata": {MountPath: "/a", Spec: rwo},
+		"mdata": {MountPath: "/m", Spec: rwo},
+	}
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	want := []string{"adata", "mdata", "zdata"}
+
+	var vols []string
+	for _, v := range dep.Spec.Template.Spec.Volumes {
+		vols = append(vols, v.Name)
+	}
+	if !reflect.DeepEqual(vols, want) {
+		t.Errorf("pod volume order: got %v, want %v (sorted)", vols, want)
+	}
+
+	var mounts []string
+	for _, m := range dep.Spec.Template.Spec.Containers[0].VolumeMounts {
+		mounts = append(mounts, m.Name)
+	}
+	if !reflect.DeepEqual(mounts, want) {
+		t.Errorf("container volumeMounts order: got %v, want %v (sorted)", mounts, want)
+	}
+}
+
+// Regression (#6): the cronjob pod template containers must render in a stable
+// order too (mirrors the Deployment).
+func TestCronJobContainerOrderDeterministic(t *testing.T) {
+	app := deployApp(t)
+	app.Cronjob = map[string]CronjobSpec{
+		"job": {
+			Schedule: "* * * * *",
+			Containers: map[string]apiv1.Container{
+				"zeta":  {Image: "example/app:v1"},
+				"alpha": {Image: "example/app:v1"},
+			},
+		},
+	}
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if len(crons) != 1 {
+		t.Fatalf("expected 1 cronjob, got %d", len(crons))
+	}
+	var got []string
+	for _, c := range crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers {
+		got = append(got, c.Name)
+	}
+	want := []string{"alpha", "zeta"}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("cron container order: got %v, want %v (sorted by name)", got, want)
 	}
 }

@@ -19,7 +19,9 @@ import (
 // breaking fields are left to explicit configuration.
 func (app *App) podSecurityContext() *apiv1.PodSecurityContext {
 	if app.Common.SecurityContext != nil {
-		return app.Common.SecurityContext
+		// Deep-copy so the Deployment and every CronJob pod spec get independent
+		// PodSecurityContext values instead of aliasing the one the user supplied.
+		return app.Common.SecurityContext.DeepCopy()
 	}
 	return &apiv1.PodSecurityContext{
 		SeccompProfile: &apiv1.SeccompProfile{Type: apiv1.SeccompProfileTypeRuntimeDefault},
@@ -107,8 +109,14 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Replicas:                ptr.To(replicas),
 				RevisionHistoryLimit:    ptr.To(app.Deployment.RevisionHistoryLimit),
 				ProgressDeadlineSeconds: progressDeadline,
+				// The selector carries the full label set (GetColorLabels), matching
+				// the pod template and the pre-v0.7 selector. spec.selector is
+				// immutable, so keeping it byte-identical to what earlier releases
+				// emitted lets `kubectl apply` upgrade Deployments created by older
+				// app2kube versions in place instead of being rejected with
+				// "field is immutable".
 				Selector: &metav1.LabelSelector{
-					MatchLabels: app.GetSelectorLabels(),
+					MatchLabels: app.GetColorLabels(),
 				},
 				Strategy: strategy,
 				Template: apiv1.PodTemplateSpec{

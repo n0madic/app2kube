@@ -14,13 +14,10 @@ import (
 // decrypted secrets, with keys sorted for deterministic output.
 func renderDotenv(app *app2kube.App, export, quotes bool) (string, error) {
 	cfg := make(map[string]string)
-	keys := make([]string, 0, len(app.ConfigMap)+len(app.Env)+len(app.Secrets))
 	for k, v := range app.ConfigMap {
-		keys = append(keys, k)
 		cfg[k] = v
 	}
 	for k, v := range app.Env {
-		keys = append(keys, k)
 		cfg[k] = v
 	}
 	secrets, err := app.GetDecryptedSecrets()
@@ -28,8 +25,14 @@ func renderDotenv(app *app2kube.App, export, quotes bool) (string, error) {
 		return "", err
 	}
 	for k, v := range secrets {
-		keys = append(keys, k)
 		cfg[k] = v
+	}
+
+	// Build the key list from the merged map so a key present in more than one
+	// source (ConfigMap/Env/Secrets) is emitted once, not once per source.
+	keys := make([]string, 0, len(cfg))
+	for k := range cfg {
+		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 
@@ -50,12 +53,14 @@ func renderDotenv(app *app2kube.App, export, quotes bool) (string, error) {
 }
 
 // collectDomains returns the sorted, de-duplicated list of ingress hosts and
-// aliases for an app.
+// aliases for an app. Aliases go through app.IngressAliases (the single source
+// of the staging-suppression rule) so the listed domains match what GetIngress
+// actually serves — under staging, aliases are dropped from both.
 func collectDomains(app *app2kube.App) []string {
 	var domains []string
 	for _, ingress := range app.Ingress {
 		domains = append(domains, ingress.Host)
-		domains = append(domains, ingress.Aliases...)
+		domains = append(domains, app.IngressAliases(ingress)...)
 	}
 	if len(domains) == 0 {
 		return nil

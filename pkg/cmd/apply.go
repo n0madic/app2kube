@@ -20,6 +20,25 @@ func blueGreenNotSwitchedMsg(color string) string {
 	return fmt.Sprintf("[%s] was deployed but traffic was NOT switched; the live color is unchanged. Re-run the blue-green deploy to retry — the stale %s deployment will be replaced.", color, color)
 }
 
+// applyPruneWhitelist lists the GVKs `apply --prune` is allowed to delete. It
+// must stay in sync with the resource generators in app2kube (output.go): every
+// kind app2kube can emit must be prunable, otherwise a resource that drops out
+// of the manifest is orphaned — e.g. the PodDisruptionBudget disappears when
+// replicas scale back to 1, and a stale minAvailable PDB would then block every
+// node drain.
+var applyPruneWhitelist = []string{
+	"/v1/ConfigMap",
+	"/v1/PersistentVolumeClaim",
+	"/v1/Secret",
+	"/v1/Service",
+	"/v1/ServiceAccount",
+	"apps/v1/DaemonSet",
+	"apps/v1/Deployment",
+	"batch/v1/CronJob",
+	"networking.k8s.io/v1/Ingress",
+	"policy/v1/PodDisruptionBudget",
+}
+
 var (
 	applyWithStatus bool
 	applyWithTrack  string
@@ -58,17 +77,7 @@ func NewCmdApply() *cobra.Command {
 			applyManifest := func(manifest string, prune bool) error {
 				flags.Overwrite = true
 				flags.Prune = prune
-				flags.PruneWhitelist = []string{
-					"/v1/ConfigMap",
-					"/v1/PersistentVolumeClaim",
-					"/v1/Secret",
-					"/v1/Service",
-					"/v1/ServiceAccount",
-					"apps/v1/DaemonSet",
-					"apps/v1/Deployment",
-					"batch/v1/CronJob",
-					"networking.k8s.io/v1/Ingress",
-				}
+				flags.PruneWhitelist = applyPruneWhitelist
 				o, err := flags.ToOptions(kubeFactory, cmd, "app2kube", args)
 				cmdutil.CheckErr(err)
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
@@ -89,7 +98,14 @@ func NewCmdApply() *cobra.Command {
 				cmdutil.CheckErr(err)
 				runErr := o.Run()
 				feedErr := wait()
-				cmdutil.CheckErr(runErr)
+				// Return the apply error instead of cmdutil.CheckErr (which
+				// os.Exit()s): blue/green callers must regain control on a real
+				// apply failure to report that traffic was NOT switched before the
+				// process exits (#60). The wait() error is secondary and only
+				// surfaces when the apply itself succeeded.
+				if runErr != nil {
+					return runErr
+				}
 				if feedErr != nil {
 					return fmt.Errorf("feeding manifest to kubectl apply: %w", feedErr)
 				}

@@ -173,7 +173,12 @@ func (app *App) GetServiceName(name string) string {
 	return app.GetReleaseName() + "-" + strings.ToLower(name)
 }
 
-// GetColorLabels return labels for blue/green deployment
+// GetColorLabels returns a copy of the app labels, adding the blue/green color
+// label when a color is set. It backs both the pod template labels and the
+// Deployment/Service/PDB spec.selector, which therefore stay byte-identical to
+// what pre-v0.7 releases emitted — important because spec.selector is immutable
+// and a narrower selector would make `kubectl apply` reject upgrades of existing
+// Deployments.
 func (app *App) GetColorLabels() map[string]string {
 	labels := make(map[string]string, len(app.Labels))
 	for k, v := range app.Labels {
@@ -183,27 +188,6 @@ func (app *App) GetColorLabels() map[string]string {
 		labels[LabelColor] = app.Deployment.BlueGreenColor
 	}
 	return labels
-}
-
-// GetSelectorLabels returns the minimal, stable label set for the Deployment's
-// immutable spec.selector: only the app identity (name + instance) plus the
-// blue/green color when set. It deliberately excludes managed-by and arbitrary
-// user labels — which still live on the object and pod template via
-// GetColorLabels — so that adding, removing or changing those labels (or
-// dropping the color on a later non-blue/green release) never triggers an
-// immutable-selector rejection on `kubectl apply` (#24).
-func (app *App) GetSelectorLabels() map[string]string {
-	selector := make(map[string]string, 3)
-	if v, ok := app.Labels[LabelName]; ok {
-		selector[LabelName] = v
-	}
-	if v, ok := app.Labels[LabelInstance]; ok {
-		selector[LabelInstance] = v
-	}
-	if app.Deployment.BlueGreenColor != "" {
-		selector[LabelColor] = app.Deployment.BlueGreenColor
-	}
-	return selector
 }
 
 func (app *App) getAffinity() (*apiv1.Affinity, error) {
@@ -352,11 +336,10 @@ func (app *App) applyStaging() error {
 // NewApp return App instance
 func NewApp() *App {
 	app := &App{}
-	// Default settings of App
-	app.Labels = map[string]string{
-		LabelInstance:  "production",
-		LabelManagedBy: ManagedByValue,
-	}
+	// Default settings of App. ensureLabels seeds the default instance/managed-by
+	// labels (the same defaults LoadValues relies on) so the rule lives in one
+	// place.
+	app.ensureLabels()
 	app.Common.Image.Tag = "latest"
 	app.Deployment.RevisionHistoryLimit = 2
 	// Read passwords and keys from environment variables

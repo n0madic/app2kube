@@ -1,6 +1,7 @@
 package app2kube
 
 import (
+	"bytes"
 	"fmt"
 	"slices"
 	"strconv"
@@ -205,9 +206,9 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 }
 
 // GetIngressSecrets return TLS secrets for ingress
-func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
+func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
-		emitted := make(map[string]bool)
+		emitted := make(map[string]*apiv1.Secret)
 		for _, ingress := range app.Ingress {
 			// Only emit a TLS Secret when actual certificate material is
 			// provided. With letsencrypt (or an externally referenced
@@ -215,24 +216,33 @@ func (app *App) GetIngressSecrets() (secrets []*apiv1.Secret) {
 			// empty kubernetes.io/tls Secret here would be rejected as invalid.
 			if ingress.TLSCrt != "" && ingress.TLSKey != "" {
 				// Share the lowercasing helper with GetIngress so the emitted
-				// Secret name is byte-identical to the Ingress TLS reference, and
-				// skip duplicates when the same host (secret name) repeats.
+				// Secret name is byte-identical to the Ingress TLS reference.
 				secretName := ingressTLSSecretName(ingress.TLSSecretName, ingress.Host)
-				if emitted[secretName] {
+				crt := []byte(ingress.TLSCrt)
+				key := []byte(ingress.TLSKey)
+				if prev, ok := emitted[secretName]; ok {
+					// The same secret name was already emitted. An identical
+					// duplicate is fine (repeated host), but conflicting
+					// certificate material is a fatal misconfiguration: only one
+					// Secret can carry a given name, so the second cert would be
+					// silently dropped and the wrong certificate served.
+					if !bytes.Equal(prev.Data["tls.crt"], crt) || !bytes.Equal(prev.Data["tls.key"], key) {
+						return nil, fmt.Errorf("conflicting TLS certificates for secret %q", secretName)
+					}
 					continue
 				}
-				emitted[secretName] = true
 				secret := &apiv1.Secret{
 					ObjectMeta: app.GetObjectMeta(secretName),
 					Data: map[string][]byte{
-						"tls.crt": []byte(ingress.TLSCrt),
-						"tls.key": []byte(ingress.TLSKey),
+						"tls.crt": crt,
+						"tls.key": key,
 					},
 					Type: apiv1.SecretTypeTLS,
 				}
+				emitted[secretName] = secret
 				secrets = append(secrets, secret)
 			}
 		}
 	}
-	return
+	return secrets, nil
 }

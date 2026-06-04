@@ -11,7 +11,7 @@ import (
 // the Deployment runs more than one replica. A single-replica PDB with
 // minAvailable:1 would block every drain (the node could never be emptied), and
 // nothing is emitted for the no-container case. The selector matches the
-// Deployment's stable selector so it covers exactly its pods (#47).
+// Deployment's selector (GetColorLabels) so it covers exactly its pods (#47).
 func (app *App) GetPodDisruptionBudget() (*policyv1.PodDisruptionBudget, error) {
 	if len(app.Deployment.Containers) == 0 {
 		return nil, nil
@@ -30,7 +30,7 @@ func (app *App) GetPodDisruptionBudget() (*policyv1.PodDisruptionBudget, error) 
 		ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 		Spec: policyv1.PodDisruptionBudgetSpec{
 			MinAvailable: &minAvailable,
-			Selector:     &metav1.LabelSelector{MatchLabels: app.GetSelectorLabels()},
+			Selector:     &metav1.LabelSelector{MatchLabels: app.GetColorLabels()},
 		},
 	}, nil
 }

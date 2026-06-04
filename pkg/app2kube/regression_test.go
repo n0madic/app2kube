@@ -330,7 +330,10 @@ func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
 		{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}},
 		{Host: "cert.example.com", TLSCrt: "CRT", TLSKey: "KEY"},
 	}
-	secrets := app.GetIngressSecrets()
+	secrets, err := app.GetIngressSecrets()
+	if err != nil {
+		t.Fatalf("GetIngressSecrets: %v", err)
+	}
 	if len(secrets) != 1 {
 		t.Fatalf("expected 1 TLS secret (only the one with crt/key), got %d", len(secrets))
 	}
@@ -402,7 +405,10 @@ func TestIngressTLSNamesLowercasedAndConsistent(t *testing.T) {
 	}
 	refName := ings[0].Spec.TLS[0].SecretName
 
-	secrets := app.GetIngressSecrets()
+	secrets, err := app.GetIngressSecrets()
+	if err != nil {
+		t.Fatalf("GetIngressSecrets: %v", err)
+	}
 	if len(secrets) != 1 {
 		t.Fatalf("expected 1 TLS secret, got %d", len(secrets))
 	}
@@ -442,8 +448,27 @@ func TestIngressDeduplicatesRepeatedHostTLS(t *testing.T) {
 	if got := len(ings[0].Spec.TLS); got != 1 {
 		t.Errorf("expected 1 TLS block for repeated host, got %d", got)
 	}
-	if got := len(app.GetIngressSecrets()); got != 1 {
+	secrets, err := app.GetIngressSecrets()
+	if err != nil {
+		t.Fatalf("GetIngressSecrets: %v", err)
+	}
+	if got := len(secrets); got != 1 {
 		t.Errorf("expected 1 TLS secret for repeated host, got %d", got)
+	}
+}
+
+// Regression (#8): two ingress entries sharing an explicit tlsSecretName but
+// carrying different certificate material is a fatal misconfiguration — only one
+// Secret can own a given name, so the second cert would be silently dropped and
+// the wrong certificate served. GetIngressSecrets must reject it.
+func TestIngressSecretsConflictingCertSameName(t *testing.T) {
+	app := ingressTestApp()
+	app.Ingress = []Ingress{
+		{Host: "a.example.com", TLSSecretName: "shared", TLSCrt: "CRT_A", TLSKey: "KEY_A"},
+		{Host: "b.example.com", TLSSecretName: "shared", TLSCrt: "CRT_B", TLSKey: "KEY_B"},
+	}
+	if _, err := app.GetIngressSecrets(); err == nil {
+		t.Error("expected an error for conflicting TLS certificates under one secret name")
 	}
 }
 

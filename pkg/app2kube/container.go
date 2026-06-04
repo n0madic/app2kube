@@ -95,7 +95,9 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		// below regardless.
 		if app.Staging == "" && app.Common.Resources != nil &&
 			len(container.Resources.Requests) == 0 && len(container.Resources.Limits) == 0 {
-			container.Resources = *app.Common.Resources
+			// Deep-copy so each container gets its own Requests/Limits maps instead
+			// of aliasing the shared app.Common.Resources (and each other).
+			container.Resources = *app.Common.Resources.DeepCopy()
 		}
 
 		// Emit a conservative, non-breaking container securityContext default

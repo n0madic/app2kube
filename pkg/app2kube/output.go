@@ -44,9 +44,9 @@ const (
 
 // generator describes how to render one kind of resource and which requested
 // OutputResource values select it. Adding a new resource type means appending
-// a single entry here (and a name in outputTypeNames) — no edits to GetManifest.
+// a single entry here (and a user-facing name in outputTypeNames) — no edits to
+// GetManifest.
 type generator struct {
-	name    string
 	selects []OutputResource
 	render  func(app *App) ([]runtime.Object, error)
 }
@@ -74,14 +74,12 @@ func toObjects[T runtime.Object](items []T) []runtime.Object {
 // previous hand-written sequence in GetManifest.
 var manifestGenerators = []generator{
 	{
-		name:    "namespace",
 		selects: []OutputResource{OutputNamespace},
 		render: func(app *App) ([]runtime.Object, error) {
 			return []runtime.Object{app.GetNamespace()}, nil
 		},
 	},
 	{
-		name:    "secret",
 		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputSecret},
 		render: func(app *App) ([]runtime.Object, error) {
 			secret, err := app.GetSecret()
@@ -92,7 +90,6 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
-		name:    "configmap",
 		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputConfigMap},
 		render: func(app *App) ([]runtime.Object, error) {
 			configmap, err := app.GetConfigMap()
@@ -103,7 +100,6 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
-		name:    "pvc",
 		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputPersistentVolumeClaim},
 		render: func(app *App) ([]runtime.Object, error) {
 			claims, err := app.GetPersistentVolumeClaims()
@@ -114,7 +110,6 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
-		name:    "cronjob",
 		selects: []OutputResource{OutputAll, OutputAllOther, OutputCronJob},
 		render: func(app *App) ([]runtime.Object, error) {
 			jobs, err := app.GetCronJobs()
@@ -125,7 +120,6 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
-		name:    "deployment",
 		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputDeployment},
 		render: func(app *App) ([]runtime.Object, error) {
 			deployment, err := app.GetDeployment()
@@ -139,7 +133,6 @@ var manifestGenerators = []generator{
 		// The PDB deploys with the Deployment (phase 1 of blue/green) so it
 		// protects the pods as soon as they exist; render returns nothing for a
 		// single-replica deploy (#47).
-		name:    "poddisruptionbudget",
 		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputPodDisruptionBudget},
 		render: func(app *App) ([]runtime.Object, error) {
 			pdb, err := app.GetPodDisruptionBudget()
@@ -153,7 +146,6 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
-		name:    "service",
 		selects: []OutputResource{OutputAll, OutputAllOther, OutputService},
 		render: func(app *App) ([]runtime.Object, error) {
 			services, err := app.GetServices()
@@ -166,14 +158,16 @@ var manifestGenerators = []generator{
 	{
 		// TLS secrets for ingress are emitted together with other resources and
 		// with --type secret, matching the original behavior.
-		name:    "ingressSecrets",
 		selects: []OutputResource{OutputAll, OutputAllOther, OutputSecret},
 		render: func(app *App) ([]runtime.Object, error) {
-			return toObjects(app.GetIngressSecrets()), nil
+			secrets, err := app.GetIngressSecrets()
+			if err != nil {
+				return nil, err
+			}
+			return toObjects(secrets), nil
 		},
 	},
 	{
-		name:    "ingress",
 		selects: []OutputResource{OutputAll, OutputAllOther, OutputIngress},
 		render: func(app *App) ([]runtime.Object, error) {
 			ingress, err := app.GetIngress()

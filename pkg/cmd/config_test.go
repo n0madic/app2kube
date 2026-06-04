@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
@@ -19,6 +20,25 @@ func TestRenderDotenv(t *testing.T) {
 	want := "A_ENV=env\nB_CFG=cfg\nC_SECRET=sec\n"
 	if out != want {
 		t.Errorf("dotenv:\ngot  %q\nwant %q", out, want)
+	}
+}
+
+// Regression (#12): a key present in more than one source (Env + Secrets) must
+// be emitted once, not once per source, with the later source (secret) winning.
+func TestRenderDotenvDeduplicatesKeys(t *testing.T) {
+	app := app2kube.NewApp()
+	app.Env = map[string]string{"DATABASE_URL": "from-env"}
+	app.Secrets = map[string]string{"DATABASE_URL": "from-secret"} // same key
+
+	out, err := renderDotenv(app, false, false)
+	if err != nil {
+		t.Fatalf("renderDotenv: %v", err)
+	}
+	if n := strings.Count(out, "DATABASE_URL="); n != 1 {
+		t.Errorf("duplicate key must be emitted once, got %d lines:\n%s", n, out)
+	}
+	if !strings.Contains(out, "DATABASE_URL=from-secret") {
+		t.Errorf("secret value must win over env, got:\n%s", out)
 	}
 }
 
@@ -65,6 +85,21 @@ func TestCollectDomainsEmpty(t *testing.T) {
 	app := app2kube.NewApp()
 	if got := collectDomains(app); got != nil {
 		t.Errorf("expected nil for no ingress, got %v", got)
+	}
+}
+
+// Regression (#6): under staging, GetIngress suppresses aliases (via
+// IngressAliases), so `config domain` must not list them either or it reports
+// domains the rendered Ingress does not serve.
+func TestCollectDomainsSuppressesAliasesUnderStaging(t *testing.T) {
+	app := app2kube.NewApp()
+	app.Staging = "dev"
+	app.Ingress = []app2kube.Ingress{
+		{Host: "b.example.com", Aliases: []string{"a.example.com"}},
+	}
+	got := collectDomains(app)
+	if len(got) != 1 || got[0] != "b.example.com" {
+		t.Errorf("staging must suppress aliases, leaving only the host: got %v", got)
 	}
 }
 

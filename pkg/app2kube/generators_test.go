@@ -421,6 +421,46 @@ deployment:
 
 // #18 edge (cronjob): a single-container cronjob with shared-data set must also
 // get the EmptyDir volume to match the mount processContainer adds.
+// Regression (#11): app.Volumes are mounted only on app-image containers, so a
+// cronjob whose only container is a third-party image must not carry a dangling
+// PVC volume that nothing mounts; an app-image cronjob still gets it.
+func TestGetCronJobsPVCVolumeOnlyWhenMounted(t *testing.T) {
+	// App-image cron: the volume is mounted and present.
+	app := cronApp(t)
+	app.Volumes = map[string]VolumeSpec{"data": {MountPath: "/data"}}
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	var appHasData bool
+	for _, v := range crons[0].Spec.JobTemplate.Spec.Template.Spec.Volumes {
+		if v.Name == "data" {
+			appHasData = true
+		}
+	}
+	if !appHasData {
+		t.Errorf("app-image cronjob must carry the mounted PVC volume 'data'")
+	}
+
+	// Third-party-image cron: nothing mounts the volume, so it must be omitted.
+	tp := cronApp(t)
+	tp.Common.Image.Repository = "example/app"
+	tp.Common.Image.Tag = "v1"
+	tp.Volumes = map[string]VolumeSpec{"data": {MountPath: "/data"}}
+	tp.Cronjob = map[string]CronjobSpec{
+		"backup": {Schedule: "* * * * *", Container: apiv1.Container{Image: "busybox:latest", Command: []string{"echo"}}},
+	}
+	crons, err = tp.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs (third-party): %v", err)
+	}
+	for _, v := range crons[0].Spec.JobTemplate.Spec.Template.Spec.Volumes {
+		if v.Name == "data" {
+			t.Errorf("third-party cronjob must not carry the unmounted PVC volume 'data'")
+		}
+	}
+}
+
 func TestGetCronJobsSharedDataVolumeMatchesMount(t *testing.T) {
 	app := mustUnmarshalApp(t, `
 name: example
@@ -535,13 +575,12 @@ func TestGetDeploymentBlueGreenLabels(t *testing.T) {
 	}
 }
 
-// Regression (#24): spec.selector is immutable. It must carry only the stable
-// identity (name + instance, plus color for blue/green) and must NOT include
-// managed-by or arbitrary user labels — otherwise adding/changing any such
-// label, or dropping the color on a later release, makes the apiserver reject a
-// plain `kubectl apply`. The full label set still lives on the object and pod
-// template via GetColorLabels.
-func TestDeploymentSelectorExcludesMutableLabels(t *testing.T) {
+// Regression: spec.selector is immutable, and existing deployments created by
+// pre-v0.7 app2kube carry the full label set (GetColorLabels) in their selector.
+// To upgrade those in place, the rendered selector must stay byte-identical to
+// the pod template labels (the full set, incl. managed-by and user labels) — a
+// narrower selector would make `kubectl apply` reject the update as immutable.
+func TestDeploymentSelectorMatchesPodTemplateLabels(t *testing.T) {
 	app := deployApp(t)
 	app.Labels[LabelName] = "example"
 	app.Labels["team"] = "payments" // arbitrary user label
@@ -551,22 +590,78 @@ func TestDeploymentSelectorExcludesMutableLabels(t *testing.T) {
 		t.Fatalf("GetDeployment: %v", err)
 	}
 	sel := dep.Spec.Selector.MatchLabels
+	tmpl := dep.Spec.Template.Labels
 
-	if _, ok := sel["team"]; ok {
-		t.Errorf("user label must not be in immutable selector: %+v", sel)
+	// Selector and pod template labels must be identical for backward compat.
+	if len(sel) != len(tmpl) {
+		t.Fatalf("selector and pod template labels differ: sel=%+v tmpl=%+v", sel, tmpl)
 	}
-	if _, ok := sel[LabelManagedBy]; ok {
-		t.Errorf("managed-by must not be in immutable selector: %+v", sel)
+	for k, v := range tmpl {
+		if sel[k] != v {
+			t.Errorf("selector must match pod template label %q: sel=%+v tmpl=%+v", k, sel, tmpl)
+		}
 	}
-	if sel[LabelName] != "example" {
-		t.Errorf("selector must keep name: %+v", sel)
+	// The full label set is present: name, instance, managed-by and user labels.
+	if sel[LabelName] != "example" || sel[LabelInstance] != "production" {
+		t.Errorf("selector must keep name+instance: %+v", sel)
 	}
-	if sel[LabelInstance] != "production" {
-		t.Errorf("selector must keep instance: %+v", sel)
+	if sel[LabelManagedBy] == "" {
+		t.Errorf("selector must keep managed-by for backward compat: %+v", sel)
 	}
-	// The pod template must still carry the full label set (incl. the user label).
-	if dep.Spec.Template.Labels["team"] != "payments" {
-		t.Errorf("pod template must keep user labels: %+v", dep.Spec.Template.Labels)
+	if sel["team"] != "payments" {
+		t.Errorf("selector must keep user labels for backward compat: %+v", sel)
+	}
+}
+
+// Regression: the common.resources baseline is applied to each app-image
+// container via a deep copy, so containers (and app.Common.Resources) get
+// independent Requests/Limits maps instead of aliasing one shared map.
+func TestCommonResourcesNotAliasedAcrossContainers(t *testing.T) {
+	app := deployApp(t)
+	app.Deployment.Containers = map[string]apiv1.Container{
+		"a": {Image: "example/app:v1"},
+		"b": {Image: "example/app:v1"},
+	}
+	app.Common.Resources = &apiv1.ResourceRequirements{
+		Requests: apiv1.ResourceList{apiv1.ResourceCPU: resource.MustParse("100m")},
+	}
+
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	containers := dep.Spec.Template.Spec.Containers
+	if len(containers) != 2 {
+		t.Fatalf("expected 2 containers, got %d", len(containers))
+	}
+
+	// Mutating one container's Requests must not leak into the other container
+	// or the shared app.Common.Resources.
+	containers[0].Resources.Requests[apiv1.ResourceMemory] = resource.MustParse("64Mi")
+	if _, ok := containers[1].Resources.Requests[apiv1.ResourceMemory]; ok {
+		t.Errorf("containers share the same Requests map (aliasing)")
+	}
+	if _, ok := app.Common.Resources.Requests[apiv1.ResourceMemory]; ok {
+		t.Errorf("container mutated the shared app.Common.Resources map (aliasing)")
+	}
+}
+
+// Regression: podSecurityContext returns an independent deep copy of the
+// user-supplied common.securityContext, so the Deployment and CronJob pod specs
+// do not alias one struct.
+func TestPodSecurityContextNotAliased(t *testing.T) {
+	app := deployApp(t)
+	app.Common.SecurityContext = &apiv1.PodSecurityContext{RunAsUser: ptr.To(int64(1000))}
+
+	a := app.podSecurityContext()
+	b := app.podSecurityContext()
+	a.RunAsUser = ptr.To(int64(2000))
+
+	if b.RunAsUser == nil || *b.RunAsUser != 1000 {
+		t.Errorf("podSecurityContext must return independent copies, got b=%v", b.RunAsUser)
+	}
+	if *app.Common.SecurityContext.RunAsUser != 1000 {
+		t.Errorf("podSecurityContext must not alias app.Common.SecurityContext")
 	}
 }
 

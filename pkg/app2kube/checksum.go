@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"sort"
 
@@ -9,11 +10,11 @@ import (
 )
 
 // dataChecksum returns a deterministic lowercase-hex sha256 over a key/value
-// data map. Keys are sorted and each pair is emitted in the canonical
-// "key=value\n" form, so the digest is stable regardless of Go's random map
-// iteration order. It backs the checksum/* pod-template annotations, so a change
-// to the rendered ConfigMap/Secret content changes the digest and rolls the
-// workload (#22).
+// data map. Keys are sorted and each key and value is length-prefixed before
+// hashing, so the encoding is injective: maps that differ only in where a '='
+// or newline falls (e.g. {"A":"1\nB=2"} vs {"A":"1","B":"2"}) hash differently.
+// It backs the checksum/* pod-template annotations, so a change to the rendered
+// ConfigMap/Secret content changes the digest and rolls the workload (#22).
 func dataChecksum(data map[string][]byte) string {
 	keys := make([]string, 0, len(data))
 	for k := range data {
@@ -22,11 +23,15 @@ func dataChecksum(data map[string][]byte) string {
 	sort.Strings(keys)
 
 	h := sha256.New()
+	var lenBuf [8]byte
+	writeField := func(b []byte) {
+		binary.BigEndian.PutUint64(lenBuf[:], uint64(len(b)))
+		h.Write(lenBuf[:])
+		h.Write(b)
+	}
 	for _, k := range keys {
-		h.Write([]byte(k))
-		h.Write([]byte("="))
-		h.Write(data[k])
-		h.Write([]byte("\n"))
+		writeField([]byte(k))
+		writeField(data[k])
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }

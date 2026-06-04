@@ -10,6 +10,14 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
+// deleteAllResourceTypes is the comma-separated kubectl resource list `delete
+// all` removes by app label selector. kubectl's "all" category does not cover
+// the namespaced extras app2kube emits, so each is named explicitly; it must
+// stay in sync with the resource generators (output.go) — notably
+// poddisruptionbudgets, which "all" excludes and which would otherwise survive
+// teardown and keep blocking node drains.
+const deleteAllResourceTypes = "all,ingress,configmap,secret,pvc,poddisruptionbudgets"
+
 // deleteArgs accepts no positional arguments or exactly "all"; anything else
 // (which delete used to forward verbatim to kubectl with no app-aware selector)
 // is rejected (#63).
@@ -54,7 +62,7 @@ func NewCmdDelete() *cobra.Command {
 			if opts.includeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
-				args = []string{"all,ingress,configmap,secret,pvc"}
+				args = []string{deleteAllResourceTypes}
 				o.LabelSelector, err = scopedSelector(app.Labels)
 				cmdutil.CheckErr(err)
 			} else if len(args) == 0 {

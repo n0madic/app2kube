@@ -137,7 +137,20 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			})
 		}
 
+		// Attach a PVC volume only when a container in this cron actually mounts
+		// it: processContainer mounts app.Volumes solely on app-image containers,
+		// so a cron built entirely from third-party images references none and
+		// must not carry a dangling volume.
+		mounted := make(map[string]bool)
+		for _, c := range containers {
+			for _, vm := range c.VolumeMounts {
+				mounted[vm.Name] = true
+			}
+		}
 		for volName := range app.Volumes {
+			if !mounted[volName] {
+				continue
+			}
 			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
 				Name: volName,
 				VolumeSource: apiv1.VolumeSource{

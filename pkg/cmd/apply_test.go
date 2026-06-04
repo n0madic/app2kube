@@ -1,9 +1,29 @@
 package cmd
 
 import (
+	"slices"
 	"strings"
 	"testing"
 )
+
+// Regression: a PodDisruptionBudget is emitted with the Deployment but is
+// conditional on replicas>1, so it can drop out of the manifest. `apply --prune`
+// must be allowed to delete it, otherwise scaling back to a single replica
+// orphans a minAvailable PDB that blocks every node drain.
+func TestApplyPruneWhitelistIncludesPDB(t *testing.T) {
+	if !slices.Contains(applyPruneWhitelist, "policy/v1/PodDisruptionBudget") {
+		t.Errorf("apply --prune whitelist must include policy/v1/PodDisruptionBudget: %v", applyPruneWhitelist)
+	}
+}
+
+// Regression: kubectl's "all" category excludes PodDisruptionBudgets, so
+// `delete all` must name poddisruptionbudgets explicitly or the PDB survives
+// teardown and keeps blocking voluntary disruptions.
+func TestDeleteAllResourceTypesIncludesPDB(t *testing.T) {
+	if !strings.Contains(deleteAllResourceTypes, "poddisruptionbudget") {
+		t.Errorf("`delete all` resource list must include poddisruptionbudgets: %q", deleteAllResourceTypes)
+	}
+}
 
 // #60: on a blue/green phase-1 or trackReady failure the operator must be told
 // the new color was deployed but traffic was NOT switched, and that re-running

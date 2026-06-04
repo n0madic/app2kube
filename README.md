@@ -241,6 +241,12 @@ The Deployment's `spec.selector` is kept to a minimal, stable identity — `name
 
 **Namespace precedence.** The namespace is resolved as `--namespace` flag > value-file `namespace:` > `default`. An explicitly-set `--namespace` wins even when empty, so `--namespace ""` forces the `default` namespace over a value-file setting.
 
+**Image pull policy.** When `image.pullPolicy` is unset, app2kube sets it explicitly (instead of relying on Kubernetes' version-specific implicit rule) so deploys are reproducible: an image tagged `:latest`, with no tag, defaults to `Always`; a fixed tag or a digest-pinned image (`@sha256:...`) defaults to `IfNotPresent`. A `:latest` common image in a non-staging deploy also prints a stderr warning — pin a specific tag or digest for reproducible rollouts.
+
+**Rollout strategy.** When `deployment.strategy` is unset it defaults to a zero-downtime `RollingUpdate` (`maxUnavailable: 0`, `maxSurge: 1`) so no pod is removed before its replacement is Ready, and `deployment.progressDeadlineSeconds` defaults to 15 minutes (`900`) — matching the default deploy tracking timeout — so a wedged rollout reports failure instead of hanging. Both are overridable.
+
+**Disruption budget.** When the Deployment runs more than one replica, app2kube emits a `PodDisruptionBudget` with `minAvailable: 1` (rendered with the Deployment, also selectable via `--type pdb`) so a node drain/upgrade cannot evict all replicas at once. A single-replica deploy gets none — a `minAvailable: 1` PDB would block every drain — and therefore has no voluntary-disruption protection.
+
 ## Examples
 
 Simple web service:

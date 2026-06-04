@@ -1,12 +1,52 @@
 package app2kube
 
 import (
+	"strings"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 )
+
+// #46: an unset deployment strategy defaults to a zero-downtime RollingUpdate
+// (maxUnavailable:0, maxSurge:1) and an explicit progressDeadlineSeconds, so a
+// wedged rollout reports failure instead of hanging.
+func TestGetDeploymentRolloutDefaults(t *testing.T) {
+	app := deployApp(t)
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if dep.Spec.Strategy.Type != appsv1.RollingUpdateDeploymentStrategyType {
+		t.Errorf("strategy type: got %q, want RollingUpdate", dep.Spec.Strategy.Type)
+	}
+	ru := dep.Spec.Strategy.RollingUpdate
+	if ru == nil || ru.MaxUnavailable.IntValue() != 0 || ru.MaxSurge.IntValue() != 1 {
+		t.Errorf("rolling update default: got %+v", ru)
+	}
+	if dep.Spec.ProgressDeadlineSeconds == nil || *dep.Spec.ProgressDeadlineSeconds != 15*60 {
+		t.Errorf("progressDeadlineSeconds default: got %v, want 900 (15m)", dep.Spec.ProgressDeadlineSeconds)
+	}
+}
+
+// #46: a user-provided strategy and progressDeadlineSeconds must be preserved.
+func TestGetDeploymentRolloutUserOverride(t *testing.T) {
+	app := deployApp(t)
+	app.Deployment.Strategy = appsv1.DeploymentStrategy{Type: appsv1.RecreateDeploymentStrategyType}
+	app.Deployment.ProgressDeadlineSeconds = ptr.To(int32(120))
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if dep.Spec.Strategy.Type != appsv1.RecreateDeploymentStrategyType {
+		t.Errorf("user strategy not preserved: got %q", dep.Spec.Strategy.Type)
+	}
+	if dep.Spec.ProgressDeadlineSeconds == nil || *dep.Spec.ProgressDeadlineSeconds != 120 {
+		t.Errorf("user progressDeadlineSeconds not preserved: got %v", dep.Spec.ProgressDeadlineSeconds)
+	}
+}
 
 // deployApp returns a minimal App with a single named container, ready for
 // resource generation. Behavior-locking tests build on top of it.
@@ -67,6 +107,79 @@ func TestCronJobPointerFieldsAreCopies(t *testing.T) {
 
 	if got := *crons[0].Spec.JobTemplate.Spec.Template.Spec.EnableServiceLinks; got != true {
 		t.Errorf("EnableServiceLinks aliased the live App field (got %v after mutation)", got)
+	}
+}
+
+// #45: the pull policy is set explicitly (mirroring k8s' implicit rule) so a
+// deploy is reproducible — :latest / no tag / unknown → Always, a fixed tag or
+// digest → IfNotPresent. A registry host:port must not be mistaken for a tag.
+func TestDefaultPullPolicy(t *testing.T) {
+	cases := []struct {
+		image string
+		want  apiv1.PullPolicy
+	}{
+		{"repo:latest", apiv1.PullAlways},
+		{"repo:v1", apiv1.PullIfNotPresent},
+		{"repo", apiv1.PullAlways},
+		{"repo@sha256:abc", apiv1.PullIfNotPresent},
+		{"registry.io:5000/app:v1", apiv1.PullIfNotPresent},
+		{"registry.io:5000/app", apiv1.PullAlways},
+	}
+	for _, c := range cases {
+		if got := defaultPullPolicy(c.image); got != c.want {
+			t.Errorf("defaultPullPolicy(%q): got %q, want %q", c.image, got, c.want)
+		}
+	}
+}
+
+// #45: GetDeployment fills an explicit ImagePullPolicy when none is set.
+func TestGetDeploymentPullPolicyDefault(t *testing.T) {
+	app := deployApp(t) // container image example/app:v1
+	dep, err := app.GetDeployment()
+	if err != nil {
+		t.Fatalf("GetDeployment: %v", err)
+	}
+	if got := dep.Spec.Template.Spec.Containers[0].ImagePullPolicy; got != apiv1.PullIfNotPresent {
+		t.Errorf("pull policy for :v1: got %q, want IfNotPresent", got)
+	}
+}
+
+// #47: a PodDisruptionBudget is emitted only when the Deployment runs more than
+// one replica (a single-replica minAvailable:1 PDB would block every drain). It
+// must carry the same stable selector as the Deployment.
+func TestGetPodDisruptionBudget(t *testing.T) {
+	app := deployApp(t)
+
+	pdb, err := app.GetPodDisruptionBudget()
+	if err != nil {
+		t.Fatalf("GetPodDisruptionBudget: %v", err)
+	}
+	if pdb != nil {
+		t.Errorf("single-replica deploy must emit no PDB, got %+v", pdb)
+	}
+
+	app.Deployment.ReplicaCount = ptr.To(int32(3))
+	pdb, err = app.GetPodDisruptionBudget()
+	if err != nil {
+		t.Fatalf("GetPodDisruptionBudget: %v", err)
+	}
+	if pdb == nil {
+		t.Fatal("multi-replica deploy must emit a PDB")
+	}
+	if pdb.Spec.MinAvailable == nil || pdb.Spec.MinAvailable.IntValue() != 1 {
+		t.Errorf("minAvailable: got %v, want 1", pdb.Spec.MinAvailable)
+	}
+	if pdb.Spec.Selector == nil || pdb.Spec.Selector.MatchLabels[LabelName] != app.Labels[LabelName] {
+		t.Errorf("PDB selector must match the deployment: %+v", pdb.Spec.Selector)
+	}
+
+	// It renders via the manifest registry under "all".
+	m, err := app.GetManifest("yaml", OutputAll)
+	if err != nil {
+		t.Fatalf("GetManifest: %v", err)
+	}
+	if !strings.Contains(m, "PodDisruptionBudget") {
+		t.Errorf("multi-replica manifest must include a PodDisruptionBudget")
 	}
 }
 

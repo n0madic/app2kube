@@ -91,13 +91,14 @@ type CronjobSpec struct {
 
 // DeploymentSpec is the App's deployment configuration.
 type DeploymentSpec struct {
-	BlueGreenColor       string                     `yaml:"blueGreenColor"`
-	Containers           map[string]apiv1.Container `yaml:"containers"`
-	InitContainers       map[string]apiv1.Container `yaml:"initContainers"`
-	ReplicaCount         *int32                     `yaml:"replicaCount"`
-	ReplicaCountStaging  int32                      `yaml:"replicaCountStaging"`
-	RevisionHistoryLimit int32                      `yaml:"revisionHistoryLimit"`
-	Strategy             appsv1.DeploymentStrategy  `yaml:"strategy"`
+	BlueGreenColor          string                     `yaml:"blueGreenColor"`
+	Containers              map[string]apiv1.Container `yaml:"containers"`
+	InitContainers          map[string]apiv1.Container `yaml:"initContainers"`
+	ProgressDeadlineSeconds *int32                     `yaml:"progressDeadlineSeconds"`
+	ReplicaCount            *int32                     `yaml:"replicaCount"`
+	ReplicaCountStaging     int32                      `yaml:"replicaCountStaging"`
+	RevisionHistoryLimit    int32                      `yaml:"revisionHistoryLimit"`
+	Strategy                appsv1.DeploymentStrategy  `yaml:"strategy"`
 }
 
 // VolumeSpec is a single named persistent volume claim and its mount path.

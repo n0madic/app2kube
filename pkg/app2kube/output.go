@@ -34,6 +34,8 @@ const (
 	OutputNamespace
 	// OutputPersistentVolumeClaim only
 	OutputPersistentVolumeClaim
+	// OutputPodDisruptionBudget only
+	OutputPodDisruptionBudget
 	// OutputSecret only
 	OutputSecret
 	// OutputService only
@@ -134,6 +136,23 @@ var manifestGenerators = []generator{
 		},
 	},
 	{
+		// The PDB deploys with the Deployment (phase 1 of blue/green) so it
+		// protects the pods as soon as they exist; render returns nothing for a
+		// single-replica deploy (#47).
+		name:    "poddisruptionbudget",
+		selects: []OutputResource{OutputAll, OutputAllForDeployment, OutputPodDisruptionBudget},
+		render: func(app *App) ([]runtime.Object, error) {
+			pdb, err := app.GetPodDisruptionBudget()
+			if err != nil {
+				return nil, err
+			}
+			if pdb == nil {
+				return nil, nil
+			}
+			return []runtime.Object{pdb}, nil
+		},
+	},
+	{
 		name:    "service",
 		selects: []OutputResource{OutputAll, OutputAllOther, OutputService},
 		render: func(app *App) ([]runtime.Object, error) {
@@ -198,6 +217,7 @@ var outputTypeNames = map[string]OutputResource{
 	"cronjob":    OutputCronJob,
 	"deployment": OutputDeployment,
 	"ingress":    OutputIngress,
+	"pdb":        OutputPodDisruptionBudget,
 	"pvc":        OutputPersistentVolumeClaim,
 	"secret":     OutputSecret,
 	"service":    OutputService,

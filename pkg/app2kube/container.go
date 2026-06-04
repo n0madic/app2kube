@@ -112,6 +112,11 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 	if container.ImagePullPolicy == "" {
 		container.ImagePullPolicy = app.Common.Image.PullPolicy
 	}
+	if container.ImagePullPolicy == "" {
+		// Set the pull policy explicitly so the deploy is reproducible instead of
+		// depending on Kubernetes' version-specific implicit rule (#45).
+		container.ImagePullPolicy = defaultPullPolicy(container.Image)
+	}
 
 	if app.Staging != "" {
 		container.Resources = apiv1.ResourceRequirements{}
@@ -203,4 +208,26 @@ func sortedKeys(m map[string]string) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+// defaultPullPolicy mirrors Kubernetes' implicit pull-policy rule but sets it
+// explicitly so a deploy is reproducible: an image tagged :latest, with no tag,
+// or otherwise mutable defaults to Always; a fixed tag or a digest-pinned image
+// (@sha256:...) defaults to IfNotPresent (#45).
+func defaultPullPolicy(image string) apiv1.PullPolicy {
+	if strings.Contains(image, "@") {
+		return apiv1.PullIfNotPresent // digest-pinned: immutable
+	}
+	name := image
+	if i := strings.LastIndex(name, "/"); i >= 0 {
+		name = name[i+1:] // strip registry host[:port]/ so a port isn't read as a tag
+	}
+	tag := ""
+	if i := strings.LastIndex(name, ":"); i >= 0 {
+		tag = name[i+1:]
+	}
+	if tag == "" || tag == "latest" {
+		return apiv1.PullAlways
+	}
+	return apiv1.PullIfNotPresent
 }

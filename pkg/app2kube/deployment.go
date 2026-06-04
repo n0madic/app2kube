@@ -8,6 +8,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -28,6 +29,13 @@ func (app *App) podSecurityContext() *apiv1.PodSecurityContext {
 // GetDeployment resource
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
+		// A mutable :latest common image tag in a non-staging deploy is not
+		// reproducible (and relies on the pull policy to refresh cached nodes);
+		// warn so the operator can pin a specific tag or digest (#45).
+		if app.Staging == "" && app.Common.Image.Repository != "" && app.Common.Image.Tag == "latest" {
+			fmt.Fprintf(os.Stderr, "WARNING: image %s:latest is a mutable tag; the deploy is not reproducible — pin a specific tag or digest\n", app.Common.Image.Repository)
+		}
+
 		// An unset replicaCount defaults to 1; an explicit value (including 0, for
 		// scale-to-zero) is honored. The field is *int32 so unset is
 		// distinguishable from an explicit 0 (#42).
@@ -70,15 +78,39 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		// containers, so only the config actually wired in is hashed.
 		checksums := app.configChecksumAnnotations(append(append([]apiv1.Container{}, containers...), initContainers...))
 
+		// Default to a zero-downtime rolling update when no strategy is given:
+		// never take a pod down before its replacement is Ready (#46).
+		strategy := app.Deployment.Strategy
+		if strategy.Type == "" {
+			strategy = appsv1.DeploymentStrategy{
+				Type: appsv1.RollingUpdateDeploymentStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateDeployment{
+					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
+					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
+				},
+			}
+		}
+
+		// Bound a wedged rollout so `kubectl rollout status`/kubedog reports
+		// failure instead of hanging (#46). Defaults to 15 minutes (900s) to match
+		// app2kube's default track timeout (cmd.defaultTrackTimeout), so the
+		// Deployment's own progress deadline and `apply --track`/blue-green agree
+		// on when a rollout has failed instead of one firing before the other.
+		progressDeadline := app.Deployment.ProgressDeadlineSeconds
+		if progressDeadline == nil {
+			progressDeadline = ptr.To(int32(15 * 60))
+		}
+
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
-				Replicas:             ptr.To(replicas),
-				RevisionHistoryLimit: ptr.To(app.Deployment.RevisionHistoryLimit),
+				Replicas:                ptr.To(replicas),
+				RevisionHistoryLimit:    ptr.To(app.Deployment.RevisionHistoryLimit),
+				ProgressDeadlineSeconds: progressDeadline,
 				Selector: &metav1.LabelSelector{
 					MatchLabels: app.GetSelectorLabels(),
 				},
-				Strategy: app.Deployment.Strategy,
+				Strategy: strategy,
 				Template: apiv1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels:      app.GetColorLabels(),

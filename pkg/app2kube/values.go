@@ -115,8 +115,15 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 	// User specified a value via --set-file
 	for _, value := range fileValues {
 		reader := func(rs []rune) (interface{}, error) {
-			bytes, err := os.ReadFile(string(rs))
-			return strings.TrimSpace(string(bytes)), err
+			b, err := os.ReadFile(string(rs))
+			if err != nil {
+				// Don't derive a value on the read-error path (#39): strvals stores
+				// whatever the reader returns under the key *before* it sees the
+				// error, so returning a value here would leave an empty key in the
+				// (then discarded) map. The error aborts the load regardless.
+				return "", err
+			}
+			return strings.TrimSpace(string(b)), nil
 		}
 		if err := strvals.ParseIntoFile(value, base, reader); err != nil {
 			return []byte{}, fmt.Errorf("failed parsing --set-file data: %w", err)

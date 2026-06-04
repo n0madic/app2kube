@@ -109,12 +109,17 @@ func TestValsSetFile(t *testing.T) {
 	}
 }
 
-// #36: --set-file pointing at a missing file must return an error rather than
-// silently producing an empty/partial value.
+// #36/#39: --set-file pointing at a missing file must return an error and no
+// value — the reader does not derive a value on the read-error path, so a
+// failed read can never surface as a silently-empty key.
 func TestValsSetFileMissingError(t *testing.T) {
 	missing := filepath.Join(t.TempDir(), "nope.txt")
-	if _, err := vals(nil, nil, nil, []string{"password=" + missing}); err == nil {
+	out, err := vals(nil, nil, nil, []string{"password=" + missing})
+	if err == nil {
 		t.Errorf("expected error for --set-file pointing at a missing file")
+	}
+	if len(out) != 0 {
+		t.Errorf("no value must be returned on a read error, got %q", string(out))
 	}
 }
 

@@ -712,6 +712,49 @@ func TestIngressConflictingClassError(t *testing.T) {
 	}
 }
 
+// Regression: two distinct cronjob keys whose "<release>-<name>" both exceed the
+// 52-char CronJob limit and share the same first 52 characters truncate to the
+// SAME object name. Emitting two CronJobs with an identical metadata.name would
+// silently drop one on `kubectl apply` (only the last-applied survives), so the
+// collision must surface as an error instead.
+func TestGetCronJobsTruncationNameCollisionErrors(t *testing.T) {
+	app := deployApp(t)
+	// A 45-char release name + "-report" (first 7 chars of both suffixes) fills
+	// exactly the 52-char cap, so both crons truncate to the identical name.
+	app.Name = strings.Repeat("a", 45)
+	app.Cronjob = map[string]CronjobSpec{
+		"report-generation-daily":  {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
+		"report-generation-weekly": {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
+	}
+
+	if _, err := app.GetCronJobs(); err == nil {
+		t.Fatalf("expected an error for colliding truncated cronjob names, got nil")
+	}
+}
+
+// Distinct cronjob keys that truncate to different names must still generate
+// independently — the collision guard must not reject every long-named cron.
+func TestGetCronJobsDistinctTruncatedNamesOK(t *testing.T) {
+	app := deployApp(t)
+	app.Common.Image.Repository = "example/app"
+	app.Name = strings.Repeat("a", 45)
+	app.Cronjob = map[string]CronjobSpec{
+		"alpha": {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
+		"omega": {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
+	}
+
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if len(crons) != 2 {
+		t.Fatalf("expected 2 cronjobs, got %d", len(crons))
+	}
+	if crons[0].Name == crons[1].Name {
+		t.Errorf("distinct crons must keep distinct names, both %q", crons[0].Name)
+	}
+}
+
 func zeros(n int) string {
 	b := make([]byte, n)
 	for i := range b {

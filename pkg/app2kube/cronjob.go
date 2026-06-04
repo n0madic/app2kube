@@ -12,7 +12,15 @@ import (
 
 // GetCronJobs resource
 func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
-	for cronName, job := range app.Cronjob {
+	// Track the final object names so two distinct cron keys that collapse to the
+	// same name — via the 52-char cap or lowercasing — surface as an error instead
+	// of silently overwriting each other on `kubectl apply` (only the last applied
+	// would survive). Maps original cron key -> emitted name for a clear message.
+	usedNames := make(map[string]string, len(app.Cronjob))
+	// Sorted iteration keeps the rendered cronjob list — and any collision error —
+	// stable across runs instead of depending on Go's random map order.
+	for _, cronName := range sortedKeys(app.Cronjob) {
+		job := app.Cronjob[cronName]
 		// The CronJob object name and the default container name must be valid
 		// DNS-1123 names, so lowercase the (possibly mixed-case) map key — matching
 		// how the sub-containers below are lowercased. A CronJob object name is
@@ -21,6 +29,11 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		// other objects use.
 		lowerName := strings.ToLower(cronName)
 		cronJobName := truncateNameTo(app.GetReleaseName()+"-"+lowerName, MaxCronJobNameLength)
+
+		if other, ok := usedNames[cronJobName]; ok {
+			return crons, fmt.Errorf("cronjob name collision: %q and %q both map to %q (shorten one of the cronjob names)", other, cronName, cronJobName)
+		}
+		usedNames[cronJobName] = cronName
 
 		if job.Schedule == "" {
 			return crons, fmt.Errorf("schedule required for cron: %s", cronName)

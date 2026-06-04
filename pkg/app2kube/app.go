@@ -15,8 +15,22 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// MaxNameLength of App
+// MaxNameLength is the DNS-1123 *label* limit (RFC 1035): the cap for object
+// names that must themselves be labels (Service) and for label values.
 const MaxNameLength = 63
+
+// MaxSubdomainNameLength is the DNS-1123 *subdomain* limit (RFC 1123): the cap
+// for object names that may legally be longer than a label — ConfigMap, Secret,
+// PersistentVolumeClaim, Deployment, PodDisruptionBudget and Ingress. Capping
+// those at MaxNameLength would needlessly shorten longer names and diverge from
+// what earlier app2kube releases emitted, orphaning the live object on apply.
+const MaxSubdomainNameLength = 253
+
+// MaxCronJobNameLength caps a CronJob object name: the CronJob controller
+// appends an ~11-char timestamp suffix to the 63-char Job name it spawns, so the
+// CronJob name itself must stay within 63-11 = 52 characters — stricter than
+// other subdomain-named objects.
+const MaxCronJobNameLength = 52
 
 // IngressCommon specification
 type IngressCommon struct {
@@ -141,10 +155,9 @@ func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 }
 
 // GetReleaseName of App. It backs the ConfigMap/Secret object names and their
-// envFrom references, so it is truncated to a DNS-1123-valid length here — the
-// single source of that rule — keeping it consistent with the Service/PVC/cron
-// name helpers (which build on it) instead of leaving the ConfigMap/Secret names
-// over-length where a long app name would be rejected by the apiserver on apply.
+// envFrom references, which are DNS-1123 subdomains, so it is capped at the
+// subdomain limit (253) — the single source of that rule. The Service and
+// CronJob helpers build on it and re-cap to their own stricter limits (label/52).
 func (app *App) GetReleaseName() string {
 	releaseName := app.Name
 	if app.Staging != "" {
@@ -153,18 +166,18 @@ func (app *App) GetReleaseName() string {
 			releaseName = app.Name + "-" + app.Branch
 		}
 	}
-	return truncateName(strings.ToLower(releaseName))
+	return truncateNameTo(strings.ToLower(releaseName), MaxSubdomainNameLength)
 }
 
-// GetDeploymentName of App. Truncated like GetReleaseName so the Deployment and
-// PDB object names stay DNS-1123-valid even when the color suffix pushes a long
-// release name past the limit.
+// GetDeploymentName of App. The Deployment and PDB object names are DNS-1123
+// subdomains, so they are capped at the subdomain limit (253) even when the
+// color suffix pushes a long release name past it.
 func (app *App) GetDeploymentName() string {
 	deploymentName := app.GetReleaseName()
 	if app.Deployment.BlueGreenColor != "" {
 		deploymentName += "-" + app.Deployment.BlueGreenColor
 	}
-	return truncateName(strings.ToLower(deploymentName))
+	return truncateNameTo(strings.ToLower(deploymentName), MaxSubdomainNameLength)
 }
 
 // GetServiceName returns the cluster Service name for a named service entry:
@@ -180,13 +193,13 @@ func (app *App) GetServiceName(name string) string {
 }
 
 // GetVolumeClaimName returns the PersistentVolumeClaim name for a named volume,
-// "<release>-<volName>", truncated to a DNS-1123-valid length. It is the single
-// source of this rule so the emitted PVC object (pvc.go) and the pod volume
-// references (deployment.go, cronjob.go) cannot drift to mismatched names —
-// a mismatch would make pods fail to schedule with "persistentvolumeclaim not
-// found".
+// "<release>-<volName>", capped at the DNS-1123 subdomain limit (253) — a PVC
+// name is a subdomain. It is the single source of this rule so the emitted PVC
+// object (pvc.go) and the pod volume references (deployment.go, cronjob.go)
+// cannot drift to mismatched names — a mismatch would make pods fail to schedule
+// with "persistentvolumeclaim not found".
 func (app *App) GetVolumeClaimName(volName string) string {
-	return truncateName(app.GetReleaseName() + "-" + volName)
+	return truncateNameTo(app.GetReleaseName()+"-"+volName, MaxSubdomainNameLength)
 }
 
 // GetColorLabels returns a copy of the app labels, adding the blue/green color
@@ -380,9 +393,18 @@ func (app *App) ensureLabels() {
 	}
 }
 
+// truncateName trims a name to the DNS-1123 label limit (the strictest, used by
+// Service names and label values).
 func truncateName(name string) string {
-	if len(name) > MaxNameLength {
-		name = name[0:MaxNameLength]
+	return truncateNameTo(name, MaxNameLength)
+}
+
+// truncateNameTo trims name to at most max bytes, then strips trailing
+// characters that are not letters or digits so the result remains a valid
+// DNS-1123 name end.
+func truncateNameTo(name string, max int) string {
+	if len(name) > max {
+		name = name[0:max]
 	}
 	return strings.TrimRightFunc(name, func(r rune) bool {
 		return !unicode.IsLetter(r) && !unicode.IsNumber(r)

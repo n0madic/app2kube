@@ -421,24 +421,34 @@ func TestIngressLetsencryptSecretEmittedForPrune(t *testing.T) {
 	}
 }
 
-// Object names combining the release name with a user-controlled key
-// (service/volume/cron/ingress) must be truncated to the 63-char DNS-1123 limit
-// so a long app name plus a long key is not rejected by the apiserver on apply.
-func TestObjectNamesTruncatedTo63(t *testing.T) {
+// Object names combining the release name with a user-controlled key must stay
+// within the apiserver's per-kind limit: a Service name is a DNS-1123 label
+// (63); PVC/ConfigMap/Secret/Deployment/Ingress names are DNS-1123 subdomains
+// (253) and must NOT be shortened to 63 (which would diverge from the name
+// earlier releases emitted and orphan the live object on apply); a CronJob name
+// is capped at 52 (the controller appends a suffix to the Job it spawns).
+func TestObjectNamesWithinLimits(t *testing.T) {
 	longKey := strings.Repeat("b", 40)
 
 	app := NewApp()
 	app.Name = strings.Repeat("a", 50)
 
+	// Service: DNS-1123 label limit (63).
 	if got := app.GetServiceName(longKey); len(got) > MaxNameLength {
-		t.Errorf("service name not truncated: len=%d (%q)", len(got), got)
+		t.Errorf("service name over label limit: len=%d (%q)", len(got), got)
 	}
-	if got := app.GetVolumeClaimName(longKey); len(got) > MaxNameLength {
-		t.Errorf("claim name not truncated: len=%d (%q)", len(got), got)
+
+	// PVC: subdomain limit (253) — the full name is kept, not shortened to 63.
+	wantClaim := strings.ToLower(app.GetReleaseName() + "-" + longKey)
+	if got := app.GetVolumeClaimName(longKey); got != wantClaim {
+		t.Errorf("claim name must be kept in full: got %q, want %q", got, wantClaim)
+	}
+	if got := app.GetVolumeClaimName(longKey); len(got) <= MaxNameLength || len(got) > MaxSubdomainNameLength {
+		t.Errorf("claim name must use the subdomain limit, not 63: len=%d (%q)", len(got), got)
 	}
 
 	// The PVC object name and the pod volume reference must use the same helper,
-	// so they stay byte-identical even after truncation.
+	// so they stay byte-identical.
 	app.Volumes = map[string]VolumeSpec{
 		longKey: {MountPath: "/data", Spec: apiv1.PersistentVolumeClaimSpec{
 			AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce},
@@ -452,7 +462,7 @@ func TestObjectNamesTruncatedTo63(t *testing.T) {
 		t.Errorf("PVC object name %q must equal GetVolumeClaimName %q", claims[0].Name, app.GetVolumeClaimName(longKey))
 	}
 
-	// CronJob object name truncated.
+	// CronJob: capped at 52.
 	app.Common.Image.Repository = "example/app"
 	app.Cronjob = map[string]CronjobSpec{
 		longKey: {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"true"}}},
@@ -461,29 +471,36 @@ func TestObjectNamesTruncatedTo63(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCronJobs: %v", err)
 	}
-	if len(crons[0].Name) > MaxNameLength {
-		t.Errorf("cronjob name not truncated: len=%d (%q)", len(crons[0].Name), crons[0].Name)
+	if len(crons[0].Name) > MaxCronJobNameLength {
+		t.Errorf("cronjob name over %d-char limit: len=%d (%q)", MaxCronJobNameLength, len(crons[0].Name), crons[0].Name)
 	}
 
-	// Ingress object name truncated.
+	// Ingress object name uses the 253-char DNS subdomain limit, so a long name
+	// is kept in full (not shortened to 63) — byte-identical to earlier releases.
 	app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
 	app.Service = map[string]Service{"web": {Port: 80}}
-	app.Ingress = []Ingress{{Host: strings.Repeat("h", 60) + ".example.com"}}
+	longHost := strings.Repeat("h", 60) + ".example.com"
+	app.Ingress = []Ingress{{Host: longHost}}
 	ings, err := app.GetIngress()
 	if err != nil {
 		t.Fatalf("GetIngress: %v", err)
 	}
-	if len(ings[0].Name) > MaxNameLength {
-		t.Errorf("ingress name not truncated: len=%d (%q)", len(ings[0].Name), ings[0].Name)
+	wantIngName := strings.ToLower(app.Name + "-" + longHost)
+	if ings[0].Name != wantIngName {
+		t.Errorf("ingress name must be kept in full (not truncated to 63): got %q, want %q", ings[0].Name, wantIngName)
+	}
+	if len(ings[0].Name) > MaxSubdomainNameLength {
+		t.Errorf("ingress name over subdomain limit %d: len=%d (%q)", MaxSubdomainNameLength, len(ings[0].Name), ings[0].Name)
 	}
 }
 
-// Regression (truncateName consistency): a long app name must yield DNS-1123-valid
-// (<=63 char) names for EVERY object, not just Service/PVC. GetReleaseName backs
-// the ConfigMap/Secret names (and their envFrom refs) and GetDeploymentName backs
-// the Deployment/PDB names; if those skipped truncation a long name would produce
-// objects the apiserver rejects while the Service/PVC for the same app were
-// truncated — splitting the app across mismatched names.
+// Regression: a long app name must yield apiserver-valid, mutually-consistent
+// names for EVERY object. GetReleaseName backs the ConfigMap/Secret names (and
+// their envFrom refs) and GetDeploymentName backs the Deployment/PDB names;
+// these are DNS-1123 subdomains, so they are kept up to 253 chars (NOT shortened
+// to the 63-char label limit, which would orphan the live object) and stay
+// byte-identical to each other instead of splitting the app across mismatched
+// names.
 func TestLongNameAllObjectNamesValid(t *testing.T) {
 	app := NewApp()
 	app.Name = strings.Repeat("a", 70)
@@ -496,18 +513,20 @@ func TestLongNameAllObjectNamesValid(t *testing.T) {
 	app.ConfigMap = map[string]string{"K": "v"}
 	app.Secrets = map[string]string{"s": "v"}
 
-	if n := app.GetReleaseName(); len(n) > MaxNameLength {
-		t.Errorf("release name over %d-char limit: %d (%q)", MaxNameLength, len(n), n)
+	// The release/deployment names are subdomains: kept in full (here 70+ chars,
+	// not shortened to the 63-char label limit) and within the 253-char limit.
+	if n := app.GetReleaseName(); len(n) <= MaxNameLength || len(n) > MaxSubdomainNameLength {
+		t.Errorf("release name: len=%d (%q), want kept full within %d", len(n), n, MaxSubdomainNameLength)
 	}
-	if n := app.GetDeploymentName(); len(n) > MaxNameLength {
-		t.Errorf("deployment name over %d-char limit: %d (%q)", MaxNameLength, len(n), n)
+	if n := app.GetDeploymentName(); len(n) <= MaxNameLength || len(n) > MaxSubdomainNameLength {
+		t.Errorf("deployment name: len=%d (%q), want kept full within %d", len(n), n, MaxSubdomainNameLength)
 	}
 
 	dep, err := app.GetDeployment()
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)
 	}
-	if len(dep.Name) > MaxNameLength || dep.Name != app.GetDeploymentName() {
+	if len(dep.Name) > MaxSubdomainNameLength || dep.Name != app.GetDeploymentName() {
 		t.Errorf("deployment object name %q (len %d)", dep.Name, len(dep.Name))
 	}
 
@@ -523,7 +542,7 @@ func TestLongNameAllObjectNamesValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetConfigMap: %v", err)
 	}
-	if cm.Name != app.GetReleaseName() || len(cm.Name) > MaxNameLength {
+	if cm.Name != app.GetReleaseName() || len(cm.Name) > MaxSubdomainNameLength {
 		t.Errorf("configmap object name %q (len %d)", cm.Name, len(cm.Name))
 	}
 
@@ -531,7 +550,7 @@ func TestLongNameAllObjectNamesValid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetSecret: %v", err)
 	}
-	if sec.Name != app.GetReleaseName() || len(sec.Name) > MaxNameLength {
+	if sec.Name != app.GetReleaseName() || len(sec.Name) > MaxSubdomainNameLength {
 		t.Errorf("secret object name %q (len %d)", sec.Name, len(sec.Name))
 	}
 }

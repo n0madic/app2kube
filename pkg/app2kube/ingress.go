@@ -66,7 +66,11 @@ func (app *App) IngressAliases(ing Ingress) []string {
 func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 	if len(app.Deployment.Containers) > 0 && len(app.Service) > 0 {
 		for _, ing := range app.Ingress {
-			ingressName := truncateName(strings.ToLower(app.Name + "-" + wildcardHost(ing.Host)))
+			// An Ingress object name is a DNS-1123 subdomain (253 chars), not a
+			// label (63): cap it at the subdomain limit so a longer name is kept
+			// byte-identical to what earlier releases emitted instead of being
+			// shortened to 63 (which would orphan the live Ingress on apply).
+			ingressName := truncateNameTo(strings.ToLower(app.Name+"-"+wildcardHost(ing.Host)), MaxSubdomainNameLength)
 
 			newIngress := &v1.Ingress{
 				ObjectMeta: app.GetObjectMeta(ingressName),

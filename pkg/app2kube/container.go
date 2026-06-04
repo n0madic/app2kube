@@ -173,24 +173,14 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 				}
 			}
 
-			// Add a ReadinessProbe mirroring the liveness target when none is
-			// configured, so traffic is routed only once the port accepts
-			// connections. Scoped to app-image containers (like the
-			// securityContext/resources defaults): an auto readiness probe on a
-			// third-party sidecar could fail and make the whole pod NotReady,
-			// blocking traffic to the main app. A user-provided readiness probe
-			// still gets a missing HTTPGet port filled, for any container.
-			if reflect.ValueOf(container.ReadinessProbe).IsNil() {
-				if !thirdpartyImage {
-					container.ReadinessProbe = &apiv1.Probe{
-						ProbeHandler: apiv1.ProbeHandler{
-							TCPSocket: &apiv1.TCPSocketAction{
-								Port: containerPort,
-							},
-						},
-					}
-				}
-			} else if !reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() && portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
+			// Only fill a missing port on an existing ReadinessProbe; do NOT
+			// auto-create one. A readiness probe gates Service traffic and rollout
+			// progress, so introducing it implicitly can wedge the rollout of an
+			// app that is not yet accepting connections on its first port —
+			// readiness is left to explicit configuration (pre-v0.7 behavior).
+			if !reflect.ValueOf(container.ReadinessProbe).IsNil() &&
+				!reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() &&
+				portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
 				container.ReadinessProbe.HTTPGet.Port = containerPort
 			}
 

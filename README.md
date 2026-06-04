@@ -8,7 +8,7 @@ The easiest way to create and apply kubernetes manifests for an application
 * There are no built-in manifest templates under the hood, only native kubernetes objects
 * Understandable set of values for configuration in YAML
 * Templating values in YAML file with [sprig](http://masterminds.github.io/sprig/) functions
-* Safe-by-default manifests: automatic liveness/readiness probes and a conservative `securityContext` (all overridable, see [Defaults and hardening](#defaults-and-hardening))
+* Safe-by-default manifests: an automatic liveness probe and a conservative `securityContext` (all overridable, see [Defaults and hardening](#defaults-and-hardening))
 * Supported Kubernetes resources:
   * ConfigMap
   * CronJob
@@ -189,7 +189,7 @@ For ingress domains, prefixes from the above values will be automatically added:
 
 To produce safe-by-default manifests, app2kube fills in a few fields when you do not set them explicitly. All of them are overridable.
 
-**Probes.** A container that exposes exactly one port and has no `livenessProbe` gets a TCP liveness probe on that port. App-image containers additionally get a matching TCP `readinessProbe` when none is set — third-party sidecars are skipped, so a sidecar's probe cannot make the whole pod `NotReady` and block traffic to the app. Init containers never receive auto probes.
+**Probes.** A container that exposes exactly one port and has no `livenessProbe` gets a TCP liveness probe on that port. A `readinessProbe` is **not** auto-created — readiness gates Service traffic and rollout progress, so it is left to explicit configuration; an existing readiness probe only has its missing `httpGet` port filled in. Init containers never receive auto probes.
 
 **Container securityContext.** App-image containers (those built from `common.image`) that declare no `securityContext` get a conservative, non-breaking default:
 
@@ -241,7 +241,7 @@ The Deployment's `spec.selector` carries the full label set — `name`, `instanc
 
 **Image pull policy.** When `image.pullPolicy` is unset, app2kube sets it explicitly (instead of relying on Kubernetes' version-specific implicit rule) so deploys are reproducible: an image tagged `:latest`, with no tag, defaults to `Always`; a fixed tag or a digest-pinned image (`@sha256:...`) defaults to `IfNotPresent`. A `:latest` common image in a non-staging deploy also prints a stderr warning — pin a specific tag or digest for reproducible rollouts.
 
-**Rollout strategy.** When `deployment.strategy` is unset it defaults to a zero-downtime `RollingUpdate` (`maxUnavailable: 0`, `maxSurge: 1`) so no pod is removed before its replacement is Ready, and `deployment.progressDeadlineSeconds` defaults to 15 minutes (`900`) — matching the default deploy tracking timeout — so a wedged rollout reports failure instead of hanging. Both are overridable.
+**Rollout strategy.** When `deployment.strategy` is unset it is left empty, so Kubernetes applies its built-in `RollingUpdate` default (`maxUnavailable`/`maxSurge` 25%). `deployment.progressDeadlineSeconds` defaults to 15 minutes (`900`) — matching the default deploy tracking timeout — so a wedged rollout reports failure instead of hanging. Both are overridable.
 
 **Disruption budget.** When the Deployment runs more than one replica, app2kube emits a `PodDisruptionBudget` with `minAvailable: 1` (rendered with the Deployment, also selectable via `--type pdb`) so a node drain/upgrade cannot evict all replicas at once. A single-replica deploy gets none — a `minAvailable: 1` PDB would block every drain — and therefore has no voluntary-disruption protection.
 

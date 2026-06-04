@@ -342,9 +342,10 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 	}
 }
 
-// #21: a single-port container with no readiness probe gets a TCP readiness
-// probe mirroring the auto liveness target. User probes are preserved and init
-// containers get none.
+// A single-port container with no readiness probe does NOT get one auto-created
+// (readiness gates traffic/rollout and is left to explicit config); a
+// user-provided readiness probe is preserved and has its missing HTTPGet port
+// filled; init containers get none.
 func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 	app := NewApp()
 
@@ -356,11 +357,8 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 	if err := app.processContainer(c, false); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
-	if c.ReadinessProbe == nil || c.ReadinessProbe.TCPSocket == nil {
-		t.Fatalf("expected default TCP readiness probe, got %+v", c.ReadinessProbe)
-	}
-	if got := c.ReadinessProbe.TCPSocket.Port.IntVal; got != 8080 {
-		t.Errorf("readiness probe port: expected 8080, got %d", got)
+	if c.ReadinessProbe != nil {
+		t.Fatalf("readiness probe must not be auto-created, got %+v", c.ReadinessProbe)
 	}
 
 	// A user-provided readiness probe is preserved (and its unset port filled).
@@ -423,7 +421,8 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		t.Errorf("multi-port container must not get a readiness probe, got %+v", c5.ReadinessProbe)
 	}
 
-	// A user liveness probe but no readiness still gets an auto TCP readiness probe.
+	// A user liveness probe but no readiness probe does NOT get a readiness probe
+	// auto-created.
 	c6 := &apiv1.Container{
 		Name:          "app",
 		Image:         "example/app:v1",
@@ -433,9 +432,8 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 	if err := app.processContainer(c6, false); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
-	if c6.ReadinessProbe == nil || c6.ReadinessProbe.TCPSocket == nil ||
-		c6.ReadinessProbe.TCPSocket.Port.IntVal != 8080 {
-		t.Errorf("expected auto TCP readiness probe alongside user liveness, got %+v", c6.ReadinessProbe)
+	if c6.ReadinessProbe != nil {
+		t.Errorf("readiness probe must not be auto-created alongside user liveness, got %+v", c6.ReadinessProbe)
 	}
 
 	// A user-provided TCPSocket readiness probe is preserved unchanged.

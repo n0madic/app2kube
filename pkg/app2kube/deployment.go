@@ -8,7 +8,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
 )
 
@@ -85,19 +84,6 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		// containers, so only the config actually wired in is hashed.
 		checksums := app.configChecksumAnnotations(append(append([]apiv1.Container{}, containers...), initContainers...))
 
-		// Default to a zero-downtime rolling update when no strategy is given:
-		// never take a pod down before its replacement is Ready (#46).
-		strategy := app.Deployment.Strategy
-		if strategy.Type == "" {
-			strategy = appsv1.DeploymentStrategy{
-				Type: appsv1.RollingUpdateDeploymentStrategyType,
-				RollingUpdate: &appsv1.RollingUpdateDeployment{
-					MaxUnavailable: &intstr.IntOrString{Type: intstr.Int, IntVal: 0},
-					MaxSurge:       &intstr.IntOrString{Type: intstr.Int, IntVal: 1},
-				},
-			}
-		}
-
 		// Bound a wedged rollout so `kubectl rollout status`/kubedog reports
 		// failure instead of hanging (#46). Defaults to 15 minutes (900s) to match
 		// app2kube's default track timeout (cmd.defaultTrackTimeout), so the
@@ -123,7 +109,12 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 				Selector: &metav1.LabelSelector{
 					MatchLabels: app.GetColorLabels(),
 				},
-				Strategy: strategy,
+				// Use the user's strategy verbatim; when unset, leave it empty so
+				// the apiserver applies its built-in RollingUpdate default
+				// (maxUnavailable/maxSurge 25%) rather than app2kube forcing
+				// maxUnavailable:0 — which, combined with an auto readiness probe,
+				// could wedge the rollout of an app slow to accept connections.
+				Strategy: app.Deployment.Strategy,
 				Template: apiv1.PodTemplateSpec{
 					ObjectMeta: metav1.ObjectMeta{
 						Labels:      app.GetColorLabels(),

@@ -11,21 +11,22 @@ import (
 	"k8s.io/utils/ptr"
 )
 
-// #46: an unset deployment strategy defaults to a zero-downtime RollingUpdate
-// (maxUnavailable:0, maxSurge:1) and an explicit progressDeadlineSeconds, so a
-// wedged rollout reports failure instead of hanging.
+// An unset deployment strategy is left empty so the apiserver applies its
+// built-in RollingUpdate default (maxUnavailable/maxSurge 25%) instead of
+// app2kube forcing maxUnavailable:0; an explicit progressDeadlineSeconds (#46)
+// still bounds a wedged rollout.
 func TestGetDeploymentRolloutDefaults(t *testing.T) {
 	app := deployApp(t)
 	dep, err := app.GetDeployment()
 	if err != nil {
 		t.Fatalf("GetDeployment: %v", err)
 	}
-	if dep.Spec.Strategy.Type != appsv1.RollingUpdateDeploymentStrategyType {
-		t.Errorf("strategy type: got %q, want RollingUpdate", dep.Spec.Strategy.Type)
+	// No strategy configured → zero value, so Kubernetes fills its default.
+	if dep.Spec.Strategy.Type != "" {
+		t.Errorf("strategy type: got %q, want empty (apiserver default)", dep.Spec.Strategy.Type)
 	}
-	ru := dep.Spec.Strategy.RollingUpdate
-	if ru == nil || ru.MaxUnavailable.IntValue() != 0 || ru.MaxSurge.IntValue() != 1 {
-		t.Errorf("rolling update default: got %+v", ru)
+	if dep.Spec.Strategy.RollingUpdate != nil {
+		t.Errorf("rolling update must be left unset, got %+v", dep.Spec.Strategy.RollingUpdate)
 	}
 	if dep.Spec.ProgressDeadlineSeconds == nil || *dep.Spec.ProgressDeadlineSeconds != 15*60 {
 		t.Errorf("progressDeadlineSeconds default: got %v, want 900 (15m)", dep.Spec.ProgressDeadlineSeconds)

@@ -13,7 +13,10 @@ import (
 // GetCronJobs resource
 func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 	for cronName, job := range app.Cronjob {
-		cronJobName := truncateName(app.GetReleaseName() + "-" + cronName)
+		// A CronJob object name is limited to 52 chars (the controller appends an
+		// ~11-char suffix to the 63-char Job name it spawns), stricter than the
+		// 253-char subdomain limit other objects use.
+		cronJobName := truncateNameTo(app.GetReleaseName()+"-"+cronName, MaxCronJobNameLength)
 
 		if job.Schedule == "" {
 			return crons, fmt.Errorf("schedule required for cron: %s", cronName)

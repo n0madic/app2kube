@@ -13,10 +13,14 @@ import (
 // GetCronJobs resource
 func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 	for cronName, job := range app.Cronjob {
-		// A CronJob object name is limited to 52 chars (the controller appends an
-		// ~11-char suffix to the 63-char Job name it spawns), stricter than the
-		// 253-char subdomain limit other objects use.
-		cronJobName := truncateNameTo(app.GetReleaseName()+"-"+cronName, MaxCronJobNameLength)
+		// The CronJob object name and the default container name must be valid
+		// DNS-1123 names, so lowercase the (possibly mixed-case) map key — matching
+		// how the sub-containers below are lowercased. A CronJob object name is
+		// limited to 52 chars (the controller appends an ~11-char suffix to the
+		// 63-char Job name it spawns), stricter than the 253-char subdomain limit
+		// other objects use.
+		lowerName := strings.ToLower(cronName)
+		cronJobName := truncateNameTo(app.GetReleaseName()+"-"+lowerName, MaxCronJobNameLength)
 
 		if job.Schedule == "" {
 			return crons, fmt.Errorf("schedule required for cron: %s", cronName)
@@ -45,7 +49,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 				return crons, err
 			}
 			if job.Container.Name == "" {
-				job.Container.Name = cronName + "-job"
+				job.Container.Name = lowerName + "-job"
 			}
 			containers = append(containers, job.Container)
 		}
@@ -75,6 +79,14 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		// hashed.
 		checksums := app.configChecksumAnnotations(containers)
 
+		// Shared pod-level settings, image pull secrets, grace period and the
+		// shared-data/PVC volumes (built from the cron's containers). replicas=1
+		// skips the Deployment-only ReadWriteOnce multi-attach warning.
+		podSpec := app.commonPodSpec(affinity)
+		podSpec.Containers = containers
+		podSpec.RestartPolicy = job.RestartPolicy
+		podSpec.Volumes = app.podVolumes(1, containers)
+
 		cron := &batch.CronJob{
 			ObjectMeta: app.GetObjectMeta(cronJobName),
 			Spec: batch.CronJobSpec{
@@ -97,18 +109,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 								Labels:      app.Labels,
 								Annotations: checksums,
 							},
-							Spec: apiv1.PodSpec{
-								Affinity:                     affinity,
-								AutomountServiceAccountToken: ptr.To(app.Common.MountServiceAccountToken),
-								Containers:                   containers,
-								DNSPolicy:                    app.Common.DNSPolicy,
-								RestartPolicy:                job.RestartPolicy,
-								EnableServiceLinks:           ptr.To(app.Common.EnableServiceLinks),
-								NodeSelector:                 app.Common.NodeSelector,
-								SecurityContext:              app.podSecurityContext(),
-								ServiceAccountName:           app.Common.ServiceAccountName,
-								Tolerations:                  app.Common.Tolerations,
-							},
+							Spec: podSpec,
 						},
 					},
 				},
@@ -121,50 +122,6 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 
 		if app.Common.CronjobSuspend {
 			cron.Spec.Suspend = ptr.To(true)
-		}
-
-		if app.Common.Image.PullSecrets != "" {
-			cron.Spec.JobTemplate.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{{
-				Name: app.Common.Image.PullSecrets,
-			}}
-		}
-
-		if app.Common.GracePeriod > 0 {
-			cron.Spec.JobTemplate.Spec.Template.Spec.TerminationGracePeriodSeconds = ptr.To(app.Common.GracePeriod)
-		}
-
-		// The EmptyDir volume must exist whenever SharedData is set, to match the
-		// mount processContainer adds to every app-image container — even a single
-		// one — otherwise the pod spec references a missing volume (#18).
-		if app.Common.SharedData != "" {
-			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name:         sharedDataVolumeName,
-				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
-			})
-		}
-
-		// Attach a PVC volume only when a container in this cron actually mounts
-		// it: processContainer mounts app.Volumes solely on app-image containers,
-		// so a cron built entirely from third-party images references none and
-		// must not carry a dangling volume.
-		mounted := make(map[string]bool)
-		for _, c := range containers {
-			for _, vm := range c.VolumeMounts {
-				mounted[vm.Name] = true
-			}
-		}
-		for _, volName := range sortedKeys(app.Volumes) {
-			if !mounted[volName] {
-				continue
-			}
-			cron.Spec.JobTemplate.Spec.Template.Spec.Volumes = append(cron.Spec.JobTemplate.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name: volName,
-				VolumeSource: apiv1.VolumeSource{
-					PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: app.GetVolumeClaimName(volName),
-					},
-				},
-			})
 		}
 
 		crons = append(crons, cron)

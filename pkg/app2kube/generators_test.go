@@ -713,6 +713,74 @@ func TestGetDeploymentAffinity(t *testing.T) {
 	}
 }
 
+// Regression: getAffinity must emit pod-anti-affinity terms in a deterministic
+// (sorted-by-label) order. It ranged GetColorLabels() — a map — directly, so the
+// term order was random per render, changing the pod template and rolling the
+// Deployment on every apply even when nothing changed. Every other map-driven
+// generator was switched to sortedKeys; this one was missed.
+func TestGetAffinityDeterministicOrder(t *testing.T) {
+	app := deployApp(t)
+	app.Labels = map[string]string{
+		"app.kubernetes.io/name":     "example",
+		"app.kubernetes.io/instance": "production",
+		"team":                       "platform",
+		"tier":                       "backend",
+	}
+	app.Common.PodAntiAffinity = "required"
+
+	want := []string{
+		"app.kubernetes.io/instance",
+		"app.kubernetes.io/name",
+		"team",
+		"tier",
+	}
+
+	// Map iteration is randomized per range, so the old (unsorted) code would
+	// produce a non-sorted order on some render with overwhelming probability,
+	// while the fixed code is sorted on every render.
+	for i := 0; i < 50; i++ {
+		aff, err := app.getAffinity()
+		if err != nil {
+			t.Fatalf("getAffinity: %v", err)
+		}
+		terms := aff.PodAntiAffinity.RequiredDuringSchedulingIgnoredDuringExecution
+		got := make([]string, 0, len(terms))
+		for _, term := range terms {
+			got = append(got, term.LabelSelector.MatchExpressions[0].Key)
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("affinity term order not deterministic/sorted on render %d: got %v, want %v", i, got, want)
+		}
+	}
+}
+
+// Regression: a cronjob map key with uppercase letters must still yield a valid
+// DNS-1123 CronJob object name and container name. The key was concatenated into
+// both names without lowercasing (unlike sub-containers), so an uppercase key
+// produced an invalid name the apiserver rejects.
+func TestGetCronJobsLowercasesName(t *testing.T) {
+	app := deployApp(t)
+	app.Cronjob = map[string]CronjobSpec{
+		"Backup-DB": {Schedule: "* * * * *", Container: apiv1.Container{Image: "example/app:v1", Command: []string{"echo"}}},
+	}
+
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	if len(crons) != 1 {
+		t.Fatalf("expected 1 cronjob, got %d", len(crons))
+	}
+
+	if name := crons[0].Name; name != "example-backup-db" {
+		t.Errorf("cronjob object name: got %q, want %q", name, "example-backup-db")
+	}
+	cname := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers[0].Name
+	if cname != "backup-db-job" {
+		t.Errorf("cronjob container name: got %q, want %q", cname, "backup-db-job")
+	}
+}
+
 // Init containers must not run the main-container service/probe pipeline: the
 // Kubernetes API rejects probes on non-sidecar init containers, and an init
 // container port must never drive auto-service derivation.

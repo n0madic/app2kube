@@ -9,6 +9,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
+	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/kubectl/pkg/scheme"
 )
 
@@ -229,6 +230,14 @@ func DeleteResourceTypes() string {
 
 // GetManifest returns a manifest with the specified resource types.
 func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (string, error) {
+	// Build the printer once and reuse it for every object: it depends only on
+	// the output format, so reconstructing it per object (as PrintObj does for
+	// single-object callers) is wasted work on a multi-resource render.
+	printer, err := objPrinter(outputFormat)
+	if err != nil {
+		return "", err
+	}
+
 	var manifest string
 	for _, out := range typeOutput {
 		for _, g := range manifestGenerators {
@@ -240,7 +249,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 				return "", err
 			}
 			for _, obj := range objs {
-				yml, err := PrintObj(obj, outputFormat)
+				yml, err := printObj(obj, printer)
 				if err != nil {
 					return "", err
 				}
@@ -272,17 +281,31 @@ func ParseOutputType(name string) (OutputResource, bool) {
 	return out, ok
 }
 
-// PrintObj return manifest from object
+// objPrinter builds the resource printer for the given output format. It depends
+// only on the format, so a multi-object render builds it once and reuses it.
+func objPrinter(output string) (printers.ResourcePrinter, error) {
+	return genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme).WithDefaultOutput(output).ToPrinter()
+}
+
+// PrintObj returns the manifest for a single object. It builds a printer per
+// call; batch callers should use GetManifest, which reuses one printer.
 func PrintObj(obj runtime.Object, output string) (string, error) {
 	if reflect.ValueOf(obj).IsNil() {
 		return "", nil
 	}
 
-	printFlags := genericclioptions.NewPrintFlags("").WithTypeSetter(scheme.Scheme).WithDefaultOutput(output)
-
-	printer, err := printFlags.ToPrinter()
+	printer, err := objPrinter(output)
 	if err != nil {
 		return "", err
+	}
+
+	return printObj(obj, printer)
+}
+
+// printObj renders a single object with a pre-built printer.
+func printObj(obj runtime.Object, printer printers.ResourcePrinter) (string, error) {
+	if reflect.ValueOf(obj).IsNil() {
+		return "", nil
 	}
 
 	out := bytes.NewBuffer([]byte{})

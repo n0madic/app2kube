@@ -23,6 +23,38 @@ type tableFunc struct {
 	fn   func(context.Context, kubernetes.Interface, string, map[string]string) (string, error)
 }
 
+// serviceCache lazily lists the app's Services once per status run and caches the
+// result. getDeploymentStatus (the active blue/green color) and getServicesStatus
+// (the Service table) both derive from that list, so caching avoids a duplicate
+// Services().List per run. The status renderers run sequentially, so no locking
+// is needed.
+type serviceCache struct {
+	fetched bool
+	list    *apiv1.ServiceList
+	err     error
+}
+
+func (c *serviceCache) services(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (*apiv1.ServiceList, error) {
+	if !c.fetched {
+		c.list, c.err = kcs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
+			LabelSelector: getSelector(labels),
+		})
+		c.fetched = true
+	}
+	return c.list, c.err
+}
+
+// serviceColor returns the active blue/green color from the first cached Service,
+// or "" when there is no service, no color selector, or a list error (the color
+// is advisory, so a transient error simply yields no highlight).
+func (c *serviceCache) serviceColor(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) string {
+	list, err := c.services(ctx, kcs, namespace, labels)
+	if err != nil || len(list.Items) == 0 {
+		return ""
+	}
+	return list.Items[0].Spec.Selector[app2kube.LabelColor]
+}
+
 // NewCmdStatus return App status in kubernetes
 func NewCmdStatus() *cobra.Command {
 	var opts *appOptions
@@ -62,14 +94,22 @@ func status(ctx context.Context, app *app2kube.App) error {
 
 	fmt.Printf("RESOURCES:\n")
 
+	// One Services list shared by the Deployment (blue/green color) and Service
+	// renderers, so the run issues a single Services().List instead of two.
+	svc := &serviceCache{}
+
 	tables := []tableFunc{
 		{name: "ConfigMap", fn: getConfigmapStatus},
 		{name: "Secret", fn: getSecretsStatus},
 		{name: "CronJob", fn: getCronJobsStatus},
 		{name: "PersistentVolumeClaim", fn: getPVCStatus},
-		{name: "Deployment", fn: getDeploymentStatus},
+		{name: "Deployment", fn: func(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+			return getDeploymentStatus(ctx, kcs, namespace, labels, svc)
+		}},
 		{name: "Pod (related)", fn: getPodsStatus},
-		{name: "Service", fn: getServicesStatus},
+		{name: "Service", fn: func(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
+			return getServicesStatus(ctx, kcs, namespace, labels, svc)
+		}},
 		{name: "Ingress", fn: getIngressStatus},
 	}
 
@@ -226,10 +266,10 @@ func getPVCStatus(ctx context.Context, kcs kubernetes.Interface, namespace strin
 	}), nil
 }
 
-func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	// Resolve the active blue/green color from the same client set, so this
-	// function stays exercisable with a fake client (no live cluster).
-	serviceColor, _ := colorFromServices(ctx, kcs, namespace, getSelector(labels))
+func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string, svc *serviceCache) (string, error) {
+	// Resolve the active blue/green color from the shared, cached Service list so
+	// the status run issues a single Services().List.
+	serviceColor := svc.serviceColor(ctx, kcs, namespace, labels)
 
 	list, err := kcs.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: getSelector(labels),
@@ -312,10 +352,8 @@ func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace stri
 	}), nil
 }
 
-func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
-	list, err := kcs.CoreV1().Services(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: getSelector(labels),
-	})
+func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string, svc *serviceCache) (string, error) {
+	list, err := svc.services(ctx, kcs, namespace, labels)
 	if err != nil {
 		return "", err
 	}

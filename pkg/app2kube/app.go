@@ -159,6 +159,15 @@ func (app *App) GetObjectMeta(name string) metav1.ObjectMeta {
 // subdomain limit (253) — the single source of that rule. The Service and
 // CronJob helpers build on it and re-cap to their own stricter limits (label/52).
 func (app *App) GetReleaseName() string {
+	return truncateNameTo(app.releaseName(), MaxSubdomainNameLength)
+}
+
+// releaseName composes the raw, uncapped release name from Name/Staging/Branch,
+// lowercased. GetReleaseName caps it at the subdomain limit (253) and the Service
+// helper caps it at the stricter label limit (63); centralizing the composition
+// here means each resource's length rule applies exactly once instead of a
+// 253-cap being re-capped to 63.
+func (app *App) releaseName() string {
 	releaseName := app.Name
 	if app.Staging != "" {
 		releaseName = app.Name + "-" + app.Staging
@@ -166,7 +175,7 @@ func (app *App) GetReleaseName() string {
 			releaseName = app.Name + "-" + app.Branch
 		}
 	}
-	return truncateNameTo(strings.ToLower(releaseName), MaxSubdomainNameLength)
+	return strings.ToLower(releaseName)
 }
 
 // GetDeploymentName of App. The Deployment and PDB object names are DNS-1123
@@ -187,9 +196,9 @@ func (app *App) GetDeploymentName() string {
 // want to predict them (#66).
 func (app *App) GetServiceName(name string) string {
 	if name == "" {
-		return truncateName(app.GetReleaseName())
+		return truncateName(app.releaseName())
 	}
-	return truncateName(app.GetReleaseName() + "-" + strings.ToLower(name))
+	return truncateName(app.releaseName() + "-" + strings.ToLower(name))
 }
 
 // GetVolumeClaimName returns the PersistentVolumeClaim name for a named volume,
@@ -223,10 +232,15 @@ func (app *App) getAffinity() (*apiv1.Affinity, error) {
 	var affinity *apiv1.Affinity
 	if app.Common.PodAntiAffinity != "" {
 		var podAffinityTerm []apiv1.PodAffinityTerm
-		for label, value := range app.GetColorLabels() {
+		// Iterate in sorted key order so the rendered terms are stable across
+		// runs; an unsorted (map-random) order would change the pod template on
+		// every render and roll the Deployment on each apply.
+		labels := app.GetColorLabels()
+		for _, label := range sortedKeys(labels) {
 			if label == LabelManagedBy {
 				continue
 			}
+			value := labels[label]
 			podAffinityTerm = append(podAffinityTerm, apiv1.PodAffinityTerm{
 				LabelSelector: &metav1.LabelSelector{
 					MatchExpressions: []metav1.LabelSelectorRequirement{

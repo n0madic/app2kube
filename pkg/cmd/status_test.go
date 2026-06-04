@@ -30,7 +30,7 @@ func TestGetDeploymentStatus(t *testing.T) {
 		Status: appsv1.DeploymentStatus{Replicas: 2, ReadyReplicas: 1},
 	})
 
-	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels)
+	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels, &serviceCache{})
 	if err != nil {
 		t.Fatalf("getDeploymentStatus: %v", err)
 	}
@@ -52,7 +52,7 @@ func TestGetDeploymentStatusNilSelector(t *testing.T) {
 		Status:     appsv1.DeploymentStatus{Replicas: 1, ReadyReplicas: 1},
 	})
 
-	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels)
+	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels, &serviceCache{})
 	if err != nil {
 		t.Fatalf("getDeploymentStatus with nil selector: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestGetServicesStatus(t *testing.T) {
 		},
 	})
 
-	out, err := getServicesStatus(context.Background(), kcs, "ns", labels)
+	out, err := getServicesStatus(context.Background(), kcs, "ns", labels, &serviceCache{})
 	if err != nil {
 		t.Fatalf("getServicesStatus: %v", err)
 	}
@@ -87,12 +87,41 @@ func TestGetServicesStatus(t *testing.T) {
 func TestGetServicesStatusEmpty(t *testing.T) {
 	// No matching resources yields an empty table (skipped in output).
 	kcs := fake.NewSimpleClientset()
-	out, err := getServicesStatus(context.Background(), kcs, "ns", statusLabels())
+	out, err := getServicesStatus(context.Background(), kcs, "ns", statusLabels(), &serviceCache{})
 	if err != nil {
 		t.Fatalf("getServicesStatus: %v", err)
 	}
 	if out != "" {
 		t.Errorf("expected empty output for no services, got %q", out)
+	}
+}
+
+// Regression: getDeploymentStatus (blue/green color) and getServicesStatus (the
+// Service table) must share a single Services().List per status run via the
+// serviceCache instead of each issuing its own.
+func TestStatusServicesListedOnce(t *testing.T) {
+	labels := statusLabels()
+	kcs := fake.NewSimpleClientset(&apiv1.Service{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo-svc", Namespace: "ns", Labels: labels},
+		Spec:       apiv1.ServiceSpec{Type: apiv1.ServiceTypeClusterIP, ClusterIP: "10.0.0.1", Ports: []apiv1.ServicePort{{Port: 8080}}},
+	})
+
+	svc := &serviceCache{}
+	if _, err := getDeploymentStatus(context.Background(), kcs, "ns", labels, svc); err != nil {
+		t.Fatalf("getDeploymentStatus: %v", err)
+	}
+	if _, err := getServicesStatus(context.Background(), kcs, "ns", labels, svc); err != nil {
+		t.Fatalf("getServicesStatus: %v", err)
+	}
+
+	listed := 0
+	for _, a := range kcs.Actions() {
+		if a.Matches("list", "services") {
+			listed++
+		}
+	}
+	if listed != 1 {
+		t.Errorf("expected Services listed once via the shared cache, got %d", listed)
 	}
 }
 

@@ -27,6 +27,80 @@ func (app *App) podSecurityContext() *apiv1.PodSecurityContext {
 	}
 }
 
+// commonPodSpec builds the PodSpec fields shared by the Deployment and every
+// CronJob pod template: the pod-level scheduling/security settings, image pull
+// secrets and termination grace period. The caller fills in
+// Containers/InitContainers, RestartPolicy and Volumes.
+func (app *App) commonPodSpec(affinity *apiv1.Affinity) apiv1.PodSpec {
+	spec := apiv1.PodSpec{
+		Affinity:                     affinity,
+		AutomountServiceAccountToken: ptr.To(app.Common.MountServiceAccountToken),
+		DNSPolicy:                    app.Common.DNSPolicy,
+		EnableServiceLinks:           ptr.To(app.Common.EnableServiceLinks),
+		NodeSelector:                 app.Common.NodeSelector,
+		SecurityContext:              app.podSecurityContext(),
+		ServiceAccountName:           app.Common.ServiceAccountName,
+		Tolerations:                  app.Common.Tolerations,
+	}
+	if app.Common.Image.PullSecrets != "" {
+		spec.ImagePullSecrets = []apiv1.LocalObjectReference{{Name: app.Common.Image.PullSecrets}}
+	}
+	if app.Common.GracePeriod > 0 {
+		spec.TerminationGracePeriodSeconds = ptr.To(app.Common.GracePeriod)
+	}
+	return spec
+}
+
+// podVolumes builds the pod volume list shared by the Deployment and CronJob pod
+// templates: the shared-data EmptyDir (emitted whenever SharedData is set, to
+// match the mount processContainer adds to every app-image container) plus a PVC
+// volume for each app.Volume actually mounted by one of the given containers — a
+// workload built entirely from third-party images mounts none and must not carry
+// a dangling volume (#18). Volumes are emitted in sorted order so the rendered
+// list is stable across runs. When replicas>1 it warns about ReadWriteOnce
+// volumes that cannot be shared across nodes (#48); CronJob pods pass replicas=1
+// to skip that Deployment-only check.
+func (app *App) podVolumes(replicas int32, containerGroups ...[]apiv1.Container) []apiv1.Volume {
+	var volumes []apiv1.Volume
+	if app.Common.SharedData != "" {
+		volumes = append(volumes, apiv1.Volume{
+			Name:         sharedDataVolumeName,
+			VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
+		})
+	}
+
+	mounted := make(map[string]bool)
+	for _, group := range containerGroups {
+		for _, c := range group {
+			for _, vm := range c.VolumeMounts {
+				mounted[vm.Name] = true
+			}
+		}
+	}
+	for _, volName := range sortedKeys(app.Volumes) {
+		if !mounted[volName] {
+			continue
+		}
+		vol := app.Volumes[volName]
+		// A ReadWriteOnce(-only) PVC can be bound on a single node; mounting it
+		// into a multi-replica Deployment makes pods on other nodes unschedulable
+		// (a StatefulSet would be correct but is out of scope). Warn instead of
+		// silently emitting a spec that deadlocks (#48).
+		if replicas > 1 && len(vol.Spec.AccessModes) > 0 && !pvcAllowsMultiAttach(vol.Spec.AccessModes) {
+			fmt.Fprintf(os.Stderr, "WARNING: PVC %q (%v) is mounted into a %d-replica Deployment; pods on different nodes cannot share a ReadWriteOnce volume and scheduling will block (use a single replica or a ReadWriteMany volume; StatefulSet is out of scope)\n", volName, vol.Spec.AccessModes, replicas)
+		}
+		volumes = append(volumes, apiv1.Volume{
+			Name: volName,
+			VolumeSource: apiv1.VolumeSource{
+				PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
+					ClaimName: app.GetVolumeClaimName(volName),
+				},
+			},
+		})
+	}
+	return volumes
+}
+
 // GetDeployment resource
 func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 	if len(app.Deployment.Containers) > 0 {
@@ -94,6 +168,15 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 			progressDeadline = ptr.To(int32(15 * 60))
 		}
 
+		// Shared pod-level settings, image pull secrets and grace period; the
+		// deployment-specific container/init/volume fields are filled in below.
+		// processContainer mounts shared-data and app.Volumes only on app-image
+		// containers (main and init), so podVolumes builds the matching volume set.
+		podSpec := app.commonPodSpec(affinity)
+		podSpec.Containers = containers
+		podSpec.InitContainers = initContainers
+		podSpec.Volumes = app.podVolumes(replicas, containers, initContainers)
+
 		deployment = &appsv1.Deployment{
 			ObjectMeta: app.GetObjectMeta(app.GetDeploymentName()),
 			Spec: appsv1.DeploymentSpec{
@@ -120,82 +203,13 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 						Labels:      app.GetColorLabels(),
 						Annotations: checksums,
 					},
-					Spec: apiv1.PodSpec{
-						Affinity:                     affinity,
-						AutomountServiceAccountToken: ptr.To(app.Common.MountServiceAccountToken),
-						Containers:                   containers,
-						InitContainers:               initContainers,
-						DNSPolicy:                    app.Common.DNSPolicy,
-						EnableServiceLinks:           ptr.To(app.Common.EnableServiceLinks),
-						NodeSelector:                 app.Common.NodeSelector,
-						SecurityContext:              app.podSecurityContext(),
-						ServiceAccountName:           app.Common.ServiceAccountName,
-						Tolerations:                  app.Common.Tolerations,
-					},
+					Spec: podSpec,
 				},
 			},
 		}
 
 		if app.Deployment.BlueGreenColor != "" {
 			deployment.Labels = app.GetColorLabels()
-		}
-
-		if app.Common.Image.PullSecrets != "" {
-			deployment.Spec.Template.Spec.ImagePullSecrets = []apiv1.LocalObjectReference{{
-				Name: app.Common.Image.PullSecrets,
-			}}
-		}
-
-		if app.Common.GracePeriod > 0 {
-			deployment.Spec.Template.Spec.TerminationGracePeriodSeconds = &app.Common.GracePeriod
-		}
-
-		// processContainer mounts shared-data on every app-image container (main
-		// and init) whenever SharedData is set, so the EmptyDir volume must exist
-		// whenever SharedData is set — even with a single container — otherwise a
-		// mount references a missing volume and the pod spec is invalid (#18).
-		if app.Common.SharedData != "" {
-			deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name:         sharedDataVolumeName,
-				VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
-			})
-		}
-
-		// Attach a PVC volume only when a container actually mounts it, mirroring
-		// GetCronJobs: processContainer mounts app.Volumes solely on app-image
-		// containers, so a Deployment built entirely from third-party images
-		// references none and must not carry a dangling volume.
-		mounted := make(map[string]bool)
-		for _, c := range containers {
-			for _, vm := range c.VolumeMounts {
-				mounted[vm.Name] = true
-			}
-		}
-		for _, c := range initContainers {
-			for _, vm := range c.VolumeMounts {
-				mounted[vm.Name] = true
-			}
-		}
-		for _, volName := range sortedKeys(app.Volumes) {
-			vol := app.Volumes[volName]
-			if !mounted[volName] {
-				continue
-			}
-			// A ReadWriteOnce(-only) PVC can be bound on a single node; mounting it
-			// into a multi-replica Deployment makes pods on other nodes unschedulable
-			// (a StatefulSet would be correct but is out of scope). Warn instead of
-			// silently emitting a spec that deadlocks (#48).
-			if replicas > 1 && len(vol.Spec.AccessModes) > 0 && !pvcAllowsMultiAttach(vol.Spec.AccessModes) {
-				fmt.Fprintf(os.Stderr, "WARNING: PVC %q (%v) is mounted into a %d-replica Deployment; pods on different nodes cannot share a ReadWriteOnce volume and scheduling will block (use a single replica or a ReadWriteMany volume; StatefulSet is out of scope)\n", volName, vol.Spec.AccessModes, replicas)
-			}
-			deployment.Spec.Template.Spec.Volumes = append(deployment.Spec.Template.Spec.Volumes, apiv1.Volume{
-				Name: volName,
-				VolumeSource: apiv1.VolumeSource{
-					PersistentVolumeClaim: &apiv1.PersistentVolumeClaimVolumeSource{
-						ClaimName: app.GetVolumeClaimName(volName),
-					},
-				},
-			})
 		}
 	}
 	return

@@ -110,7 +110,6 @@ func NewCmdConfig() *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
-		_ = c.Flags().MarkHidden("snapshot")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
 			opts.stringValues = append(opts.stringValues, "name=app")
 			app, err := opts.initApp(cmd.Context())

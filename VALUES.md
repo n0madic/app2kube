@@ -413,8 +413,6 @@ Behaviors that are easy to miss when writing values or generating manifests.
   top. A missing file is silently skipped.
 - At least one value source (`-f`, `--set`, `--set-string`, `--set-file`) is
   required, or the command fails with `values are required`.
-- `--snapshot <file>` writes the merged **plaintext** values (env/configmap and
-  secret values as loaded) with `0600` permissions.
 
 **CronJobs.**
 

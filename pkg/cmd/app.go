@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
@@ -23,8 +22,6 @@ type appOptions struct {
 	fileValues       []string
 	verbose          bool
 	includeNamespace bool
-	snapshot         string
-	rawVals          []byte // merged values, populated by initApp after a successful load
 }
 
 func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
@@ -54,7 +51,6 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 	if err != nil {
 		return nil, err
 	}
-	o.rawVals = rawVals
 
 	if o.verbose {
 		fmt.Fprintf(os.Stderr, "---\n# merged values\n%s\n", rawVals)
@@ -75,18 +71,6 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if o.snapshot != "" {
-		header := fmt.Sprintf("# Snapshot of values saved by app2kube %s in %s\n---\n",
-			rootCmd.Version,
-			time.Now().Format("2006-01-02 15:04:05 MST"))
-		// Snapshots embed merged plaintext values (env/configmap/--set data), so
-		// write owner-only to avoid exposing them on shared CI runners.
-		if err := os.WriteFile(o.snapshot, []byte(header+string(rawVals)), 0600); err != nil {
-			return nil, err
-		}
-		fmt.Fprintln(os.Stderr, "Snapshot of values saved in", o.snapshot)
 	}
 
 	return app, nil
@@ -112,7 +96,6 @@ func addAppFlags(cmd *cobra.Command) *appOptions {
 	cmd.Flags().StringArrayVar(&o.values, "set", []string{}, "Set values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
 	cmd.Flags().StringArrayVar(&o.fileValues, "set-file", []string{}, "Set values from respective files specified via the command line (can specify multiple or separate values with commas: key1=path1,key2=path2)")
 	cmd.Flags().StringArrayVar(&o.stringValues, "set-string", []string{}, "Set STRING values on the command line (can specify multiple or separate values with commas: key1=val1,key2=val2)")
-	cmd.Flags().StringVarP(&o.snapshot, "snapshot", "", "", "Save the parsed YAML values in the specified file for reuse")
 	cmd.Flags().VarP(&o.valueFiles, "values", "f", "Specify values in a YAML file (can specify multiple). Add the suffix '?' to the file name so that it can be skipped if it is not found")
 	cmd.Flags().BoolVarP(&o.verbose, "verbose", "v", false, "Show the parsed YAML values as well")
 	return o

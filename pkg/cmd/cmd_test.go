@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"context"
-	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
@@ -87,25 +85,6 @@ func TestInitAppValuesRequired(t *testing.T) {
 	o := &appOptions{}
 	if _, err := o.initApp(context.Background()); err == nil {
 		t.Errorf("expected error when no values are provided")
-	}
-}
-
-// #40: the values snapshot embeds merged plaintext config, so it must be written
-// owner-only (0600) rather than group-readable.
-func TestInitAppSnapshotMode(t *testing.T) {
-	resetAppFlags()
-	defer resetAppFlags()
-	snap := filepath.Join(t.TempDir(), "snap.yaml")
-	o := &appOptions{values: []string{"name=app"}, snapshot: snap}
-	if _, err := o.initApp(context.Background()); err != nil {
-		t.Fatalf("initApp: %v", err)
-	}
-	fi, err := os.Stat(snap)
-	if err != nil {
-		t.Fatalf("snapshot not written: %v", err)
-	}
-	if got := fi.Mode().Perm(); got != 0600 {
-		t.Errorf("snapshot mode: got %o, want 0600", got)
 	}
 }
 

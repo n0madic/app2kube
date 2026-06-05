@@ -10,13 +10,6 @@ import (
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
 
-// deleteAllResourceTypes is the comma-separated kubectl resource list `delete
-// all` removes by app label selector. It is derived from the app2kube generator
-// registry (output.go) so it cannot drift from what is emitted — notably
-// poddisruptionbudgets, which kubectl's "all" category excludes and which would
-// otherwise survive teardown and keep blocking node drains.
-var deleteAllResourceTypes = app2kube.DeleteResourceTypes()
-
 // deleteArgs accepts no positional arguments or exactly "all"; anything else
 // (which delete used to forward verbatim to kubectl with no app-aware selector)
 // is rejected (#63).
@@ -61,7 +54,12 @@ func NewCmdDelete() *cobra.Command {
 			if opts.includeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
-				args = []string{deleteAllResourceTypes}
+				// The kubectl resource list is derived per-app from the generator
+				// registry (output.go) so it cannot drift — notably it names
+				// poddisruptionbudgets (excluded by kubectl's "all" category) and
+				// includes the cert-manager Certificate only when this app uses
+				// letsencrypt, avoiding a reference to a CRD the cluster may lack.
+				args = []string{app.DeleteResourceTypes()}
 				o.LabelSelector, err = scopedSelector(app.Labels)
 				cmdutil.CheckErr(err)
 			} else if len(args) == 0 {

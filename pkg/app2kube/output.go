@@ -24,6 +24,8 @@ const (
 	OutputAllForDeployment
 	// OutputAllOther is all other resources not needed to run Deployment
 	OutputAllOther
+	// OutputCertificate only (cert-manager Certificate for letsencrypt ingresses)
+	OutputCertificate
 	// OutputConfigMap only
 	OutputConfigMap
 	// OutputCronJob only
@@ -179,6 +181,20 @@ var manifestGenerators = []generator{
 			return toObjects(ingress), nil
 		},
 	},
+	{
+		// cert-manager Certificate objects for letsencrypt ingresses. Rendered
+		// from a local typed struct (certificate.go) so cert-manager is not a
+		// build dependency; on clusters without the CRD the user simply does not
+		// enable letsencrypt and none are emitted.
+		selects: []OutputResource{OutputAll, OutputAllOther, OutputCertificate},
+		render: func(app *App) ([]runtime.Object, error) {
+			certs, err := app.GetCertificates()
+			if err != nil {
+				return nil, err
+			}
+			return toObjects(certs), nil
+		},
+	},
 }
 
 // EmittedKind pairs the two identifiers the destructive CLI operations need for
@@ -205,13 +221,53 @@ var emittedKinds = []EmittedKind{
 	{"policy/v1/PodDisruptionBudget", "poddisruptionbudgets"},
 }
 
+// certManagerEmittedKind is the cert-manager Certificate kind, kept out of the
+// unconditional emittedKinds: it is only added to the prune/delete sets when the
+// app actually uses letsencrypt (usesCertManager). Listing it unconditionally
+// would make `apply --prune`/`delete all` reference certificates.cert-manager.io
+// on clusters that have no cert-manager CRD installed, which fails the whole
+// operation. The fully qualified resource name avoids colliding with unrelated
+// `certificates` CRDs from other operators.
+var certManagerEmittedKind = EmittedKind{"cert-manager.io/v1/Certificate", "certificates.cert-manager.io"}
+
+// usesCertManager reports whether the app emits any cert-manager Certificate,
+// i.e. letsencrypt is enabled globally or on at least one ingress entry.
+func (app *App) usesCertManager() bool {
+	if app.Common.Ingress.Letsencrypt {
+		return true
+	}
+	for _, ing := range app.Ingress {
+		if ing.Letsencrypt {
+			return true
+		}
+	}
+	return false
+}
+
+// pruneAndDeleteKinds returns the resource kinds app2kube can emit for this
+// specific app, conditionally including the cert-manager Certificate so the
+// prune/delete tooling only references its CRD when letsencrypt is actually in
+// use.
+func (app *App) pruneAndDeleteKinds() []EmittedKind {
+	if !app.usesCertManager() {
+		return emittedKinds
+	}
+	kinds := make([]EmittedKind, 0, len(emittedKinds)+1)
+	kinds = append(kinds, emittedKinds...)
+	kinds = append(kinds, certManagerEmittedKind)
+	return kinds
+}
+
 // PruneWhitelist returns the "group/version/Kind" list for `kubectl apply
 // --prune`: every kind app2kube can emit must be prunable, otherwise a resource
 // that drops out of the manifest (e.g. a PDB when replicas scale back to 1) is
-// orphaned.
-func PruneWhitelist() []string {
-	out := make([]string, 0, len(emittedKinds))
-	for _, k := range emittedKinds {
+// orphaned. The cert-manager Certificate is included only when this app uses
+// letsencrypt, so a cert-manager-less cluster is not asked to prune a missing
+// CRD.
+func (app *App) PruneWhitelist() []string {
+	kinds := app.pruneAndDeleteKinds()
+	out := make([]string, 0, len(kinds))
+	for _, k := range kinds {
 		out = append(out, k.GVK)
 	}
 	return out
@@ -221,9 +277,11 @@ func PruneWhitelist() []string {
 // `delete all`. kubectl's own "all" category omits the namespaced extras
 // app2kube emits (configmaps, secrets, pvc, ingress, PDB), so every kind is
 // named explicitly; pods/replicasets/jobs are cascade-deleted with their owners.
-func DeleteResourceTypes() string {
-	names := make([]string, 0, len(emittedKinds))
-	for _, k := range emittedKinds {
+// The cert-manager Certificate is included only when this app uses letsencrypt.
+func (app *App) DeleteResourceTypes() string {
+	kinds := app.pruneAndDeleteKinds()
+	names := make([]string, 0, len(kinds))
+	for _, k := range kinds {
 		names = append(names, k.Resource)
 	}
 	return strings.Join(names, ",")
@@ -264,15 +322,16 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 // outputTypeNames maps the user-facing --type strings to OutputResource values.
 // This is the single source of truth for resource type names.
 var outputTypeNames = map[string]OutputResource{
-	"all":        OutputAll,
-	"configmap":  OutputConfigMap,
-	"cronjob":    OutputCronJob,
-	"deployment": OutputDeployment,
-	"ingress":    OutputIngress,
-	"pdb":        OutputPodDisruptionBudget,
-	"pvc":        OutputPersistentVolumeClaim,
-	"secret":     OutputSecret,
-	"service":    OutputService,
+	"all":         OutputAll,
+	"certificate": OutputCertificate,
+	"configmap":   OutputConfigMap,
+	"cronjob":     OutputCronJob,
+	"deployment":  OutputDeployment,
+	"ingress":     OutputIngress,
+	"pdb":         OutputPodDisruptionBudget,
+	"pvc":         OutputPersistentVolumeClaim,
+	"secret":      OutputSecret,
+	"service":     OutputService,
 }
 
 // ParseOutputType maps a user-facing --type name to an OutputResource. The

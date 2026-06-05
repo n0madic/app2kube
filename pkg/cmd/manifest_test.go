@@ -28,6 +28,7 @@ func TestParseOutputTypes(t *testing.T) {
 	}{
 		{"all", app2kube.OutputAll},
 		{"ALL", app2kube.OutputAll},
+		{"certificate", app2kube.OutputCertificate},
 		{"configmap", app2kube.OutputConfigMap},
 		{"cronjob", app2kube.OutputCronJob},
 		{"deployment", app2kube.OutputDeployment},

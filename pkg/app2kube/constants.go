@@ -30,6 +30,23 @@ const (
 	tlsSecretPrefix = "tls-"
 )
 
+// cert-manager Certificate generation constants. The type is rendered from a
+// minimal local struct (certificate.go) so cert-manager is not pulled into
+// go.mod.
+const (
+	// defaultClusterIssuer matches the cluster's ingress-shim defaultIssuerName,
+	// used when letsencrypt is on but no explicit clusterIssuer is configured —
+	// so tls-acme-style ingresses keep working without naming an issuer.
+	defaultClusterIssuer = "letsencrypt-prod"
+
+	certManagerGroup      = "cert-manager.io"
+	certManagerAPIVersion = "cert-manager.io/v1"
+	certManagerKind       = "Certificate"
+	// clusterIssuerKind is the issuerRef kind app2kube emits — only the cluster
+	// scoped ClusterIssuer is supported (group cert-manager.io).
+	clusterIssuerKind = "ClusterIssuer"
+)
+
 // Pod-template annotation keys carrying the sha256 of the referenced config, so
 // a change to the ConfigMap/Secret content rolls the workload (#22).
 const (

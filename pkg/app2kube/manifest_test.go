@@ -212,15 +212,16 @@ func TestPrintObjStripsCreationTimestamp(t *testing.T) {
 
 func TestParseOutputType(t *testing.T) {
 	cases := map[string]OutputResource{
-		"all":        OutputAll,
-		"configmap":  OutputConfigMap,
-		"cronjob":    OutputCronJob,
-		"deployment": OutputDeployment,
-		"ingress":    OutputIngress,
-		"pvc":        OutputPersistentVolumeClaim,
-		"secret":     OutputSecret,
-		"service":    OutputService,
-		"SECRET":     OutputSecret, // case-insensitive
+		"all":         OutputAll,
+		"certificate": OutputCertificate,
+		"configmap":   OutputConfigMap,
+		"cronjob":     OutputCronJob,
+		"deployment":  OutputDeployment,
+		"ingress":     OutputIngress,
+		"pvc":         OutputPersistentVolumeClaim,
+		"secret":      OutputSecret,
+		"service":     OutputService,
+		"SECRET":      OutputSecret, // case-insensitive
 	}
 	for name, want := range cases {
 		got, ok := ParseOutputType(name)

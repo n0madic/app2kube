@@ -108,9 +108,10 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			if newIngress.Annotations == nil {
 				newIngress.Annotations = make(map[string]string)
 			}
-			if app.Common.Ingress.Letsencrypt || ing.Letsencrypt {
-				newIngress.Annotations["kubernetes.io/tls-acme"] = "true"
-			}
+			// letsencrypt no longer adds the legacy kubernetes.io/tls-acme
+			// annotation: a cert-manager Certificate is emitted instead
+			// (GetCertificates), so the issuer is explicit and per-domain rather
+			// than relying on the cluster-wide ingress-shim defaultIssuerName.
 			for key, value := range app.Common.Ingress.Annotations {
 				newIngress.Annotations[key] = value
 			}

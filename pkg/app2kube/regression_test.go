@@ -430,10 +430,12 @@ func TestIngressSecretsTLSMaterialOnly(t *testing.T) {
 	}
 }
 
-// With letsencrypt, app2kube wires the Ingress for cert-manager's ingress-shim
-// (the kubernetes.io/tls-acme annotation plus a TLS block referencing the secret
-// name) AND emits an empty placeholder Secret of that name so prune cannot orphan
-// the cert cert-manager later writes into it.
+// With letsencrypt, app2kube wires the Ingress for cert-manager via an explicit
+// cert-manager.io/v1 Certificate (NOT the legacy kubernetes.io/tls-acme
+// annotation): the Ingress carries a TLS block referencing the secret name, a
+// Certificate of the same name requests the cert from the default ClusterIssuer,
+// and an empty placeholder Secret of that name keeps prune from orphaning the
+// cert cert-manager later writes into it.
 func TestIngressLetsencryptTriggersCertManager(t *testing.T) {
 	app := ingressTestApp()
 	app.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
@@ -445,11 +447,33 @@ func TestIngressLetsencryptTriggersCertManager(t *testing.T) {
 	if len(ings) != 1 {
 		t.Fatalf("expected 1 ingress, got %d", len(ings))
 	}
-	if ings[0].Annotations["kubernetes.io/tls-acme"] != "true" {
-		t.Errorf("letsencrypt ingress must carry kubernetes.io/tls-acme=true for cert-manager, got %v", ings[0].Annotations)
+	if _, ok := ings[0].Annotations["kubernetes.io/tls-acme"]; ok {
+		t.Errorf("letsencrypt ingress must NOT carry the legacy kubernetes.io/tls-acme annotation, got %v", ings[0].Annotations)
 	}
 	if len(ings[0].Spec.TLS) != 1 || ings[0].Spec.TLS[0].SecretName != "tls-le.example.com" {
 		t.Errorf("letsencrypt ingress must reference the TLS secret cert-manager fills, got %+v", ings[0].Spec.TLS)
+	}
+
+	certs, err := app.GetCertificates()
+	if err != nil {
+		t.Fatalf("GetCertificates: %v", err)
+	}
+	if len(certs) != 1 {
+		t.Fatalf("letsencrypt must emit one Certificate, got %d", len(certs))
+	}
+	cert := certs[0]
+	if cert.APIVersion != "cert-manager.io/v1" || cert.Kind != "Certificate" {
+		t.Errorf("Certificate TypeMeta: got %s/%s, want cert-manager.io/v1/Certificate", cert.APIVersion, cert.Kind)
+	}
+	if cert.Name != "tls-le.example.com" || cert.Spec.SecretName != "tls-le.example.com" {
+		t.Errorf("Certificate name/secretName must match the placeholder secret tls-le.example.com, got name=%q secretName=%q", cert.Name, cert.Spec.SecretName)
+	}
+	if len(cert.Spec.DNSNames) != 1 || cert.Spec.DNSNames[0] != "le.example.com" {
+		t.Errorf("Certificate dnsNames: got %v, want [le.example.com]", cert.Spec.DNSNames)
+	}
+	wantIssuer := IssuerReference{Name: "letsencrypt-prod", Kind: "ClusterIssuer", Group: "cert-manager.io"}
+	if cert.Spec.IssuerRef != wantIssuer {
+		t.Errorf("Certificate issuerRef: got %+v, want %+v", cert.Spec.IssuerRef, wantIssuer)
 	}
 
 	secrets, err := app.GetIngressSecrets()

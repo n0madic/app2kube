@@ -1,6 +1,7 @@
 package app2kube
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -13,18 +14,52 @@ import (
 // covering the PodDisruptionBudget, and free of kinds app2kube never emits (the
 // old hand-written whitelist had stale ServiceAccount/DaemonSet entries).
 func TestPruneAndDeleteListsDeriveFromRegistry(t *testing.T) {
-	prune := PruneWhitelist()
-	del := strings.Split(DeleteResourceTypes(), ",")
+	app := NewApp() // no letsencrypt → plain emittedKinds, no cert-manager
+	prune := app.PruneWhitelist()
+	del := strings.Split(app.DeleteResourceTypes(), ",")
 	if len(prune) != len(del) {
 		t.Fatalf("prune whitelist (%d) and delete list (%d) must have equal length", len(prune), len(del))
 	}
-	if !strings.Contains(DeleteResourceTypes(), "poddisruptionbudgets") {
-		t.Errorf("delete list must include poddisruptionbudgets: %q", DeleteResourceTypes())
+	if !strings.Contains(app.DeleteResourceTypes(), "poddisruptionbudgets") {
+		t.Errorf("delete list must include poddisruptionbudgets: %q", app.DeleteResourceTypes())
 	}
 	for _, gvk := range prune {
 		if strings.HasSuffix(gvk, "/ServiceAccount") || strings.HasSuffix(gvk, "/DaemonSet") {
 			t.Errorf("prune whitelist must not list a kind app2kube never emits: %q", gvk)
 		}
+	}
+}
+
+// The cert-manager Certificate CRD is only referenced by the prune/delete sets
+// when the app actually uses letsencrypt; otherwise a cluster without
+// cert-manager installed would be asked to prune/delete a missing CRD and fail.
+func TestPruneAndDeleteCertManagerConditional(t *testing.T) {
+	const certGVK = "cert-manager.io/v1/Certificate"
+	const certRes = "certificates.cert-manager.io"
+
+	plain := NewApp()
+	if slices.Contains(plain.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must not list %q without letsencrypt: %v", certGVK, plain.PruneWhitelist())
+	}
+	if strings.Contains(plain.DeleteResourceTypes(), certRes) {
+		t.Errorf("delete list must not list %q without letsencrypt: %q", certRes, plain.DeleteResourceTypes())
+	}
+
+	// Per-entry letsencrypt.
+	perEntry := NewApp()
+	perEntry.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+	if !slices.Contains(perEntry.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must list %q with letsencrypt: %v", certGVK, perEntry.PruneWhitelist())
+	}
+	if !strings.Contains(perEntry.DeleteResourceTypes(), certRes) {
+		t.Errorf("delete list must list %q with letsencrypt: %q", certRes, perEntry.DeleteResourceTypes())
+	}
+
+	// common.ingress.letsencrypt also enables it.
+	common := NewApp()
+	common.Common.Ingress.Letsencrypt = true
+	if !slices.Contains(common.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must list %q with common letsencrypt: %v", certGVK, common.PruneWhitelist())
 	}
 }
 

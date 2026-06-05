@@ -34,12 +34,13 @@ const MaxCronJobNameLength = 52
 
 // IngressCommon specification
 type IngressCommon struct {
-	Annotations map[string]string `yaml:"annotations"`
-	Class       string            `yaml:"class"`
-	Letsencrypt bool              `yaml:"letsencrypt"`
-	ServiceName string            `yaml:"serviceName"`
-	ServicePort int32             `yaml:"servicePort"`
-	SslRedirect bool              `yaml:"sslRedirect"`
+	Annotations   map[string]string `yaml:"annotations"`
+	Class         string            `yaml:"class"`
+	ClusterIssuer string            `yaml:"clusterIssuer"`
+	Letsencrypt   bool              `yaml:"letsencrypt"`
+	ServiceName   string            `yaml:"serviceName"`
+	ServicePort   int32             `yaml:"servicePort"`
+	SslRedirect   bool              `yaml:"sslRedirect"`
 }
 
 // Ingress specification

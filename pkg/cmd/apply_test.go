@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/n0madic/app2kube/pkg/app2kube"
 )
 
 // Regression: a PodDisruptionBudget is emitted with the Deployment but is
@@ -11,8 +13,9 @@ import (
 // must be allowed to delete it, otherwise scaling back to a single replica
 // orphans a minAvailable PDB that blocks every node drain.
 func TestApplyPruneWhitelistIncludesPDB(t *testing.T) {
-	if !slices.Contains(applyPruneWhitelist, "policy/v1/PodDisruptionBudget") {
-		t.Errorf("apply --prune whitelist must include policy/v1/PodDisruptionBudget: %v", applyPruneWhitelist)
+	whitelist := app2kube.NewApp().PruneWhitelist()
+	if !slices.Contains(whitelist, "policy/v1/PodDisruptionBudget") {
+		t.Errorf("apply --prune whitelist must include policy/v1/PodDisruptionBudget: %v", whitelist)
 	}
 }
 
@@ -20,8 +23,9 @@ func TestApplyPruneWhitelistIncludesPDB(t *testing.T) {
 // `delete all` must name poddisruptionbudgets explicitly or the PDB survives
 // teardown and keeps blocking voluntary disruptions.
 func TestDeleteAllResourceTypesIncludesPDB(t *testing.T) {
-	if !strings.Contains(deleteAllResourceTypes, "poddisruptionbudget") {
-		t.Errorf("`delete all` resource list must include poddisruptionbudgets: %q", deleteAllResourceTypes)
+	resources := app2kube.NewApp().DeleteResourceTypes()
+	if !strings.Contains(resources, "poddisruptionbudget") {
+		t.Errorf("`delete all` resource list must include poddisruptionbudgets: %q", resources)
 	}
 }
 

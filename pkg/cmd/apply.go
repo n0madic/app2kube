@@ -20,14 +20,6 @@ func blueGreenNotSwitchedMsg(color string) string {
 	return fmt.Sprintf("[%s] was deployed but traffic was NOT switched; the live color is unchanged. Re-run the blue-green deploy to retry — the stale %s deployment will be replaced.", color, color)
 }
 
-// applyPruneWhitelist is the GVK list `apply --prune` is allowed to delete,
-// derived from the app2kube generator registry (output.go) so it cannot drift:
-// every kind app2kube can emit is prunable (e.g. the PodDisruptionBudget that
-// disappears when replicas scale back to 1, whose stale minAvailable would
-// otherwise block every node drain), and nothing it never emits is listed (a
-// stale entry would let prune delete an unrelated object matching the selector).
-var applyPruneWhitelist = app2kube.PruneWhitelist()
-
 var (
 	applyWithStatus bool
 	applyWithTrack  string
@@ -62,6 +54,16 @@ func NewCmdApply() *cobra.Command {
 			ctx := cmd.Context()
 			app, err := opts.initApp(ctx)
 			cmdutil.CheckErr(err)
+
+			// The prune whitelist is derived per-app from the generator registry
+			// (output.go) so it cannot drift: every kind app2kube can emit is
+			// prunable (e.g. the PodDisruptionBudget that disappears when replicas
+			// scale back to 1, whose stale minAvailable would otherwise block
+			// every node drain), and nothing it never emits is listed (a stale
+			// entry would let prune delete an unrelated object matching the
+			// selector). It is app-aware so the cert-manager Certificate is only
+			// pruned when this app actually uses letsencrypt.
+			applyPruneWhitelist := app.PruneWhitelist()
 
 			applyManifest := func(manifest string, prune bool) error {
 				flags.Overwrite = true

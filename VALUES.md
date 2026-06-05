@@ -190,7 +190,8 @@ object.
 | `ingress[].class` | string | `nginx` | `ingressClassName`. Resolves to `common.ingress.class` then `nginx`. Two entries for the same host requesting different classes is an error. |
 | `ingress[].serviceName` | string | derived | Backend Service. When empty and exactly one Service exists, it is used; otherwise this is required. |
 | `ingress[].servicePort` | int32 | derived | Backend port. Derived from the referenced Service when not given explicitly. |
-| `ingress[].letsencrypt` | bool | `false` | Adds `kubernetes.io/tls-acme: "true"` and emits a placeholder TLS Secret for cert-manager. |
+| `ingress[].letsencrypt` | bool | `false` | Emit a cert-manager `Certificate` (one per domain/secret, regardless of routes) plus a placeholder TLS Secret cert-manager fills. Replaces the legacy `kubernetes.io/tls-acme` annotation. |
+| `ingress[].clusterIssuer` | string | `letsencrypt-prod` | cert-manager `ClusterIssuer` for this entry's `Certificate`. Resolves to `common.ingress.clusterIssuer` then `letsencrypt-prod`. Per-entry override lets a wildcard/DNS-01 domain use a different issuer (e.g. `letsencrypt-cloudflare`) without affecting the rest. |
 | `ingress[].sslRedirect` | bool | `false` | Sets `nginx.ingress.kubernetes.io/ssl-redirect` when TLS is active. |
 | `ingress[].annotations` | map[string]string | `{}` | Extra Ingress annotations (merged after `common.ingress.annotations`). |
 | `ingress[].tlsCrt` | string | `""` | Inline PEM certificate. With `tlsKey`, emits a `kubernetes.io/tls` Secret. |
@@ -203,7 +204,8 @@ object.
 |---|---|---|---|
 | `common.ingress.class` | string | `""` | Default `ingressClassName` (falls through to `nginx`). |
 | `common.ingress.annotations` | map[string]string | `{}` | Annotations merged into every Ingress (entry-level overrides win). |
-| `common.ingress.letsencrypt` | bool | `false` | Enable ACME/TLS for all entries. |
+| `common.ingress.letsencrypt` | bool | `false` | Enable cert-manager `Certificate` emission for all entries. |
+| `common.ingress.clusterIssuer` | string | `letsencrypt-prod` | Default cert-manager `ClusterIssuer` for every entry's `Certificate` (entry-level `clusterIssuer` overrides it). |
 | `common.ingress.sslRedirect` | bool | `false` | Enable SSL redirect for all entries. |
 | `common.ingress.serviceName` | string | `""` | Default backend Service name. |
 | `common.ingress.servicePort` | int32 | `0` | Default backend Service port. |
@@ -426,14 +428,35 @@ Behaviors that are easy to miss when writing values or generating manifests.
 **Manifest / `--type`.**
 
 - An unknown `--type` value is an **error** (it used to be silently ignored).
-  Valid values: `all`, `configmap`, `cronjob`, `deployment`, `ingress`, `pdb`,
-  `pvc`, `secret`, `service`.
+  Valid values: `all`, `certificate`, `configmap`, `cronjob`, `deployment`,
+  `ingress`, `pdb`, `pvc`, `secret`, `service`.
 - Resource order in the output is fixed by the generator registry and does not
   follow the order of `--type` flags: Namespace → Secret → ConfigMap → PVC →
   CronJob → Deployment → PodDisruptionBudget → Service → Ingress TLS Secret →
-  Ingress.
+  Ingress → Certificate.
 - TLS Secrets for ingress are emitted under `--type secret` as well, not only
   under `all`.
+- cert-manager `Certificate` objects are emitted for letsencrypt ingresses under
+  `--type certificate` as well, not only under `all`.
+
+**TLS / cert-manager.**
+
+- `letsencrypt: true` emits an explicit cert-manager `Certificate` (NOT the
+  legacy `kubernetes.io/tls-acme` annotation). The `Certificate` name, its
+  `spec.secretName` and the Ingress `tls.secretName` are all `tls-<host>`, so
+  cert-manager fills the very Secret the Ingress references.
+- Exactly **one** `Certificate` is emitted per domain/secret no matter how many
+  ingress entries (routes/paths) share that host; the host's aliases become
+  additional `dnsNames` (suppressed under staging).
+- The empty placeholder TLS Secret is still emitted alongside the `Certificate`
+  so `apply --prune` cannot delete the cert-manager-populated Secret an earlier
+  release created under the app's labels.
+- The effective issuer is `ingress[].clusterIssuer` → `common.ingress.clusterIssuer`
+  → `letsencrypt-prod` (matching the cluster's ingress-shim `defaultIssuerName`).
+  The `issuerRef` kind is always `ClusterIssuer` (group `cert-manager.io`).
+- `apply --prune` / `delete all` include `certificates.cert-manager.io` **only**
+  when the app uses letsencrypt, so a cluster without cert-manager's CRD is never
+  asked to prune/delete a missing resource type.
 
 **Namespace.**
 
@@ -516,7 +539,8 @@ ingress:
   - host: example.com
     aliases:
       - www.example.com
-    letsencrypt: true
+    letsencrypt: true                # emits a cert-manager Certificate
+    clusterIssuer: letsencrypt-prod  # optional; this is the default
     sslRedirect: true
 
 cronjob:
@@ -585,6 +609,7 @@ common:
     class: ""                       # "" → falls through to "nginx"
     annotations: {}
     letsencrypt: false
+    clusterIssuer: ""               # "" → "letsencrypt-prod"
     sslRedirect: false
     serviceName: ""
     servicePort: 0
@@ -646,7 +671,8 @@ ingress:
     class: ""                       # "" → common.ingress.class → "nginx"
     serviceName: ""                 # required when more than one service exists
     servicePort: 0                  # derived from the referenced service when 0
-    letsencrypt: false
+    letsencrypt: false              # emit a cert-manager Certificate
+    clusterIssuer: ""               # "" → common.ingress.clusterIssuer → "letsencrypt-prod"
     sslRedirect: false
     annotations: {}
     tlsCrt: ""                      # inline PEM cert (with tlsKey)

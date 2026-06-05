@@ -237,6 +237,8 @@ The Deployment's `spec.selector` carries the full label set — `name`, `instanc
 
 **Services.** For a `NodePort` service the requested external port is pinned as the node port only when it falls inside the valid range `30000-32767`; an out-of-range value is left for the apiserver to auto-assign and a warning is printed to stderr (rather than silently dropping it). When several `ingress:` entries share the same host they are merged into one Ingress object; because `ingressClassName` is ingress-wide, two entries for the same host requesting **different** classes is an error.
 
+**TLS / cert-manager.** `letsencrypt: true` emits an explicit cert-manager `Certificate` (one per domain/secret, regardless of how many routes reference the host) instead of the legacy `kubernetes.io/tls-acme` annotation, plus an empty placeholder TLS Secret cert-manager fills — the placeholder keeps `apply --prune` from deleting the live certificate. The issuer is `ingress[].clusterIssuer` → `common.ingress.clusterIssuer` → `letsencrypt-prod` (a cluster-scoped `ClusterIssuer`); a per-entry `clusterIssuer` lets a wildcard/DNS-01 domain use a different issuer without affecting the rest. `apply --prune` and `delete all` only reference the `certificates.cert-manager.io` CRD when the app actually uses letsencrypt, so a cluster without cert-manager is never asked to prune a missing resource type.
+
 **Service account.** `automountServiceAccountToken` defaults to `false`. If you set `common.mountServiceAccountToken: true` without a dedicated account, the pod mounts the namespace **default** ServiceAccount token, which often has broader access than intended — set `common.serviceAccountName` to bind a least-privilege account instead.
 
 **Namespace precedence.** The namespace is resolved as `--namespace` flag > value-file `namespace:` > `default`. An explicitly-set `--namespace` wins even when empty, so `--namespace ""` forces the `default` namespace over a value-file setting.
@@ -323,6 +325,7 @@ ingress:
 - host: "example.com"
   aliases:
   - "www.example.com"
-  letsencrypt: true
+  letsencrypt: true                 # emits a cert-manager Certificate
+  clusterIssuer: letsencrypt-prod   # optional; this is the default
   sslRedirect: true
 ```

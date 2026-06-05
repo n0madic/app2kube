@@ -24,6 +24,7 @@ Minimum required configuration is `name` plus at least one container image
 - [Container spec](#container-spec) — fields under `*.containers.<name>`
 - [Defaults and hardening](#defaults-and-hardening)
 - [Staging overrides](#staging-overrides)
+- [Non-obvious behaviors](#non-obvious-behaviors)
 - [Annotated example](#annotated-example)
 - [Full reference (every field)](#full-reference-every-field)
 
@@ -132,7 +133,7 @@ to the same object name are a fatal error.
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `cronjob.<name>.schedule` | string | — (**required**) | Cron schedule expression. |
-| `cronjob.<name>.container` | [Container](#container-spec) | — | A single job container (emitted when its `command` is set). Defaults its name to `<name>-job`. |
+| `cronjob.<name>.container` | [Container](#container-spec) | — | A single job container. When specified it **must** set a `command` (else it is an error); its name defaults to `<name>-job`. |
 | `cronjob.<name>.containers` | map[string][Container](#container-spec) | `{}` | Multiple named job containers. Can be combined with `container`. |
 | `cronjob.<name>.concurrencyPolicy` | string | `""` (k8s `Allow`) | `Allow` / `Forbid` / `Replace`. |
 | `cronjob.<name>.restartPolicy` | string | `Never` | Pod `restartPolicy` (`Never` / `OnFailure`). |
@@ -142,6 +143,11 @@ to the same object name are a fatal error.
 | `cronjob.<name>.activeDeadlineSeconds` | int64 (pointer) | `86400` (1 day) | Job `activeDeadlineSeconds`. |
 | `cronjob.<name>.failedJobsHistoryLimit` | int32 (pointer) | `2` | Kept failed Jobs. |
 | `cronjob.<name>.successfulJobsHistoryLimit` | int32 (pointer) | `2` | Kept successful Jobs. |
+
+**Containers.** `container` and `containers` coexist: the single `container`
+(named `<name>-job`) is emitted first, then the `containers` entries in sorted
+key order. A cronjob that ends up with no containers (neither field populated) is
+an error.
 
 ---
 
@@ -391,6 +397,58 @@ Additionally:
 - the `app.kubernetes.io/instance` label becomes the staging (or `staging-branch`) name.
 
 A wildcard ingress host (`*.example.com`) cannot be used with staging.
+
+---
+
+## Non-obvious behaviors
+
+Behaviors that are easy to miss when writing values or generating manifests.
+
+**Value loading.**
+
+- A `.app2kube.yml` in the current directory is always loaded as the base, even
+  when you pass your own `-f`; your files and `--set` overrides are layered on
+  top. A missing file is silently skipped.
+- At least one value source (`-f`, `--set`, `--set-string`, `--set-file`) is
+  required, or the command fails with `values are required`.
+- `--snapshot <file>` writes the merged **plaintext** values (env/configmap and
+  secret values as loaded) with `0600` permissions.
+
+**CronJobs.**
+
+- A `container` block specified without a `command` is an **error** (it used to
+  be silently dropped). Use `containers` for command-less containers, or add a
+  command.
+- `container` and `containers` are merged into one pod — `container` first
+  (named `<name>-job`), then `containers` in sorted key order.
+- A cronjob with no containers at all is an error.
+
+**Manifest / `--type`.**
+
+- An unknown `--type` value is an **error** (it used to be silently ignored).
+  Valid values: `all`, `configmap`, `cronjob`, `deployment`, `ingress`, `pdb`,
+  `pvc`, `secret`, `service`.
+- Resource order in the output is fixed by the generator registry and does not
+  follow the order of `--type` flags: Namespace → Secret → ConfigMap → PVC →
+  CronJob → Deployment → PodDisruptionBudget → Service → Ingress TLS Secret →
+  Ingress.
+- TLS Secrets for ingress are emitted under `--type secret` as well, not only
+  under `all`.
+
+**Namespace.**
+
+- A standalone `Namespace` object is emitted only with `--include-namespace`
+  (and only for a non-`default` namespace). The resolved namespace is still
+  stamped on every object's metadata regardless.
+- The `default` namespace is stripped from object metadata so manifests stay
+  portable.
+
+**Config / secrets output.**
+
+- `config secrets` and `config dotenv` print **decrypted** secret values to
+  stdout; redirect with care. They also work without a `name` value.
+- In `config dotenv`, a key present in more than one source is emitted once with
+  precedence `secrets` > `env` > `configmap`.
 
 ---
 

@@ -132,6 +132,21 @@ func TestBuildCommandFlags(t *testing.T) {
 	}
 }
 
+// Regression: app2kube pins the legacy builder (BuilderV1), which cannot build
+// a foreign platform on the host's native arch (the containerd image store
+// rejects the platform-mismatched intermediate images). Inheriting
+// $DOCKER_DEFAULT_PLATFORM as the --platform default therefore silently forces
+// an unbuildable cross-arch build (e.g. linux/amd64 on an arm64 Mac). The
+// default must be empty so the build is native unless --platform is passed
+// explicitly.
+func TestBuildPlatformDefaultIgnoresEnv(t *testing.T) {
+	t.Setenv("DOCKER_DEFAULT_PLATFORM", "linux/amd64")
+	cmd := NewCmdBuild()
+	if got := cmd.Flags().Lookup("platform").DefValue; got != "" {
+		t.Errorf("--platform default must not inherit $DOCKER_DEFAULT_PLATFORM, got %q", got)
+	}
+}
+
 // #56: pushing multiple tags must continue past a failing tag and aggregate the
 // errors, so a partial-push state is reported rather than masked by the first
 // error.

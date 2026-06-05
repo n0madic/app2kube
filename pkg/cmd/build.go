@@ -69,7 +69,13 @@ func NewCmdBuild() *cobra.Command {
 	buildCmd.Flags().Var(&buildLabels, "label", "Set metadata for an image")
 	buildCmd.Flags().BoolVar(&flagNoCache, "no-cache", false, "Do not use cache when building the image")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
-	buildCmd.Flags().StringVar(&buildPlatform, "platform", os.Getenv("DOCKER_DEFAULT_PLATFORM"), "Set platform if server is multi-platform capable")
+	// Default to "" (native build), NOT $DOCKER_DEFAULT_PLATFORM as docker/cli
+	// does: app2kube pins the legacy builder (BuilderV1), which cannot build a
+	// foreign platform on the host's native arch (the containerd image store
+	// rejects the platform-mismatched intermediate images). Honoring the env
+	// would silently force an unbuildable cross-arch build on e.g. an arm64 Mac
+	// with DOCKER_DEFAULT_PLATFORM=linux/amd64. Pass --platform explicitly to opt in.
+	buildCmd.Flags().StringVar(&buildPlatform, "platform", "", "Set platform if server is multi-platform capable")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
 	buildCmd.Flags().StringVar(&buildTarget, "target", "", "Set the target build stage to build")
@@ -100,6 +106,14 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	}
 
 	cmd.SilenceUsage = true
+
+	// Validate --platform up front, before assembling the build context, so a
+	// malformed value fails fast instead of after taring the context (matches
+	// docker/cli, which parses the platform at the start of runBuild).
+	buildPlatforms, err := parseBuildPlatforms(buildPlatform)
+	if err != nil {
+		return err
+	}
 
 	// Use docker/cli to create the API client so that the active Docker
 	// context (and DOCKER_HOST) is respected, exactly like the docker CLI.
@@ -237,11 +251,6 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-	}
-
-	buildPlatforms, err := parseBuildPlatforms(buildPlatform)
-	if err != nil {
-		return err
 	}
 
 	result, err := cli.ImageBuild(ctx, buildCtx, client.ImageBuildOptions{

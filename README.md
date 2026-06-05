@@ -79,6 +79,8 @@ Minimum required values for application deployment in kubernetes - `name` and `i
 app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
 
+For a structured description of every configuration value, see [VALUES.md](VALUES.md).
+
 By default, it tries to use the `.app2kube.yml` file in the current directory:
 
 ```yaml

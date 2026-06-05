@@ -69,6 +69,69 @@ func TestReadStdinSecret(t *testing.T) {
 	}
 }
 
+// parseBuildPlatforms must mirror docker/cli's classic build path: an empty
+// value yields no constraint, a valid value yields exactly one parsed platform,
+// and an unparsable value is reported up front (before ImageBuild is called).
+func TestParseBuildPlatforms(t *testing.T) {
+	// Empty → no constraint, no error.
+	got, err := parseBuildPlatforms("")
+	if err != nil {
+		t.Fatalf("empty platform must not error: %v", err)
+	}
+	if got != nil {
+		t.Errorf("empty platform must yield nil slice, got %v", got)
+	}
+
+	// Valid → exactly one element with the expected OS/Architecture.
+	got, err = parseBuildPlatforms("linux/amd64")
+	if err != nil {
+		t.Fatalf("valid platform must not error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("valid platform must yield one element, got %d", len(got))
+	}
+	if got[0].OS != "linux" || got[0].Architecture != "amd64" {
+		t.Errorf("got OS=%q Arch=%q, want linux/amd64", got[0].OS, got[0].Architecture)
+	}
+
+	// Garbage → error, no panic.
+	if _, err := parseBuildPlatforms("!!!"); err == nil {
+		t.Errorf("expected error for an unparsable platform")
+	}
+}
+
+// TestBuildCommandFlags pins the classic-parity flag surface: the new builder
+// flags must exist, and --file must default to empty (so the helper resolves
+// PATH/Dockerfile, matching docker/cli). --file carries no -f shorthand: that
+// letter is already bound to --values by addAppFlags, and the build command must
+// not panic on a shorthand collision.
+func TestBuildCommandFlags(t *testing.T) {
+	cmd := NewCmdBuild()
+	fs := cmd.Flags()
+
+	for _, name := range []string{"no-cache", "target", "platform", "label"} {
+		if fs.Lookup(name) == nil {
+			t.Errorf("missing flag --%s", name)
+		}
+	}
+
+	file := fs.Lookup("file")
+	if file == nil {
+		t.Fatal("missing flag --file")
+	}
+	if file.DefValue != "" {
+		t.Errorf("--file default: got %q, want empty", file.DefValue)
+	}
+	if file.Shorthand != "" {
+		t.Errorf("--file must not take a shorthand (-f is --values): got %q", file.Shorthand)
+	}
+
+	// -f must remain bound to --values, not be hijacked by --file.
+	if values := fs.ShorthandLookup("f"); values == nil || values.Name != "values" {
+		t.Errorf("-f shorthand must resolve to --values, got %v", values)
+	}
+}
+
 // #56: pushing multiple tags must continue past a failing tag and aggregate the
 // errors, so a partial-push state is reported rather than masked by the first
 // error.

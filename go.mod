@@ -4,6 +4,7 @@ go 1.25.0
 
 require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/containerd/platforms v0.2.1
 	github.com/distribution/reference v0.6.0
 	github.com/docker/cli v29.5.2+incompatible
 	github.com/ghodss/yaml v1.0.0
@@ -13,6 +14,7 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/moby/client v0.4.1
 	github.com/moby/term v0.5.2
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/spf13/cobra v1.10.2
 	github.com/werf/kubedog v0.13.0
 	k8s.io/api v0.29.3
@@ -103,7 +105,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
-	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect

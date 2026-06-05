@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/containerd/platforms"
 	"github.com/distribution/reference"
 	"github.com/docker/cli/cli/command"
 	"github.com/docker/cli/cli/command/image/build"
@@ -21,12 +22,17 @@ import (
 	"github.com/moby/moby/client"
 	"github.com/moby/moby/client/pkg/jsonmessage"
 	"github.com/moby/term"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/spf13/cobra"
 )
 
 var (
 	buildArgs      opts.ListOpts
+	buildLabels    opts.ListOpts
+	buildPlatform  string
+	buildTarget    string
 	dockerfileName string
+	flagNoCache    bool
 	flagPassStdin  bool
 	flagPull       bool
 	flagPush       bool
@@ -46,6 +52,7 @@ func NewCmdBuild() *cobra.Command {
 	}
 
 	buildArgs = opts.NewListOpts(opts.ValidateEnv)
+	buildLabels = opts.NewListOpts(opts.ValidateLabel)
 	tags = opts.NewListOpts(func(rawRepo string) (string, error) {
 		_, err := reference.ParseNormalizedNamed(rawRepo)
 		if err != nil {
@@ -55,10 +62,17 @@ func NewCmdBuild() *cobra.Command {
 	})
 
 	buildCmd.Flags().VarP(&buildArgs, "build-arg", "", "Set build-time variables")
-	buildCmd.Flags().StringVarP(&dockerfileName, "file", "", "Dockerfile", "Name of the Dockerfile")
+	// No -f shorthand: addAppFlags already binds -f to --values (the Helm-style
+	// values file, shared across every app command). docker/cli uses -f for the
+	// Dockerfile, but app2kube's --values shorthand takes precedence here.
+	buildCmd.Flags().StringVar(&dockerfileName, "file", "", `Name of the Dockerfile (Default is "PATH/Dockerfile")`)
+	buildCmd.Flags().Var(&buildLabels, "label", "Set metadata for an image")
+	buildCmd.Flags().BoolVar(&flagNoCache, "no-cache", false, "Do not use cache when building the image")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
+	buildCmd.Flags().StringVar(&buildPlatform, "platform", os.Getenv("DOCKER_DEFAULT_PLATFORM"), "Set platform if server is multi-platform capable")
 	buildCmd.Flags().BoolVar(&flagPull, "pull", false, "Always attempt to pull a newer version of the image")
 	buildCmd.Flags().BoolVarP(&flagPush, "push", "", false, "Push an image to a registry")
+	buildCmd.Flags().StringVar(&buildTarget, "target", "", "Set the target build stage to build")
 	buildCmd.Flags().VarP(&tags, "tag", "t", "Additional name and optionally a tag in the 'name:tag' format")
 
 	_ = buildCmd.Flags().MarkHidden("include-namespace")
@@ -201,7 +215,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	// canonicalize dockerfile name to a platform-independent one
 	relDockerfile = filepath.ToSlash(relDockerfile)
 
-	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, false)
+	excludes = build.TrimBuildFilesFromExcludes(excludes, relDockerfile, dockerfileName == "-")
 	buildCtx, err := archive.TarWithOptions(contextDir, &archive.TarOptions{
 		ExcludePatterns: excludes,
 		ChownOpts:       &archive.ChownOpts{UID: 0, GID: 0},
@@ -225,14 +239,23 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	buildPlatforms, err := parseBuildPlatforms(buildPlatform)
+	if err != nil {
+		return err
+	}
+
 	result, err := cli.ImageBuild(ctx, buildCtx, client.ImageBuildOptions{
 		AuthConfigs:    authConfigs,
 		BuildArgs:      configFile.ParseProxyConfig(cli.DaemonHost(), opts.ConvertKVStringsToMapWithNil(buildArgs.GetSlice())),
 		Dockerfile:     relDockerfile,
+		Labels:         opts.ConvertKVStringsToMap(buildLabels.GetSlice()),
+		NoCache:        flagNoCache,
+		Platforms:      buildPlatforms,
 		PullParent:     flagPull,
 		Remove:         true,
 		SuppressOutput: false,
 		Tags:           tags.GetSlice(),
+		Target:         buildTarget,
 		Version:        buildtypes.BuilderV1,
 	})
 	if err != nil {
@@ -266,6 +289,22 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		}
 	}
 	return nil
+}
+
+// parseBuildPlatforms converts a --platform value to the slice the build API
+// expects; an empty string yields no constraint. This mirrors docker/cli's
+// classic (BuilderV1) build path, where the moby client maps the single element
+// to the legacy "platform" query parameter (multi-platform builds require
+// BuildKit and are rejected by the client).
+func parseBuildPlatforms(platform string) ([]ocispec.Platform, error) {
+	if platform == "" {
+		return nil, nil
+	}
+	p, err := platforms.Parse(platform)
+	if err != nil {
+		return nil, fmt.Errorf("invalid platform: %w", err)
+	}
+	return []ocispec.Platform{p}, nil
 }
 
 // registryAuthKey maps an image's registry domain to the key its credentials

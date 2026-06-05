@@ -2,6 +2,7 @@ package app2kube
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 
 	batch "k8s.io/api/batch/v1"
@@ -56,9 +57,16 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		}
 
 		var containers []apiv1.Container
-		if len(job.Container.Command) > 0 {
-			err := app.processContainer(&job.Container, false)
-			if err != nil {
+		// The single `container` block is "specified" when it differs from the
+		// zero value. The old gate keyed on Command being non-empty, which silently
+		// dropped a container that set only image/args; detect presence
+		// structurally and require an explicit command so a misconfigured block
+		// fails loudly instead of vanishing.
+		if !reflect.DeepEqual(job.Container, apiv1.Container{}) {
+			if len(job.Container.Command) == 0 {
+				return crons, fmt.Errorf("command required for the 'container' of cronjob %q (set a command or move it under 'containers')", cronName)
+			}
+			if err := app.processContainer(&job.Container, false); err != nil {
 				return crons, err
 			}
 			if job.Container.Name == "" {
@@ -76,6 +84,12 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 				return crons, err
 			}
 			containers = append(containers, container)
+		}
+
+		// A cronjob with neither `container` nor `containers` would render an
+		// invalid CronJob carrying an empty pod; fail loudly instead of emitting it.
+		if len(containers) == 0 {
+			return crons, fmt.Errorf("no containers defined for cronjob %q (set 'container' or 'containers')", cronName)
 		}
 
 		if job.RestartPolicy == "" {

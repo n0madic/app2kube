@@ -48,6 +48,75 @@ cronjob:
 	}
 }
 
+// Regression: a cronjob `container` block specified without a command used to be
+// silently dropped (the include gate keyed on Command being non-empty), so a
+// user who set only image/args ended up with a CronJob missing that container.
+// It must now fail loudly instead.
+func TestCronjobContainerWithoutCommandErrors(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+`)
+	if _, err := app.GetCronJobs(); err == nil {
+		t.Fatal("expected an error for a cronjob 'container' without a command")
+	}
+}
+
+// Regression: a cronjob with neither `container` nor `containers` produced a
+// CronJob with zero containers (an invalid manifest) instead of an error.
+func TestCronjobWithoutContainersErrors(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  backup:
+    schedule: "* * * * *"
+`)
+	if _, err := app.GetCronJobs(); err == nil {
+		t.Fatal("expected an error for a cronjob with no containers")
+	}
+}
+
+// The single `container` and the `containers` map coexist in one cronjob pod:
+// the single container is emitted first (named "<cronjob>-job"), then the named
+// containers in sorted key order. Mirrors values_cronjob.yaml, which uses both.
+func TestCronjobContainerAndContainersMerged(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: example
+cronjob:
+  joba:
+    schedule: "* * * * *"
+    container:
+      image: example/app:v1
+      command: [run]
+    containers:
+      cli2:
+        image: example/cli:v1
+        command: [two]
+      cli1:
+        image: example/cli:v1
+        command: [one]
+`)
+	crons, err := app.GetCronJobs()
+	if err != nil {
+		t.Fatalf("GetCronJobs: %v", err)
+	}
+	containers := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers
+	if len(containers) != 3 {
+		t.Fatalf("expected 3 containers (single + 2 named), got %d", len(containers))
+	}
+	// Single container first (default name), then named containers sorted by key.
+	want := []string{"joba-job", "cli1", "cli2"}
+	for i, w := range want {
+		if containers[i].Name != w {
+			t.Errorf("container[%d]: got %q, want %q", i, containers[i].Name, w)
+		}
+	}
+}
+
 // Regression: zero values for cronjob limits must be honored (e.g. backoffLimit:0
 // to disable retries) instead of being treated as "unset" and overridden.
 func TestCronjobZeroLimitsHonored(t *testing.T) {

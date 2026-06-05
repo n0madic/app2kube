@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -27,6 +28,29 @@ func TestNextBlueGreenColor(t *testing.T) {
 		if got := nextBlueGreenColor(tc.current); got != tc.want {
 			t.Errorf("nextBlueGreenColor(%q): got %q, want %q", tc.current, got, tc.want)
 		}
+	}
+}
+
+// Regression: `blue-green rollback` used a hardcoded 1-minute track timeout and
+// ignored the operator's wishes. It must expose a configurable --timeout (in
+// minutes, default the shared track timeout) so a slow previous-color rollout
+// is not cut off prematurely.
+func TestBlueGreenRollbackTimeoutFlag(t *testing.T) {
+	var rollback *cobra.Command
+	for _, c := range NewCmdBlueGreen().Commands() {
+		if c.Name() == "rollback" {
+			rollback = c
+		}
+	}
+	if rollback == nil {
+		t.Fatal("rollback subcommand missing")
+	}
+	f := rollback.Flags().Lookup("timeout")
+	if f == nil {
+		t.Fatal("blue-green rollback must expose a --timeout flag")
+	}
+	if f.DefValue != "15" {
+		t.Errorf("rollback --timeout default: got %s, want 15", f.DefValue)
 	}
 }
 

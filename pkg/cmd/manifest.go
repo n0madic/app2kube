@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
@@ -49,16 +50,20 @@ func NewCmdManifest() *cobra.Command {
 }
 
 // parseOutputTypes maps the user-facing --type strings to OutputResource
-// values. Unknown values are ignored. The name-to-type mapping lives in the
-// app2kube package (ParseOutputType) so it stays in sync with the generators.
-func parseOutputTypes(types []string) []app2kube.OutputResource {
+// values. An unknown value is an error (rather than silently ignored) so a typo
+// fails loudly instead of producing a partial or empty manifest. The
+// name-to-type mapping lives in the app2kube package (ParseOutputType) so it
+// stays in sync with the generators.
+func parseOutputTypes(types []string) ([]app2kube.OutputResource, error) {
 	var outputTypes []app2kube.OutputResource
 	for _, outType := range types {
-		if out, ok := app2kube.ParseOutputType(outType); ok {
-			outputTypes = append(outputTypes, out)
+		out, ok := app2kube.ParseOutputType(outType)
+		if !ok {
+			return nil, fmt.Errorf("unknown --type %q (valid types: %s)", outType, strings.Join(app2kube.ValidOutputTypes(), ", "))
 		}
+		outputTypes = append(outputTypes, out)
 	}
-	return outputTypes
+	return outputTypes, nil
 }
 
 // buildManifest renders the manifest string for the given app and selected
@@ -69,7 +74,12 @@ func buildManifest(app *app2kube.App, types []string, outputFormat string, inclu
 		app.Namespace = ""
 	}
 
-	out, err := app.GetManifest(outputFormat, parseOutputTypes(types)...)
+	outputTypes, err := parseOutputTypes(types)
+	if err != nil {
+		return "", err
+	}
+
+	out, err := app.GetManifest(outputFormat, outputTypes...)
 	if err != nil {
 		return "", err
 	}

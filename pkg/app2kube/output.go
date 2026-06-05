@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -279,6 +280,18 @@ var outputTypeNames = map[string]OutputResource{
 func ParseOutputType(name string) (OutputResource, bool) {
 	out, ok := outputTypeNames[strings.ToLower(name)]
 	return out, ok
+}
+
+// ValidOutputTypes returns the accepted --type names in sorted order. It backs
+// the "unknown --type" error message so the list of valid names cannot drift
+// from outputTypeNames.
+func ValidOutputTypes() []string {
+	names := make([]string, 0, len(outputTypeNames))
+	for name := range outputTypeNames {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // objPrinter builds the resource printer for the given output format. It depends

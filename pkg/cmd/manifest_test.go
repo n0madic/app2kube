@@ -32,24 +32,32 @@ func TestParseOutputTypes(t *testing.T) {
 		{"cronjob", app2kube.OutputCronJob},
 		{"deployment", app2kube.OutputDeployment},
 		{"ingress", app2kube.OutputIngress},
+		{"pdb", app2kube.OutputPodDisruptionBudget},
 		{"pvc", app2kube.OutputPersistentVolumeClaim},
 		{"secret", app2kube.OutputSecret},
 		{"service", app2kube.OutputService},
 	}
 	for _, tc := range cases {
-		got := parseOutputTypes([]string{tc.in})
+		got, err := parseOutputTypes([]string{tc.in})
+		if err != nil {
+			t.Fatalf("parseOutputTypes(%q): unexpected error: %v", tc.in, err)
+		}
 		if len(got) != 1 || got[0] != tc.want {
 			t.Errorf("parseOutputTypes(%q): got %v, want %v", tc.in, got, tc.want)
 		}
 	}
 
-	// Unknown types are silently ignored.
-	if got := parseOutputTypes([]string{"bogus"}); len(got) != 0 {
-		t.Errorf("unknown type must be ignored, got %v", got)
+	// Unknown types must error (instead of being silently ignored), so a typo in
+	// --type fails loudly rather than producing a partial or empty manifest.
+	if _, err := parseOutputTypes([]string{"bogus"}); err == nil {
+		t.Errorf("unknown --type must return an error")
 	}
 
-	// Multiple types are preserved in order.
-	got := parseOutputTypes([]string{"deployment", "service"})
+	// Multiple valid types are preserved in order.
+	got, err := parseOutputTypes([]string{"deployment", "service"})
+	if err != nil {
+		t.Fatalf("parseOutputTypes: unexpected error: %v", err)
+	}
 	if len(got) != 2 || got[0] != app2kube.OutputDeployment || got[1] != app2kube.OutputService {
 		t.Errorf("multiple types: got %v", got)
 	}

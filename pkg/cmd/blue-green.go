@@ -39,7 +39,7 @@ func NewCmdBlueGreen() *cobra.Command {
 	// target color: rollback/prune need it, but `color` only reads the current
 	// color and must not trigger a target-color lookup (the previous global
 	// PersistentPreRun forced it on every subcommand, including color).
-	addBGSub := func(use, short string, blueGreen bool, run func(ctx context.Context, app *app2kube.App) error) {
+	addBGSub := func(use, short string, blueGreen bool, run func(ctx context.Context, app *app2kube.App) error) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
@@ -54,6 +54,7 @@ func NewCmdBlueGreen() *cobra.Command {
 			return run(cmd.Context(), app)
 		}
 		blueGreenCmd.AddCommand(c)
+		return c
 	}
 
 	addBGSub("color", "Get current Deployment color", false, func(ctx context.Context, app *app2kube.App) error {
@@ -65,13 +66,15 @@ func NewCmdBlueGreen() *cobra.Command {
 		return nil
 	})
 
-	addBGSub("rollback", "Rollback Deployment to previous color", true, func(ctx context.Context, app *app2kube.App) error {
+	var rollbackTimeout int
+	rollbackCmd := addBGSub("rollback", "Rollback Deployment to previous color", true, func(ctx context.Context, app *app2kube.App) error {
 		fmt.Printf("Check Deployment %s with previous color:\n",
 			colorize(app.Deployment.BlueGreenColor, app.GetDeploymentName()))
-		// Use a short, local rollback timeout instead of mutating the global
-		// trackTimeout (which previously leaked a permanent 1-minute timeout into
-		// any later track in the process).
-		err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, 1, time.Now())
+		// Honor the operator-supplied --timeout (in minutes) instead of a hardcoded
+		// value, so a slow previous-color rollout is not cut off prematurely. A
+		// command-local variable is used rather than the global trackTimeout so a
+		// rollback can't leak its timeout into a later track in the same process.
+		err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, rollbackTimeout, time.Now())
 		if err != nil {
 			return err
 		}
@@ -109,6 +112,7 @@ func NewCmdBlueGreen() *cobra.Command {
 
 		return nil
 	})
+	rollbackCmd.Flags().IntVarP(&rollbackTimeout, "timeout", "t", defaultTrackTimeout, "Timeout of operation in minutes. 0 is wait forever")
 
 	addBGSub("prune", "Prune Deployment with previous color", true, func(ctx context.Context, app *app2kube.App) error {
 		if err := deleteDeployment(ctx, app.GetDeploymentName(), app.Namespace); err != nil {

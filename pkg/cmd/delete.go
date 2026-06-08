@@ -2,13 +2,34 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 
+	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/kubectl/pkg/cmd/delete"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 )
+
+// streamDeleteResult builds the resource.Result kubectl delete operates on from
+// an in-memory reader (Stream) instead of os.Stdin, for the delete-by-manifest
+// path (no resource args, no selectors). It mirrors the relevant part of the
+// builder chain in delete.DeleteOptions.Complete() (k8s.io/kubectl v0.29.0);
+// keep it in sync with that method on a kubectl bump.
+func streamDeleteResult(b *resource.Builder, namespace string, enforceNamespace bool, manifest string) *resource.Result {
+	b = b.
+		Unstructured().
+		ContinueOnError().
+		NamespaceParam(namespace).DefaultNamespace().
+		Stream(strings.NewReader(manifest), "app2kube").
+		RequireObject(false).
+		Flatten()
+	if enforceNamespace {
+		b = b.RequireNamespace()
+	}
+	return b.Do()
+}
 
 // deleteArgs accepts no positional arguments or exactly "all"; anything else
 // (which delete used to forward verbatim to kubectl with no app-aware selector)
@@ -61,7 +82,8 @@ func NewCmdDelete() *cobra.Command {
 
 			cmdutil.CheckErr(validateDeleteFlags(opts.includeNamespace, args))
 
-			var waitStdin func() error
+			var deleteManifest string
+			byManifest := false
 			if opts.includeNamespace && app.Namespace != "" {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
@@ -74,22 +96,26 @@ func NewCmdDelete() *cobra.Command {
 				o.LabelSelector, err = scopedSelector(app.Labels)
 				cmdutil.CheckErr(err)
 			} else if len(args) == 0 {
-				o.Filenames = []string{"-"}
-				manifest, err := app.GetManifest("json", app2kube.OutputAll)
+				deleteManifest, err = app.GetManifest("json", app2kube.OutputAll)
 				cmdutil.CheckErr(err)
-
-				waitStdin, err = withStdin([]byte(manifest))
-				cmdutil.CheckErr(err)
+				byManifest = true
 			}
 
 			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))
-			runErr := o.RunDelete(kubeFactory)
-			if waitStdin != nil {
-				if feedErr := waitStdin(); feedErr != nil && runErr == nil {
-					runErr = feedErr
-				}
+
+			// For delete-by-manifest, Complete built an (empty) Result from the
+			// FilenameOptions; replace it with one fed from an in-memory reader so
+			// RunDelete never reads os.Stdin. Complete still wired up the mapper,
+			// dynamic client and dry-run strategy that DeleteResult needs.
+			if byManifest {
+				cmdNamespace, enforceNamespace, err := kubeFactory.ToRawKubeConfigLoader().Namespace()
+				cmdutil.CheckErr(err)
+				r := streamDeleteResult(kubeFactory.NewBuilder(), cmdNamespace, enforceNamespace, deleteManifest)
+				cmdutil.CheckErr(r.Err())
+				o.Result = r
 			}
-			cmdutil.CheckErr(runErr)
+
+			cmdutil.CheckErr(o.RunDelete(kubeFactory))
 		},
 	}
 

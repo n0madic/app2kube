@@ -1,12 +1,51 @@
 package cmd
 
 import (
+	"os"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
+
+	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/kubectl/pkg/validation"
 )
+
+// Apply must feed the rendered manifest to kubectl through an in-memory reader
+// (resource.Builder.Stream) instead of hijacking the process's global os.Stdin.
+// This parses a multi-document manifest into the same resource.Infos kubectl
+// apply would build, and asserts os.Stdin is left untouched.
+func TestStreamApplyObjectsParsesManifestWithoutStdin(t *testing.T) {
+	orig := os.Stdin
+	manifest := strings.Join([]string{
+		`{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"cm-a","namespace":"app"},"data":{"k":"v"}}`,
+		`{"apiVersion":"v1","kind":"Service","metadata":{"name":"svc-b","namespace":"app"},"spec":{"ports":[{"port":80}]}}`,
+	}, "\n")
+
+	infos, err := streamApplyObjects(resource.NewLocalBuilder(), validation.NullSchema{}, "app", false, "", manifest)
+	if err != nil {
+		t.Fatalf("streamApplyObjects: %v", err)
+	}
+	if len(infos) != 2 {
+		t.Fatalf("got %d infos, want 2", len(infos))
+	}
+
+	names := []string{infos[0].Name, infos[1].Name}
+	for _, want := range []string{"cm-a", "svc-b"} {
+		if !slices.Contains(names, want) {
+			t.Errorf("missing object %q in %v", want, names)
+		}
+	}
+	for _, info := range infos {
+		if info.Namespace != "app" {
+			t.Errorf("object %q namespace = %q, want app", info.Name, info.Namespace)
+		}
+	}
+	if os.Stdin != orig {
+		t.Errorf("os.Stdin was modified; apply must not touch global stdin")
+	}
+}
 
 // Regression: a PodDisruptionBudget is emitted with the Deployment but is
 // conditional on replicas>1, so it can drop out of the manifest. `apply --prune`

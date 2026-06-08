@@ -9,9 +9,33 @@ import (
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 
+	"k8s.io/cli-runtime/pkg/resource"
 	"k8s.io/kubectl/pkg/cmd/apply"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
+	"k8s.io/kubectl/pkg/validation"
 )
+
+// streamApplyObjects parses manifest into the resource.Infos that kubectl apply
+// operates on, streaming the bytes through an in-memory reader instead of
+// hijacking the process's global os.Stdin. The builder chain mirrors
+// apply.ApplyOptions.GetObjects() (k8s.io/kubectl v0.29.0): the only change is
+// Stream(...) in place of FilenameParam(..., "-"). Keep it in sync with that
+// method on a kubectl bump so apply semantics (schema validation, namespace
+// defaulting/enforcement, label selector, flatten) stay identical.
+func streamApplyObjects(b *resource.Builder, validator validation.Schema, namespace string, enforceNamespace bool, selector, manifest string) ([]*resource.Info, error) {
+	b = b.
+		Unstructured().
+		Schema(validator).
+		ContinueOnError().
+		NamespaceParam(namespace).DefaultNamespace().
+		Stream(strings.NewReader(manifest), "app2kube").
+		LabelSelectorParam(selector).
+		Flatten()
+	if enforceNamespace {
+		b = b.RequireNamespace()
+	}
+	return b.Do().Infos()
+}
 
 // blueGreenNotSwitchedMsg explains that a blue/green deploy created (or updated)
 // the new color but did not switch live traffic to it, and that re-running is
@@ -86,20 +110,30 @@ func NewCmdApply() *cobra.Command {
 
 				cmdutil.CheckErr(o.Validate())
 
-				wait, err := withStdin([]byte(manifest))
-				cmdutil.CheckErr(err)
-				runErr := o.Run()
-				feedErr := wait()
-				// Return the apply error instead of cmdutil.CheckErr (which
-				// os.Exit()s): blue/green callers must regain control on a real
-				// apply failure to report that traffic was NOT switched before the
-				// process exits (#60). The wait() error is secondary and only
-				// surfaces when the apply itself succeeded.
-				if runErr != nil {
-					return runErr
+				// Pre-build the objects from an in-memory reader and hand them to
+				// apply via SetObjects, so Run() uses them directly and never reads
+				// os.Stdin. This replaces the previous global os.Stdin hijack and its
+				// pipe-buffer deadlock window.
+				infos, err := streamApplyObjects(o.Builder, o.Validator, o.Namespace, o.EnforceNamespace, o.Selector, manifest)
+				// Return the error instead of cmdutil.CheckErr (which os.Exit()s): a
+				// parse error means app2kube emitted an invalid manifest (a bug), and
+				// blue/green callers must regain control to report that traffic was
+				// NOT switched before the process exits (#60).
+				if err != nil {
+					return err
 				}
-				if feedErr != nil {
-					return fmt.Errorf("feeding manifest to kubectl apply: %w", feedErr)
+				// Mirror GetObjects(): apply ApplySet labels when one is configured.
+				// app2kube never sets --applyset today, so o.ApplySet is nil and this
+				// is a no-op, but it keeps parity with the builder path it replaces.
+				if o.ApplySet != nil {
+					if err := o.ApplySet.AddLabels(infos...); err != nil {
+						return err
+					}
+				}
+				o.SetObjects(infos)
+
+				if runErr := o.Run(); runErr != nil {
+					return runErr
 				}
 
 				return nil

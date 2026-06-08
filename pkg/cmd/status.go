@@ -1,22 +1,22 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 
-	"github.com/gosuri/uitable"
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 	apiv1 "k8s.io/api/core/v1"
 	metatable "k8s.io/apimachinery/pkg/api/meta/table"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/kubernetes"
 	storageutil "k8s.io/kubectl/pkg/util/storage"
 )
-
-const maxColWidth = 63
 
 type tableFunc struct {
 	name string
@@ -150,20 +150,21 @@ func status(ctx context.Context, app *app2kube.App) error {
 	return nil
 }
 
-// renderTable builds a uitable with the given column width and header row, lets
-// the caller append the data rows, and returns the rendered string. It
-// centralizes the uitable/MaxColWidth/header scaffolding the status renderers
-// used to duplicate across eight functions (#34).
-func renderTable(maxWidth uint, header []string, addRows func(table *uitable.Table)) string {
-	table := uitable.New()
-	table.MaxColWidth = maxWidth
-	cells := make([]interface{}, len(header))
-	for i, h := range header {
-		cells[i] = h
-	}
-	table.AddRow(cells...)
-	addRows(table)
-	return table.String()
+// renderTable writes the header row, lets the caller append data rows, and
+// returns the rendered string. It uses the kubectl tabwriter (the engine behind
+// `kubectl get`) instead of a third-party table package, which keeps the output
+// dependency-free. The lower-level tabwriter is used rather than the kubectl
+// HumanReadablePrinter because the latter strips terminal escapes (\x1b -> ^[),
+// which would break the blue/green ANSI colorization of the NAME column.
+// Columns are tab-separated; the caller writes each row with fmt.Fprintf(w, ...).
+func renderTable(header []string, addRows func(w io.Writer)) string {
+	var buf bytes.Buffer
+	w := printers.GetNewTabWriter(&buf)
+	fmt.Fprintln(w, strings.Join(header, "\t"))
+	addRows(w)
+	// Flush only fails if the underlying writer fails; a bytes.Buffer never does.
+	_ = w.Flush()
+	return strings.TrimRight(buf.String(), "\n")
 }
 
 func getConfigmapStatus(ctx context.Context, kcs kubernetes.Interface, namespace string, labels map[string]string) (string, error) {
@@ -176,9 +177,9 @@ func getConfigmapStatus(ctx context.Context, kcs kubernetes.Interface, namespace
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "DATA", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "DATA", "AGE"}, func(w io.Writer) {
 		for _, configmap := range list.Items {
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%d\t%s\n",
 				configmap.Name,
 				len(configmap.Data)+len(configmap.BinaryData),
 				metatable.ConvertToHumanReadableDateType(configmap.CreationTimestamp),
@@ -197,9 +198,9 @@ func getSecretsStatus(ctx context.Context, kcs kubernetes.Interface, namespace s
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "DATA", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "DATA", "AGE"}, func(w io.Writer) {
 		for _, secret := range list.Items {
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%d\t%s\n",
 				secret.Name,
 				len(secret.Data),
 				metatable.ConvertToHumanReadableDateType(secret.CreationTimestamp),
@@ -218,7 +219,7 @@ func getCronJobsStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "SCHEDULE", "SUSPEND", "ACTIVE", "LAST SCHEDULE", "AGE"}, func(w io.Writer) {
 		for _, cron := range list.Items {
 			var lastScheduleTime string
 			if cron.Status.LastScheduleTime != nil {
@@ -228,7 +229,7 @@ func getCronJobsStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 			if cron.Spec.Suspend != nil {
 				suspend = *cron.Spec.Suspend
 			}
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%t\t%d\t%s\t%s\n",
 				cron.Name,
 				cron.Spec.Schedule,
 				suspend,
@@ -250,10 +251,10 @@ func getPVCStatus(ctx context.Context, kcs kubernetes.Interface, namespace strin
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESS MODES", "STORAGECLASS", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "STATUS", "VOLUME", "CAPACITY", "ACCESS MODES", "STORAGECLASS", "AGE"}, func(w io.Writer) {
 		for _, pvc := range list.Items {
 			capacity := pvc.Status.Capacity[apiv1.ResourceStorage]
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				pvc.Name,
 				pvc.Status.Phase,
 				pvc.Spec.VolumeName,
@@ -280,7 +281,7 @@ func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespac
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "READY", "UP-TO-DATE", "AVAILABLE", "AGE"}, func(w io.Writer) {
 		for _, deployment := range list.Items {
 			activeMark := ""
 			// Spec.Selector is a pointer and MatchLabels a map; a foreign or
@@ -297,7 +298,7 @@ func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespac
 				deployment.Name = colorize(currentColor, deployment.Name)
 			}
 			ready := fmt.Sprintf("%d/%d", deployment.Status.ReadyReplicas, deployment.Status.Replicas)
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%d\t%d\t%s\n",
 				deployment.Name+activeMark,
 				ready,
 				deployment.Status.UpdatedReplicas,
@@ -318,7 +319,7 @@ func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace stri
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "PHASE", "STATUS", "RESTARTS", "AGE", "NODE"}, func(w io.Writer) {
 		for _, pod := range list.Items {
 			currentColor := pod.Labels[app2kube.LabelColor]
 			if currentColor != "" {
@@ -340,7 +341,7 @@ func getPodsStatus(ctx context.Context, kcs kubernetes.Interface, namespace stri
 			} else if pod.DeletionTimestamp != nil {
 				reason = "Terminating"
 			}
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%s\t%d\t%s\t%s\n",
 				pod.Name,
 				reason,
 				fmt.Sprintf("%d/%d", readyCount, len(pod.Spec.Containers)),
@@ -360,7 +361,7 @@ func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	return renderTable(maxColWidth, []string{"NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}, func(table *uitable.Table) {
+	return renderTable([]string{"NAME", "TYPE", "CLUSTER-IP", "EXTERNAL-IP", "PORT(S)", "AGE"}, func(w io.Writer) {
 		for _, svc := range list.Items {
 			externalIPs := "<none>"
 			if len(svc.Spec.ExternalIPs) > 0 {
@@ -374,7 +375,7 @@ func getServicesStatus(ctx context.Context, kcs kubernetes.Interface, namespace 
 			if currentColor != "" {
 				svc.Name = colorize(currentColor, svc.Name)
 			}
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
 				svc.Name,
 				svc.Spec.Type,
 				svc.Spec.ClusterIP,
@@ -396,16 +397,15 @@ func getIngressStatus(ctx context.Context, kcs kubernetes.Interface, namespace s
 	if len(list.Items) == 0 {
 		return "", nil
 	}
-	// Ingress keeps a wider column than maxColWidth: the HOSTS cell is a
-	// comma-joined host list that is often long, and uitable wraps narrow
-	// columns across many lines.
-	return renderTable(100, []string{"NAME", "HOSTS", "AGE"}, func(table *uitable.Table) {
+	// The HOSTS cell is a comma-joined host list that is often long. The kubectl
+	// tabwriter never wraps cells, so the list is printed on a single line.
+	return renderTable([]string{"NAME", "HOSTS", "AGE"}, func(w io.Writer) {
 		for _, ingress := range list.Items {
 			hosts := []string{}
 			for _, rule := range ingress.Spec.Rules {
 				hosts = append(hosts, rule.Host)
 			}
-			table.AddRow(
+			fmt.Fprintf(w, "%s\t%s\t%s\n",
 				ingress.Name,
 				strings.Join(hosts, ","),
 				metatable.ConvertToHumanReadableDateType(ingress.CreationTimestamp),

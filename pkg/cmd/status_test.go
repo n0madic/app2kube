@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
@@ -39,6 +40,36 @@ func TestGetDeploymentStatus(t *testing.T) {
 	}
 	if !strings.Contains(out, "1/2") {
 		t.Errorf("expected ready ratio 1/2 in output, got %q", out)
+	}
+}
+
+// Regression: the table renderer must preserve ANSI color escapes in cell
+// values. The blue/green NAME column is colorized via aurora; the kubectl
+// HumanReadablePrinter would strip ESC (\x1b -> ^[), so the renderer uses the
+// lower-level tabwriter to keep colors intact.
+func TestStatusPreservesColor(t *testing.T) {
+	labels := statusLabels()
+	selector := map[string]string{app2kube.LabelColor: "blue"}
+	for k, v := range labels {
+		selector[k] = v
+	}
+	kcs := fake.NewSimpleClientset(&appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: "demo", Namespace: "ns", Labels: labels},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: selector},
+		},
+		Status: appsv1.DeploymentStatus{Replicas: 1, ReadyReplicas: 1},
+	})
+
+	out, err := getDeploymentStatus(context.Background(), kcs, "ns", labels, &serviceCache{})
+	if err != nil {
+		t.Fatalf("getDeploymentStatus: %v", err)
+	}
+	if !strings.Contains(out, "\x1b[") {
+		t.Errorf("expected ANSI color escape preserved in output, got %q", out)
+	}
+	if !strings.Contains(out, "demo") {
+		t.Errorf("expected deployment name in output, got %q", out)
 	}
 }
 

@@ -27,18 +27,21 @@ var (
 // resolveLogsFrom computes the kubedog "logs since" start time from the
 // --logs-since flag at command execution time (not binary-init time): "now"
 // shows only new records, "all" shows everything, and a duration like "5m"
-// starts that far in the past. An unparseable duration falls back to "now".
-func resolveLogsFrom(logsSince string, now time.Time) time.Time {
+// starts that far in the past. An unparseable value is a user error and is
+// rejected rather than silently falling back to "now" (which would hide the
+// requested past logs).
+func resolveLogsFrom(logsSince string, now time.Time) (time.Time, error) {
 	switch logsSince {
 	case "now":
-		return now
+		return now, nil
 	case "all":
-		return time.Time{}
+		return time.Time{}, nil
 	default:
-		if since, err := time.ParseDuration(logsSince); err == nil {
-			return now.Add(-since)
+		since, err := time.ParseDuration(logsSince)
+		if err != nil {
+			return time.Time{}, fmt.Errorf("invalid --logs-since %q (use a duration like 30s, 5m or 2h, or 'now'/'all'): %w", logsSince, err)
 		}
-		return now
+		return now.Add(-since), nil
 	}
 }
 
@@ -59,7 +62,7 @@ func NewCmdTrack() *cobra.Command {
 	addTrackSub := func(use, short string, run func(ctx context.Context, name, namespace string, timeout int, logsFrom time.Time) error) {
 		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
-		addBlueGreenFlag(c)
+		addBlueGreenFlag(c, opts)
 		_ = c.Flags().MarkHidden("include-namespace")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
 			app, err := opts.initApp(cmd.Context())
@@ -67,7 +70,11 @@ func NewCmdTrack() *cobra.Command {
 				return err
 			}
 			cmd.SilenceUsage = true
-			return run(cmd.Context(), app.GetDeploymentName(), app.Namespace, trackTimeout, resolveLogsFrom(logsSince, time.Now()))
+			logsFrom, err := resolveLogsFrom(logsSince, time.Now())
+			if err != nil {
+				return err
+			}
+			return run(cmd.Context(), app.GetDeploymentName(), app.Namespace, trackTimeout, logsFrom)
 		}
 		trackCmd.AddCommand(c)
 	}

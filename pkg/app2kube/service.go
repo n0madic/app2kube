@@ -54,7 +54,12 @@ func (svc Service) effectiveServicePort() int32 {
 // GetServices resource
 func (app *App) GetServices() (services []*apiv1.Service, err error) {
 	if len(app.Deployment.Containers) > 0 {
-		for name, svc := range app.Service {
+		// Iterate in sorted key order so the rendered Service list (and the
+		// ---separated documents it produces) is stable across runs; a map-random
+		// order would reorder the manifest on every render and show up as a
+		// spurious change in kubectl apply/diff for any app exposing >1 service.
+		for _, name := range sortedKeys(app.Service) {
+			svc := app.Service[name]
 			internal, external, ok := svc.resolvePorts()
 			if !ok {
 				return services, fmt.Errorf("port required for service: %s", name)

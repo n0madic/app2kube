@@ -603,3 +603,41 @@ cronjob:
 		t.Errorf("timeZone: got %v", crons[0].Spec.TimeZone)
 	}
 }
+
+// Regression: GetServices must render services in deterministic (sorted-key)
+// order. It ranged the app.Service map directly, so the service document order
+// flipped per render — a spurious change in kubectl apply/diff for any app
+// exposing more than one service. Every other map-driven generator already uses
+// sortedKeys; this one was missed.
+func TestGetServicesDeterministicOrder(t *testing.T) {
+	app := deployApp(t)
+	app.Service = map[string]Service{
+		"web":     {Port: 80},
+		"api":     {Port: 8080},
+		"metrics": {Port: 9090},
+		"grpc":    {Port: 50051},
+	}
+	want := []string{"example-api", "example-grpc", "example-metrics", "example-web"}
+
+	// Map iteration is randomized per range, so the old (unsorted) code produced
+	// a non-sorted order on some render with overwhelming probability, while the
+	// fixed code is sorted on every render.
+	for i := 0; i < 50; i++ {
+		svcs, err := app.GetServices()
+		if err != nil {
+			t.Fatalf("GetServices: %v", err)
+		}
+		got := make([]string, 0, len(svcs))
+		for _, s := range svcs {
+			got = append(got, s.Name)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("expected %d services, got %d", len(want), len(got))
+		}
+		for j := range want {
+			if got[j] != want[j] {
+				t.Fatalf("service order not deterministic/sorted on render %d: got %v, want %v", i, got, want)
+			}
+		}
+	}
+}

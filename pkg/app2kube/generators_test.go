@@ -935,6 +935,22 @@ func TestGetPersistentVolumeClaimsMissingMountPath(t *testing.T) {
 	}
 }
 
+// Regression: a volume with no mountPath must fail GetDeployment, not only
+// GetPersistentVolumeClaims. The volume mount is emitted on app-image containers
+// regardless of whether the PVC generator runs, and `--type deployment` skips
+// that generator — so without an in-container guard a bare Deployment render
+// produced an invalid volumeMount with an empty mountPath and no attributable
+// error.
+func TestGetDeploymentMissingMountPath(t *testing.T) {
+	app := deployApp(t)
+	app.Volumes = map[string]VolumeSpec{
+		"data": {}, // no MountPath
+	}
+	if _, err := app.GetDeployment(); err == nil {
+		t.Errorf("expected error from GetDeployment when volume mount path is missing")
+	}
+}
+
 // #48: an omitted accessModes produces a PVC the apiserver rejects; fail fast
 // with a clear error at generation time instead.
 func TestGetPersistentVolumeClaimsMissingAccessModes(t *testing.T) {

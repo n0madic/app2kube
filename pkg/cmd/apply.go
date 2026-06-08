@@ -23,6 +23,7 @@ func blueGreenNotSwitchedMsg(color string) string {
 var (
 	applyWithStatus bool
 	applyWithTrack  string
+	applyTimeout    = defaultTrackTimeout
 )
 
 // validateTrackValue checks the --track flag value. The valid set is known at
@@ -119,7 +120,7 @@ func NewCmdApply() *cobra.Command {
 				return manifest, nil
 			}
 
-			if blueGreenDeploy {
+			if opts.blueGreen {
 				if flags.Prune {
 					return fmt.Errorf("cannot prune resources with blue-green deployment")
 				}
@@ -175,9 +176,9 @@ func NewCmdApply() *cobra.Command {
 				var trackErr error
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
-					trackErr = trackFollow(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
+					trackErr = trackFollow(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now())
 				case "ready":
-					trackErr = trackReady(ctx, app.GetDeploymentName(), app.Namespace, trackTimeout, time.Now())
+					trackErr = trackReady(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now())
 				}
 				cmdutil.CheckErr(trackErr)
 			}
@@ -192,7 +193,7 @@ func NewCmdApply() *cobra.Command {
 	}
 
 	opts = addAppFlags(applyCmd)
-	addBlueGreenFlag(applyCmd)
+	addBlueGreenFlag(applyCmd, opts)
 	flags.PrintFlags.AddFlags(applyCmd)
 	cmdutil.AddDryRunFlag(applyCmd)
 	cmdutil.AddServerSideApplyFlags(applyCmd)
@@ -202,6 +203,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd.Flags().BoolVar(&flags.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
+	applyCmd.Flags().IntVar(&applyTimeout, "timeout", defaultTrackTimeout, "Timeout in minutes for --track. 0 is wait forever")
 
 	return applyCmd
 }

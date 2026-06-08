@@ -81,6 +81,8 @@ app2kube manifest --set name=example --set deployment.containers.example.image=e
 
 For a structured description of every configuration value, see [VALUES.md](VALUES.md).
 
+> **Value files are trusted input.** Each value file is rendered through [sprig](http://masterminds.github.io/sprig/) templating *before* YAML parsing, with the full function set — including `env`/`expandenv` (host environment access) and `getHostByName` (DNS lookup). This is intentional (e.g. `{{ env "VAR" }}`), but it means a value file can read host environment variables and perform DNS lookups. Treat value files and the arguments naming them at the same trust level as the operator running app2kube; do not feed attacker-controlled value files to it.
+
 By default, it tries to use the `.app2kube.yml` file in the current directory:
 
 ```yaml
@@ -118,6 +120,8 @@ Build and push docker image:
 app2kube build --push
 ```
 
+`--push` authenticates to the image registry using `--docker-username` (or `$APP2KUBE_DOCKER_USERNAME`) together with `$APP2KUBE_DOCKER_PASSWORD`; if neither is set it falls back to the credentials saved by `docker login`. The registry username is independent of the kubeconfig `--user` flag. With no resolvable credentials the push proceeds unauthenticated and prints a warning.
+
 Apply application manifest in kubernetes:
 
 ```shell
@@ -130,11 +134,15 @@ Track deployment till ready:
 app2kube track ready
 ```
 
+`apply --track ready|follow` tracks the rollout after applying; its `--timeout` (minutes, `0` waits forever) is honored — it is no longer fixed at 15 minutes.
+
 Delete application manifest from kubernetes:
 
 ```shell
 app2kube delete
 ```
+
+`delete all` removes this app's resources by label selector. `delete --include-namespace` deletes the whole namespace instead (cascading to everything in it), so the two are mutually exclusive — combining `all` with `--include-namespace` is rejected.
 
 ## Secrets
 
@@ -155,7 +163,7 @@ Passing the plaintext on the command line lands it in your shell history and `ps
 printf '%s' "secret" | app2kube config encrypt --string -
 ```
 
-Encrypted values are prefixed with `AES#` or `RSA#` depending on the encryption algorithm. It is possible to use both encryption algorithms in one file.
+Encrypted values are prefixed with `AES#` or `RSA#` depending on the encryption algorithm. It is possible to use both encryption algorithms in one file. `config encrypt` rewrites the file in place and forces its mode to `0600`. Secrets must be flat scalars (`key: value`); a YAML block scalar (`key: |`) is left untouched with a warning, since the line-based rewriter cannot encrypt multi-line values.
 
 To decrypt, set environment variable `APP2KUBE_PASSWORD` or `APP2KUBE_DECRYPT_KEY`.
 ```shell

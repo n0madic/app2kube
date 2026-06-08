@@ -27,6 +27,19 @@ func deleteArgs(cmd *cobra.Command, args []string) error {
 	}
 }
 
+// validateDeleteFlags rejects contradictory delete invocations: "all" (a scoped,
+// label-selected delete of this app's resources) cannot be combined with
+// --include-namespace, which deletes the whole namespace and cascades to every
+// resource in it — including unrelated ones sharing the namespace. Letting
+// --include-namespace silently win over an explicit "all" was a surprising,
+// destructive footgun.
+func validateDeleteFlags(includeNamespace bool, args []string) error {
+	if includeNamespace && len(args) == 1 && args[0] == "all" {
+		return fmt.Errorf(`--include-namespace cannot be combined with "all" (deleting the namespace already removes every resource in it)`)
+	}
+	return nil
+}
+
 // NewCmdDelete return delete command
 func NewCmdDelete() *cobra.Command {
 	deleteFlags := delete.NewDeleteCommandFlags("containing the resource to delete.")
@@ -38,17 +51,15 @@ func NewCmdDelete() *cobra.Command {
 		Args:  deleteArgs,
 		Run: func(cmd *cobra.Command, args []string) {
 			o, err := deleteFlags.ToOptions(nil, ioStreams)
-			if err != nil {
-				cmdutil.CheckErr(err)
-			}
+			cmdutil.CheckErr(err)
 
 			app, err := opts.initApp(cmd.Context())
-			if err != nil {
-				cmdutil.CheckErr(err)
-			}
+			cmdutil.CheckErr(err)
 
 			o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 			cmdutil.CheckErr(err)
+
+			cmdutil.CheckErr(validateDeleteFlags(opts.includeNamespace, args))
 
 			var waitStdin func() error
 			if opts.includeNamespace && app.Namespace != "" {
@@ -83,7 +94,7 @@ func NewCmdDelete() *cobra.Command {
 	}
 
 	opts = addAppFlags(deleteCmd)
-	addBlueGreenFlag(deleteCmd)
+	addBlueGreenFlag(deleteCmd, opts)
 
 	deleteCmd.Flags().BoolVar(&flagAllInstances, "all-instances", false, "Delete all instances of application with the cmd 'delete all'")
 	deleteCmd.Flags().BoolVar(deleteFlags.IgnoreNotFound, "ignore-not-found", *deleteFlags.IgnoreNotFound, "Treat \"resource not found\" as a successful delete.")

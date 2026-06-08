@@ -22,6 +22,11 @@ type appOptions struct {
 	fileValues       []string
 	verbose          bool
 	includeNamespace bool
+	// blueGreen requests resolving the target blue/green color in initApp. It is
+	// per-command state (bound by addBlueGreenFlag, or set explicitly by the
+	// blue-green subcommands) rather than a package global, so commands no longer
+	// leak it into each other.
+	blueGreen bool
 }
 
 func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
@@ -66,7 +71,7 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 	// managed-by is seeded by the library (NewApp/ensureLabels); the CLI no
 	// longer needs to set it explicitly.
 
-	if blueGreenDeploy {
+	if o.blueGreen {
 		app.Deployment.BlueGreenColor, err = getTargetBlueGreenColor(ctx, app.Namespace, app.Labels)
 		if err != nil {
 			return nil, err

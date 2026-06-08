@@ -238,6 +238,13 @@ func (app *App) getAffinity() (*apiv1.Affinity, error) {
 		// every render and roll the Deployment on each apply.
 		labels := app.GetColorLabels()
 		for _, label := range sortedKeys(labels) {
+			// Exclude managed-by deliberately: every app2kube-managed pod carries
+			// it, so an anti-affinity term on managed-by would spread this app's
+			// pods away from EVERY other app2kube workload in the cluster, not just
+			// its own replicas. The remaining labels (name/instance/user labels)
+			// scope the spread to this application. This asymmetry vs the Service
+			// selector (which keeps managed-by) is intentional — do not "align" them
+			// by removing this skip.
 			if label == LabelManagedBy {
 				continue
 			}
@@ -416,7 +423,10 @@ func truncateName(name string) string {
 
 // truncateNameTo trims name to at most max bytes, then strips trailing
 // characters that are not letters or digits so the result remains a valid
-// DNS-1123 name end.
+// DNS-1123 name end. Names are lowercased ASCII DNS labels (one byte per rune),
+// so the byte-based cut never splits a multibyte rune in practice; the trailing
+// TrimRightFunc would in any case drop a partial trailing rune (it decodes to
+// RuneError, neither letter nor digit).
 func truncateNameTo(name string, max int) string {
 	if len(name) > max {
 		name = name[0:max]

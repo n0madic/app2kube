@@ -63,12 +63,12 @@ func TestResolveNamespace(t *testing.T) {
 }
 
 // resetAppFlags clears the package-level flags that are still global (kube
-// config and the all/blue-green toggles) so each test starts from a clean
-// state. Value inputs now live on appOptions and are set per test.
+// config and the all-applications/all-instances toggles) so each test starts
+// from a clean state. Value inputs and the blue-green toggle now live on
+// appOptions and are set per test.
 func resetAppFlags() {
 	flagAllApplications = false
 	flagAllInstances = false
-	blueGreenDeploy = false
 	if kubeConfigFlags.Namespace != nil {
 		*kubeConfigFlags.Namespace = ""
 	}

@@ -15,16 +15,16 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
-var blueGreenDeploy bool
-
 // errNoBlueGreenColor signals that no current blue/green color could be resolved
 // because no matching service exists yet (or it carries no color selector). This
 // is a benign condition — the rotation simply starts at blue — and must be
 // distinguished from a real API/connectivity error, which must abort the deploy.
 var errNoBlueGreenColor = errors.New("no blue/green color found")
 
-func addBlueGreenFlag(cmd *cobra.Command) {
-	cmd.Flags().BoolVar(&blueGreenDeploy, "blue-green", false, "Enable blue-green deployment")
+// addBlueGreenFlag binds --blue-green to the command's own appOptions so the flag
+// is per-command state, not a package global shared (and leaked) between commands.
+func addBlueGreenFlag(cmd *cobra.Command, o *appOptions) {
+	cmd.Flags().BoolVar(&o.blueGreen, "blue-green", false, "Enable blue-green deployment")
 }
 
 // NewCmdBlueGreen return track command
@@ -44,7 +44,7 @@ func NewCmdBlueGreen() *cobra.Command {
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
-			blueGreenDeploy = blueGreen
+			opts.blueGreen = blueGreen
 			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				return err

@@ -155,7 +155,16 @@ func readFile(filePath string) ([]byte, error) {
 	return bytes, nil
 }
 
-// templating values
+// templating renders a value file through text/template with the full sprig
+// FuncMap before YAML parsing.
+//
+// Trust boundary: this is an intentional feature (VALUES.md documents
+// {{ env "VAR" }}), so value files are treated as TRUSTED input — same trust
+// level as the argv that names them. The full sprig map includes env/expandenv
+// (host environment access) and getHostByName (DNS lookup), so a value file from
+// an untrusted source could exfiltrate host secrets or probe via DNS. Do not feed
+// attacker-influenced value files to app2kube; if that is ever required, strip
+// env/expandenv/getHostByName from the FuncMap here.
 func templating(raw []byte) ([]byte, error) {
 	tmpl, err := template.New("values").Funcs(sprig.FuncMap()).Parse(string(raw))
 	if err != nil {

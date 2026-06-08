@@ -69,6 +69,17 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 						if len(v) == 2 {
 							// unquote value if necessary
 							stripped := strings.TrimSpace(v[1])
+							// A YAML block scalar (key: | / key: >) puts the secret on
+							// the following, more-indented lines, which this line-based
+							// rewriter does not understand. Warn loudly and leave it
+							// verbatim instead of "encrypting" the bare |/> indicator and
+							// giving a false sense the secret was protected.
+							if stripped == "|" || stripped == ">" ||
+								strings.HasPrefix(stripped, "|") || strings.HasPrefix(stripped, ">") {
+								fmt.Fprintf(os.Stderr, "WARNING: secret %q uses a YAML block scalar and was NOT encrypted; inline the value as a plain scalar to encrypt it\n", strings.TrimSpace(v[0]))
+								newYAML += scanner.Text() + "\n"
+								continue
+							}
 							value, err := strconv.Unquote(stripped)
 							if err != nil {
 								value = stripped
@@ -101,12 +112,16 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 		}
 
 		if modified {
-			// Write the secrets file owner-only (0600). os.WriteFile keeps an
-			// existing file's mode; 0600 only applies if it must be created, in
-			// which case a secrets file should never be group/world-readable.
+			// Write the secrets file owner-only (0600). os.WriteFile only applies
+			// the mode when it creates the file, so Chmod afterwards tightens an
+			// existing file that was previously group/world-readable — a secrets
+			// file should never be.
 			err = os.WriteFile(filePath, []byte(newYAML), 0600)
 			if err != nil {
 				return fmt.Errorf("file write error: %w", err)
+			}
+			if err = os.Chmod(filePath, 0600); err != nil {
+				return fmt.Errorf("file chmod error: %w", err)
 			}
 		}
 	}

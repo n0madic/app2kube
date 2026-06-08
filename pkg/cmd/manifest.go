@@ -24,7 +24,7 @@ func NewCmdManifest() *cobra.Command {
 	manifestCmd.Flags().StringVarP(&output, "output", "o", "yaml", "Output format")
 	manifestCmd.Flags().StringArrayVar(&typeOutput, "type", []string{"all"}, "Types of output resources (several can be specified)")
 	opts := addAppFlags(manifestCmd)
-	addBlueGreenFlag(manifestCmd)
+	addBlueGreenFlag(manifestCmd, opts)
 
 	manifestCmd.RunE = func(cmd *cobra.Command, args []string) error {
 		// Don't print full usage on runtime errors (only on arg-parse errors),

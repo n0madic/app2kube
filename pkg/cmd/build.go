@@ -31,6 +31,7 @@ var (
 	buildLabels    opts.ListOpts
 	buildPlatform  string
 	buildTarget    string
+	dockerUsername string
 	dockerfileName string
 	flagNoCache    bool
 	flagPassStdin  bool
@@ -66,6 +67,9 @@ func NewCmdBuild() *cobra.Command {
 	// values file, shared across every app command). docker/cli uses -f for the
 	// Dockerfile, but app2kube's --values shorthand takes precedence here.
 	buildCmd.Flags().StringVar(&dockerfileName, "file", "", `Name of the Dockerfile (Default is "PATH/Dockerfile")`)
+	// Registry login is its own identity, independent of the kubeconfig --user
+	// flag (AuthInfoName selects a Kubernetes auth-info, not a Docker account).
+	buildCmd.Flags().StringVar(&dockerUsername, "docker-username", "", "Username for the image registry (or $APP2KUBE_DOCKER_USERNAME)")
 	buildCmd.Flags().Var(&buildLabels, "label", "Set metadata for an image")
 	buildCmd.Flags().BoolVar(&flagNoCache, "no-cache", false, "Do not use cache when building the image")
 	buildCmd.Flags().BoolVar(&flagPassStdin, "password-stdin", false, "Take the docker password from stdin")
@@ -88,6 +92,11 @@ func NewCmdBuild() *cobra.Command {
 
 func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	ctx := cmd.Context()
+	// Silence the usage dump on every error from here on: a build/validation
+	// failure is not a CLI-misuse error, so printing the full usage after it is
+	// just noise (matches manifest/status/track).
+	cmd.SilenceUsage = true
+
 	app, err := appOpts.initApp(ctx)
 	if err != nil {
 		return err
@@ -104,8 +113,6 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 			return errors.New("requires common application image values (repository and tag)")
 		}
 	}
-
-	cmd.SilenceUsage = true
 
 	// Validate --platform up front, before assembling the build context, so a
 	// malformed value fails fast instead of after taring the context (matches
@@ -149,7 +156,7 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 	var registryAuth registrytypes.AuthConfig
 	var password string
 
-	username := *kubeConfigFlags.AuthInfoName
+	username := dockerUsername
 	if username == "" {
 		username = os.Getenv("APP2KUBE_DOCKER_USERNAME")
 	}
@@ -186,6 +193,14 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 		if err == nil {
 			registryAuth = registrytypes.AuthConfig(auth)
 		}
+	}
+
+	// A push with no resolved credentials would otherwise go out with an empty
+	// auth blob and surface only as an opaque registry-side 401 buried in the
+	// JSON stream. Warn up front so the unauthenticated state is visible (some
+	// insecure/local registries legitimately need no auth, so this is not fatal).
+	if flagPush && !hasRegistryAuth(registryAuth) {
+		fmt.Fprintf(os.Stderr, "WARNING: no registry credentials resolved for %s; pushing unauthenticated. Run `docker login %s` or set --docker-username and $APP2KUBE_DOCKER_PASSWORD if the push fails.\n", registryDomain, registryDomain)
 	}
 
 	var dockerfileCtx io.ReadCloser
@@ -334,6 +349,14 @@ func encodeAuthToBase64(authConfig registrytypes.AuthConfig) string {
 	return base64.URLEncoding.EncodeToString(buf)
 }
 
+// hasRegistryAuth reports whether an AuthConfig carries any usable credential.
+// ServerAddress alone does not count — only a username/password pair, a stored
+// auth string, or a token authenticates a push.
+func hasRegistryAuth(a registrytypes.AuthConfig) bool {
+	return a.Username != "" || a.Password != "" || a.Auth != "" ||
+		a.IdentityToken != "" || a.RegistryToken != ""
+}
+
 // maxStdinSecretBytes bounds a secret read from stdin (--password-stdin); a
 // registry password is tiny, so 1 MiB is a generous cap that still prevents an
 // unbounded read (DoS) from a misdirected/huge stdin (#41).
@@ -351,7 +374,7 @@ func validatePasswordStdin(passStdin, dockerfileFromStdin bool, username string)
 		return errors.New("--password-stdin cannot be combined with --file - (both read stdin)")
 	}
 	if username == "" {
-		return errors.New("--password-stdin requires a username (set --user or $APP2KUBE_DOCKER_USERNAME)")
+		return errors.New("--password-stdin requires a username (set --docker-username or $APP2KUBE_DOCKER_USERNAME)")
 	}
 	return nil
 }

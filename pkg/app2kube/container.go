@@ -2,7 +2,6 @@ package app2kube
 
 import (
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 
@@ -86,6 +85,14 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		// Sorted so a container's volumeMounts list is stable across renders;
 		// map-random order would reroll the pod template on every apply.
 		for _, volName := range sortedKeys(app.Volumes) {
+			// Validate here, not only in GetPersistentVolumeClaims: an empty
+			// mountPath emits a volumeMount the apiserver rejects, and the PVC
+			// generator (the other guard) is skipped by --type deployment, so a
+			// bare Deployment render would otherwise produce an invalid manifest
+			// with no attributable error.
+			if app.Volumes[volName].MountPath == "" {
+				return fmt.Errorf("mount path required for volume %q in container %s", volName, container.Name)
+			}
 			container.VolumeMounts = append(container.VolumeMounts, apiv1.VolumeMount{
 				Name:      volName,
 				MountPath: app.Volumes[volName].MountPath,
@@ -154,7 +161,7 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 			containerPort := intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort}
 
 			// Add LivenessProbe to container port if probe not specified
-			if reflect.ValueOf(container.LivenessProbe).IsNil() {
+			if container.LivenessProbe == nil {
 				container.LivenessProbe = &apiv1.Probe{
 					ProbeHandler: apiv1.ProbeHandler{
 						TCPSocket: &apiv1.TCPSocketAction{
@@ -165,10 +172,10 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 				}
 			} else {
 				// Add missing port to LivenessProbe
-				if !reflect.ValueOf(container.LivenessProbe.TCPSocket).IsNil() && portIsUnset(container.LivenessProbe.TCPSocket.Port) {
+				if container.LivenessProbe.TCPSocket != nil && portIsUnset(container.LivenessProbe.TCPSocket.Port) {
 					container.LivenessProbe.TCPSocket.Port = containerPort
 				}
-				if !reflect.ValueOf(container.LivenessProbe.HTTPGet).IsNil() && portIsUnset(container.LivenessProbe.HTTPGet.Port) {
+				if container.LivenessProbe.HTTPGet != nil && portIsUnset(container.LivenessProbe.HTTPGet.Port) {
 					container.LivenessProbe.HTTPGet.Port = containerPort
 				}
 			}
@@ -178,8 +185,8 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 			// progress, so introducing it implicitly can wedge the rollout of an
 			// app that is not yet accepting connections on its first port —
 			// readiness is left to explicit configuration (pre-v0.7 behavior).
-			if !reflect.ValueOf(container.ReadinessProbe).IsNil() &&
-				!reflect.ValueOf(container.ReadinessProbe.HTTPGet).IsNil() &&
+			if container.ReadinessProbe != nil &&
+				container.ReadinessProbe.HTTPGet != nil &&
 				portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
 				container.ReadinessProbe.HTTPGet.Port = containerPort
 			}

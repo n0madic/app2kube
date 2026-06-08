@@ -19,7 +19,6 @@ require (
 	k8s.io/apimachinery v0.29.3
 	k8s.io/cli-runtime v0.29.3
 	k8s.io/client-go v0.29.3
-	k8s.io/helm v2.17.0+incompatible
 	k8s.io/kubectl v0.29.0
 	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
 	sigs.k8s.io/yaml v1.4.0
@@ -54,7 +53,6 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fluxcd/flagger v1.36.1 // indirect
 	github.com/fvbommel/sortorder v1.1.0 // indirect
-	github.com/ghodss/yaml v1.0.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect

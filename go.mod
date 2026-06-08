@@ -6,7 +6,7 @@ require (
 	github.com/Masterminds/sprig v2.22.0+incompatible
 	github.com/containerd/platforms v0.2.1
 	github.com/distribution/reference v0.6.0
-	github.com/docker/cli v29.5.2+incompatible
+	github.com/docker/cli v29.5.3+incompatible
 	github.com/logrusorgru/aurora v2.0.3+incompatible
 	github.com/moby/go-archive v0.2.0
 	github.com/moby/moby/api v1.54.2
@@ -20,8 +20,8 @@ require (
 	k8s.io/cli-runtime v0.29.3
 	k8s.io/client-go v0.29.3
 	k8s.io/kubectl v0.29.0
-	k8s.io/utils v0.0.0-20240310230437-4693a0247e57
-	sigs.k8s.io/yaml v1.4.0
+	k8s.io/utils v0.0.0-20260507154919-ff6756f316d2
+	sigs.k8s.io/yaml v1.6.0
 )
 
 require (
@@ -125,6 +125,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.starlark.net v0.0.0-20231121155337-90ade8b19d09 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/crypto v0.51.0 // indirect
 	golang.org/x/exp v0.0.0-20240325151524-a685a6edb6d8 // indirect
 	golang.org/x/net v0.55.0 // indirect

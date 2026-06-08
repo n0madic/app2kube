@@ -5,10 +5,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ghodss/yaml"
 	apiv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/yaml"
 )
 
 func mustUnmarshalApp(t *testing.T, y string) *App {
@@ -22,7 +22,7 @@ func mustUnmarshalApp(t *testing.T, y string) *App {
 
 // Regression: a cronjob with multiple named containers (the `containers:` map,
 // mirroring deployment) was silently dropped because the field shared the
-// `container` yaml tag with the single-container field.
+// `container` struct tag with the single-container field.
 func TestCronjobMultipleContainers(t *testing.T) {
 	app := mustUnmarshalApp(t, `
 name: example

@@ -59,7 +59,7 @@ func TestLoadValues(t *testing.T) {
 }
 
 // Regression (#11/#43): an explicit `labels: null` or a bare `labels:` in a
-// values file makes ghodss/yaml replace app.Labels with a nil map. LoadValues
+// values file makes sigs.k8s.io/yaml replace app.Labels with a nil map. LoadValues
 // then wrote app.Labels["app.kubernetes.io/name"] into that nil map and
 // panicked ("assignment to entry in nil map") on untrusted input. ensureLabels
 // must re-seed a writable map carrying the default instance label.

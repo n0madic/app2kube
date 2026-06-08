@@ -9,8 +9,8 @@ import (
 	"text/template"
 
 	"github.com/Masterminds/sprig"
-	"github.com/ghodss/yaml"
 	"k8s.io/helm/pkg/strvals"
+	"sigs.k8s.io/yaml"
 )
 
 //////////////////////////////////////

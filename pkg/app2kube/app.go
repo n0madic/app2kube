@@ -7,12 +7,12 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ghodss/yaml"
 	appsv1 "k8s.io/api/apps/v1"
 	batch "k8s.io/api/batch/v1"
 	apiv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
+	"sigs.k8s.io/yaml"
 )
 
 // MaxNameLength is the DNS-1123 *label* limit (RFC 1035): the cap for object
@@ -34,92 +34,92 @@ const MaxCronJobNameLength = 52
 
 // IngressCommon specification
 type IngressCommon struct {
-	Annotations   map[string]string `yaml:"annotations"`
-	Class         string            `yaml:"class"`
-	ClusterIssuer string            `yaml:"clusterIssuer"`
-	Letsencrypt   bool              `yaml:"letsencrypt"`
-	ServiceName   string            `yaml:"serviceName"`
-	ServicePort   int32             `yaml:"servicePort"`
-	SslRedirect   bool              `yaml:"sslRedirect"`
+	Annotations   map[string]string `json:"annotations"`
+	Class         string            `json:"class"`
+	ClusterIssuer string            `json:"clusterIssuer"`
+	Letsencrypt   bool              `json:"letsencrypt"`
+	ServiceName   string            `json:"serviceName"`
+	ServicePort   int32             `json:"servicePort"`
+	SslRedirect   bool              `json:"sslRedirect"`
 }
 
 // Ingress specification
 type Ingress struct {
 	IngressCommon
-	Aliases       []string `yaml:"aliases"`
-	Host          string   `yaml:"host"`
-	Path          string   `yaml:"path"`
-	TLSCrt        string   `yaml:"tlsCrt"`
-	TLSKey        string   `yaml:"tlsKey"`
-	TLSSecretName string   `yaml:"tlsSecretName"`
+	Aliases       []string `json:"aliases"`
+	Host          string   `json:"host"`
+	Path          string   `json:"path"`
+	TLSCrt        string   `json:"tlsCrt"`
+	TLSKey        string   `json:"tlsKey"`
+	TLSSecretName string   `json:"tlsSecretName"`
 }
 
 // Service specification
 type Service struct {
-	ExternalPort int32             `yaml:"externalPort"`
-	InternalPort int32             `yaml:"internalPort"`
-	Port         int32             `yaml:"port"`
-	Protocol     apiv1.Protocol    `yaml:"protocol"`
-	Type         apiv1.ServiceType `yaml:"type"`
+	ExternalPort int32             `json:"externalPort"`
+	InternalPort int32             `json:"internalPort"`
+	Port         int32             `json:"port"`
+	Protocol     apiv1.Protocol    `json:"protocol"`
+	Type         apiv1.ServiceType `json:"type"`
 }
 
 // ImageSpec is the common container image configuration.
 type ImageSpec struct {
-	PullPolicy  apiv1.PullPolicy `yaml:"pullPolicy"`
-	PullSecrets string           `yaml:"pullSecrets"`
-	Repository  string           `yaml:"repository"`
-	Tag         string           `yaml:"tag"`
+	PullPolicy  apiv1.PullPolicy `json:"pullPolicy"`
+	PullSecrets string           `json:"pullSecrets"`
+	Repository  string           `json:"repository"`
+	Tag         string           `json:"tag"`
 }
 
 // CommonSpec holds settings shared by all workloads of an App.
 type CommonSpec struct {
-	CronjobSuspend           bool                        `yaml:"cronjobSuspend"`
-	DNSPolicy                apiv1.DNSPolicy             `yaml:"dnsPolicy"`
-	EnableServiceLinks       bool                        `yaml:"enableServiceLinks"`
-	GracePeriod              int64                       `yaml:"gracePeriod"`
-	Image                    ImageSpec                   `yaml:"image"`
-	Ingress                  IngressCommon               `yaml:"ingress"`
-	MountServiceAccountToken bool                        `yaml:"mountServiceAccountToken"`
-	NodeSelector             map[string]string           `yaml:"nodeSelector"`
-	PodAntiAffinity          string                      `yaml:"podAntiAffinity"`
-	Resources                *apiv1.ResourceRequirements `yaml:"resources"`
-	SecurityContext          *apiv1.PodSecurityContext   `yaml:"securityContext"`
-	ServiceAccountName       string                      `yaml:"serviceAccountName"`
-	SharedData               string                      `yaml:"sharedData"`
-	Tolerations              []apiv1.Toleration          `yaml:"tolerations"`
+	CronjobSuspend           bool                        `json:"cronjobSuspend"`
+	DNSPolicy                apiv1.DNSPolicy             `json:"dnsPolicy"`
+	EnableServiceLinks       bool                        `json:"enableServiceLinks"`
+	GracePeriod              int64                       `json:"gracePeriod"`
+	Image                    ImageSpec                   `json:"image"`
+	Ingress                  IngressCommon               `json:"ingress"`
+	MountServiceAccountToken bool                        `json:"mountServiceAccountToken"`
+	NodeSelector             map[string]string           `json:"nodeSelector"`
+	PodAntiAffinity          string                      `json:"podAntiAffinity"`
+	Resources                *apiv1.ResourceRequirements `json:"resources"`
+	SecurityContext          *apiv1.PodSecurityContext   `json:"securityContext"`
+	ServiceAccountName       string                      `json:"serviceAccountName"`
+	SharedData               string                      `json:"sharedData"`
+	Tolerations              []apiv1.Toleration          `json:"tolerations"`
 }
 
 // CronjobSpec is a single named cronjob definition.
 type CronjobSpec struct {
-	ActiveDeadlineSeconds      *int64                     `yaml:"activeDeadlineSeconds"`
-	BackoffLimit               *int32                     `yaml:"backoffLimit"`
-	ConcurrencyPolicy          batch.ConcurrencyPolicy    `yaml:"concurrencyPolicy"`
-	Container                  apiv1.Container            `yaml:"container"`
-	Containers                 map[string]apiv1.Container `yaml:"containers"`
-	FailedJobsHistoryLimit     *int32                     `yaml:"failedJobsHistoryLimit"`
-	RestartPolicy              apiv1.RestartPolicy        `yaml:"restartPolicy"`
-	Schedule                   string                     `yaml:"schedule"`
-	SuccessfulJobsHistoryLimit *int32                     `yaml:"successfulJobsHistoryLimit"`
-	Suspend                    bool                       `yaml:"suspend"`
-	TimeZone                   string                     `yaml:"timeZone"`
+	ActiveDeadlineSeconds      *int64                     `json:"activeDeadlineSeconds"`
+	BackoffLimit               *int32                     `json:"backoffLimit"`
+	ConcurrencyPolicy          batch.ConcurrencyPolicy    `json:"concurrencyPolicy"`
+	Container                  apiv1.Container            `json:"container"`
+	Containers                 map[string]apiv1.Container `json:"containers"`
+	FailedJobsHistoryLimit     *int32                     `json:"failedJobsHistoryLimit"`
+	RestartPolicy              apiv1.RestartPolicy        `json:"restartPolicy"`
+	Schedule                   string                     `json:"schedule"`
+	SuccessfulJobsHistoryLimit *int32                     `json:"successfulJobsHistoryLimit"`
+	Suspend                    bool                       `json:"suspend"`
+	TimeZone                   string                     `json:"timeZone"`
 }
 
 // DeploymentSpec is the App's deployment configuration.
 type DeploymentSpec struct {
-	BlueGreenColor          string                     `yaml:"blueGreenColor"`
-	Containers              map[string]apiv1.Container `yaml:"containers"`
-	InitContainers          map[string]apiv1.Container `yaml:"initContainers"`
-	ProgressDeadlineSeconds *int32                     `yaml:"progressDeadlineSeconds"`
-	ReplicaCount            *int32                     `yaml:"replicaCount"`
-	ReplicaCountStaging     int32                      `yaml:"replicaCountStaging"`
-	RevisionHistoryLimit    int32                      `yaml:"revisionHistoryLimit"`
-	Strategy                appsv1.DeploymentStrategy  `yaml:"strategy"`
+	BlueGreenColor          string                     `json:"blueGreenColor"`
+	Containers              map[string]apiv1.Container `json:"containers"`
+	InitContainers          map[string]apiv1.Container `json:"initContainers"`
+	ProgressDeadlineSeconds *int32                     `json:"progressDeadlineSeconds"`
+	ReplicaCount            *int32                     `json:"replicaCount"`
+	ReplicaCountStaging     int32                      `json:"replicaCountStaging"`
+	RevisionHistoryLimit    int32                      `json:"revisionHistoryLimit"`
+	Strategy                appsv1.DeploymentStrategy  `json:"strategy"`
 }
 
 // VolumeSpec is a single named persistent volume claim and its mount path.
 type VolumeSpec struct {
-	Spec      apiv1.PersistentVolumeClaimSpec `yaml:"spec"`
-	MountPath string                          `yaml:"mountPath"`
+	Spec      apiv1.PersistentVolumeClaimSpec `json:"spec"`
+	MountPath string                          `json:"mountPath"`
 }
 
 // App instance
@@ -127,20 +127,20 @@ type App struct {
 	aesPassword   string
 	rsaPublicKey  string
 	rsaPrivateKey string
-	Branch        string                 `yaml:"branch"`
-	Common        CommonSpec             `yaml:"common"`
-	ConfigMap     map[string]string      `yaml:"configmap"`
-	Cronjob       map[string]CronjobSpec `yaml:"cronjob"`
-	Deployment    DeploymentSpec         `yaml:"deployment"`
-	Env           map[string]string      `yaml:"env"`
-	Ingress       []Ingress              `yaml:"ingress"`
-	Labels        map[string]string      `yaml:"labels"`
-	Name          string                 `yaml:"name"`
-	Namespace     string                 `yaml:"namespace"`
-	Secrets       map[string]string      `yaml:"secrets"`
-	Service       map[string]Service     `yaml:"service"`
-	Staging       string                 `yaml:"staging"`
-	Volumes       map[string]VolumeSpec  `yaml:"volumes"`
+	Branch        string                 `json:"branch"`
+	Common        CommonSpec             `json:"common"`
+	ConfigMap     map[string]string      `json:"configmap"`
+	Cronjob       map[string]CronjobSpec `json:"cronjob"`
+	Deployment    DeploymentSpec         `json:"deployment"`
+	Env           map[string]string      `json:"env"`
+	Ingress       []Ingress              `json:"ingress"`
+	Labels        map[string]string      `json:"labels"`
+	Name          string                 `json:"name"`
+	Namespace     string                 `json:"namespace"`
+	Secrets       map[string]string      `json:"secrets"`
+	Service       map[string]Service     `json:"service"`
+	Staging       string                 `json:"staging"`
+	Volumes       map[string]VolumeSpec  `json:"volumes"`
 }
 
 // GetObjectMeta return App metadata. Annotations is left nil by default so
@@ -401,8 +401,8 @@ func NewApp() *App {
 
 // ensureLabels guarantees app.Labels is a writable map carrying the default
 // instance label, so a `labels: null` / bare `labels:` in user YAML (which
-// ghodss/yaml unmarshals into a nil map) cannot leave it nil and panic on the
-// next label assignment. It is idempotent and safe for non-NewApp consumers.
+// sigs.k8s.io/yaml unmarshals into a nil map) cannot leave it nil and panic on
+// the next label assignment. It is idempotent and safe for non-NewApp consumers.
 func (app *App) ensureLabels() {
 	if app.Labels == nil {
 		app.Labels = map[string]string{}

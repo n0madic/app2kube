@@ -1,0 +1,12 @@
+.git
+.github
+.claude
+app2kube
+dist
+CODE_REVIEW.md
+*.test
+*.out
+*.bak
+secrets.yaml
+values*.yaml
+values*.yml

@@ -22,6 +22,15 @@ func resolveEncryptString(s string, stdin io.Reader) (string, error) {
 	return s, nil
 }
 
+func leadingWhitespace(s string) int {
+	for i, r := range s {
+		if r != ' ' && r != '\t' {
+			return i
+		}
+	}
+	return len(s)
+}
+
 // runEncrypt encrypts the given string and/or the secrets sections of the
 // provided value files in place.
 func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
@@ -47,25 +56,49 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 		}
 
 		scanner := bufio.NewScanner(strings.NewReader(string(content)))
-		for scanner.Scan() {
+		var pendingLine *string
+		nextLine := func() (string, bool) {
+			if pendingLine != nil {
+				line := *pendingLine
+				pendingLine = nil
+				return line, true
+			}
+			if !scanner.Scan() {
+				return "", false
+			}
+			return scanner.Text(), true
+		}
+		unreadLine := func(line string) {
+			pendingLine = &line
+		}
+
+		for {
+			line, ok := nextLine()
+			if !ok {
+				break
+			}
 			// found secrets section
-			if strings.TrimSpace(scanner.Text()) == "secrets:" {
-				newYAML += scanner.Text() + "\n"
+			if strings.TrimSpace(line) == "secrets:" {
+				newYAML += line + "\n"
 				// scan secrets
-				for scanner.Scan() {
+				for {
+					line, ok := nextLine()
+					if !ok {
+						break
+					}
 					// blank lines belong to the section, keep them and continue
-					if strings.TrimSpace(scanner.Text()) == "" {
-						newYAML += scanner.Text() + "\n"
+					if strings.TrimSpace(line) == "" {
+						newYAML += line + "\n"
 						continue
 					}
 					// skip template lines
-					if strings.HasPrefix(strings.TrimSpace(scanner.Text()), "{{") {
-						newYAML += scanner.Text() + "\n"
+					if strings.HasPrefix(strings.TrimSpace(line), "{{") {
+						newYAML += line + "\n"
 						continue
 					}
 					// process line with secret
-					if strings.HasPrefix(scanner.Text(), " ") || strings.HasPrefix(scanner.Text(), "\t") {
-						v := strings.SplitN(scanner.Text(), ":", 2)
+					if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+						v := strings.SplitN(line, ":", 2)
 						if len(v) == 2 {
 							// unquote value if necessary
 							stripped := strings.TrimSpace(v[1])
@@ -77,7 +110,20 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 							if stripped == "|" || stripped == ">" ||
 								strings.HasPrefix(stripped, "|") || strings.HasPrefix(stripped, ">") {
 								fmt.Fprintf(os.Stderr, "WARNING: secret %q uses a YAML block scalar and was NOT encrypted; inline the value as a plain scalar to encrypt it\n", strings.TrimSpace(v[0]))
-								newYAML += scanner.Text() + "\n"
+								newYAML += line + "\n"
+								keyIndent := leadingWhitespace(line)
+								for {
+									blockLine, ok := nextLine()
+									if !ok {
+										break
+									}
+									if strings.TrimSpace(blockLine) == "" || leadingWhitespace(blockLine) > keyIndent {
+										newYAML += blockLine + "\n"
+										continue
+									}
+									unreadLine(blockLine)
+									break
+								}
 								continue
 							}
 							value, err := strconv.Unquote(stripped)
@@ -95,15 +141,15 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 							}
 							newYAML += fmt.Sprintf("%s: %s\n", v[0], value)
 						} else {
-							newYAML += scanner.Text() + "\n"
+							newYAML += line + "\n"
 						}
 					} else {
-						newYAML += scanner.Text() + "\n"
+						newYAML += line + "\n"
 						break // if a new section begins
 					}
 				}
 			} else {
-				newYAML += scanner.Text() + "\n"
+				newYAML += line + "\n"
 			}
 		}
 

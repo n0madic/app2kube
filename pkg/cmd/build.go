@@ -306,13 +306,18 @@ func runBuild(appOpts *appOptions, cmd *cobra.Command, args []string) error {
 			if err != nil {
 				return err
 			}
-			return jsonmessage.DisplayJSONMessagesStream(res, os.Stdout, fd, isTerminal, nil)
+			return displayJSONMessagesStreamAndClose(res, os.Stdout, fd, isTerminal)
 		})
 		if err != nil {
 			return fmt.Errorf("docker image push error: %w", err)
 		}
 	}
 	return nil
+}
+
+func displayJSONMessagesStreamAndClose(body io.ReadCloser, out io.Writer, fd uintptr, isTerminal bool) error {
+	defer func() { _ = body.Close() }()
+	return jsonmessage.DisplayJSONMessagesStream(body, out, fd, isTerminal, nil)
 }
 
 // parseBuildPlatforms converts a --platform value to the slice the build API

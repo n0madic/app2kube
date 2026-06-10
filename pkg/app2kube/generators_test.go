@@ -924,6 +924,39 @@ func TestGetPersistentVolumeClaims(t *testing.T) {
 	}
 }
 
+func TestGetPersistentVolumeClaimsDeterministicOrder(t *testing.T) {
+	app := NewApp()
+	app.Name = "example"
+	spec := apiv1.PersistentVolumeClaimSpec{
+		AccessModes: []apiv1.PersistentVolumeAccessMode{apiv1.ReadWriteOnce},
+		Resources: apiv1.VolumeResourceRequirements{
+			Requests: apiv1.ResourceList{
+				apiv1.ResourceStorage: resource.MustParse("1Gi"),
+			},
+		},
+	}
+	app.Volumes = map[string]VolumeSpec{
+		"zeta":  {MountPath: "/zeta", Spec: spec},
+		"alpha": {MountPath: "/alpha", Spec: spec},
+		"mid":   {MountPath: "/mid", Spec: spec},
+	}
+
+	for i := 0; i < 20; i++ {
+		claims, err := app.GetPersistentVolumeClaims()
+		if err != nil {
+			t.Fatalf("GetPersistentVolumeClaims: %v", err)
+		}
+		var got []string
+		for _, claim := range claims {
+			got = append(got, claim.Name)
+		}
+		want := []string{"example-alpha", "example-mid", "example-zeta"}
+		if !reflect.DeepEqual(got, want) {
+			t.Fatalf("PVC order not deterministic/sorted on render %d: got %v, want %v", i, got, want)
+		}
+	}
+}
+
 func TestGetPersistentVolumeClaimsMissingMountPath(t *testing.T) {
 	app := NewApp()
 	app.Name = "example"

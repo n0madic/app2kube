@@ -8,7 +8,8 @@ import (
 
 // GetPersistentVolumeClaims resource
 func (app *App) GetPersistentVolumeClaims() (claims []*apiv1.PersistentVolumeClaim, err error) {
-	for volName, volume := range app.Volumes {
+	for _, volName := range sortedKeys(app.Volumes) {
+		volume := app.Volumes[volName]
 		if volume.MountPath == "" {
 			return claims, fmt.Errorf("mount path required for PVC: %s", volName)
 		}

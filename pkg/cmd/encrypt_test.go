@@ -73,3 +73,37 @@ func TestEncryptBlankLineInSecrets(t *testing.T) {
 		t.Errorf("non-secret content not preserved:\n%s", s)
 	}
 }
+
+func TestEncryptSkipsEntireBlockScalarSecret(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  cert: |\n    subject: example\n    body: keep-this\n  token: plain\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	out, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+
+	if !strings.Contains(s, "  cert: |\n    subject: example\n    body: keep-this\n") {
+		t.Errorf("block scalar secret body must be preserved verbatim:\n%s", s)
+	}
+	if !strings.Contains(s, "  token: AES#") {
+		t.Errorf("ordinary secret after block scalar must still be encrypted:\n%s", s)
+	}
+	if strings.Contains(s, "subject: AES#") || strings.Contains(s, "body: AES#") {
+		t.Errorf("block scalar body lines must not be encrypted as separate secrets:\n%s", s)
+	}
+	if !strings.Contains(s, "other: keep") {
+		t.Errorf("non-secret content not preserved:\n%s", s)
+	}
+}

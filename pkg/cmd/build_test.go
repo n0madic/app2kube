@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"strings"
 	"testing"
@@ -173,5 +174,27 @@ func TestPushTags(t *testing.T) {
 	// All-success → nil.
 	if err := pushTags([]string{"a", "b"}, func(string) error { return nil }); err != nil {
 		t.Errorf("all-success must return nil, got %v", err)
+	}
+}
+
+type trackingReadCloser struct {
+	*strings.Reader
+	closed bool
+}
+
+func (r *trackingReadCloser) Close() error {
+	r.closed = true
+	return nil
+}
+
+func TestDisplayJSONMessagesStreamAndCloseClosesBody(t *testing.T) {
+	body := &trackingReadCloser{Reader: strings.NewReader("{\"status\":\"ok\"}\n")}
+	var out bytes.Buffer
+
+	if err := displayJSONMessagesStreamAndClose(body, &out, 0, false); err != nil {
+		t.Fatalf("displayJSONMessagesStreamAndClose: %v", err)
+	}
+	if !body.closed {
+		t.Fatal("push response body was not closed")
 	}
 }

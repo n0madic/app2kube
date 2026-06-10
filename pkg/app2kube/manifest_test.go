@@ -101,6 +101,46 @@ service:
 	}
 }
 
+func TestGetManifestAllAutoServiceIgnoresCronJobPorts(t *testing.T) {
+	app := mustUnmarshalApp(t, `
+name: review
+common:
+  image:
+    repository: example/app
+    tag: v1
+deployment:
+  containers:
+    web:
+      ports:
+        - name: http
+          containerPort: 8080
+cronjob:
+  backup:
+    schedule: "* * * * *"
+    container:
+      command: [backup]
+      ports:
+        - name: metrics
+          containerPort: 9090
+ingress:
+  - host: example.com
+`)
+
+	m, err := app.GetManifest("yaml", OutputAll)
+	if err != nil {
+		t.Fatalf("GetManifest: %v", err)
+	}
+	if !strings.Contains(m, "# Service: review-http") {
+		t.Fatalf("deployment port must drive the implicit service, got:\n%s", m)
+	}
+	if strings.Contains(m, "# Service: review-metrics") {
+		t.Fatalf("cronjob port must not create the implicit ingress service:\n%s", m)
+	}
+	if !strings.Contains(m, "name: review-http") || !strings.Contains(m, "number: 8080") {
+		t.Errorf("ingress must point at the deployment service/port, got:\n%s", m)
+	}
+}
+
 // #38: lock the two-phase blue/green apply contract. Phase 1
 // (OutputAllForDeployment) must carry the Deployment and the config it depends
 // on (Secret/ConfigMap/PVC) but NOT the traffic resources (Service/Ingress),

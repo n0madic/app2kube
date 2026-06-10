@@ -6,11 +6,11 @@ WORKDIR /src
 
 ENV GO111MODULE=on
 
-ADD go.* ./
+COPY go.* ./
 
 RUN go mod download
 
-ADD . .
+COPY . .
 
 RUN go install -tags osusergo,netgo -ldflags="-s -w -extldflags=-static"
 

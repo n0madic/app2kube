@@ -289,6 +289,16 @@ func (app *App) DeleteResourceTypes() string {
 
 // GetManifest returns a manifest with the specified resource types.
 func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (string, error) {
+	// Derive the implicit Service (Ingress with no explicit Service, single app
+	// container) once, deterministically, before rendering. This makes a
+	// Service-/Ingress-only render — and the blue/green phase that emits traffic
+	// resources without re-rendering the Deployment — derive it the same way a
+	// full render does, instead of relying on the Deployment generator's side
+	// effect happening earlier in the same call.
+	if err := app.ensureImplicitService(); err != nil {
+		return "", err
+	}
+
 	// Build the printer once and reuse it for every object: it depends only on
 	// the output format, so reconstructing it per object (as PrintObj does for
 	// single-object callers) is wasted work on a multi-resource render.

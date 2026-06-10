@@ -216,20 +216,20 @@ func TestProcessContainerDefaultLivenessProbe(t *testing.T) {
 	}
 }
 
-func TestProcessContainerAutoServiceFromIngress(t *testing.T) {
-	// A single container with a named port and an ingress but no service must
-	// auto-create a service keyed by the port name.
+func TestEnsureImplicitServiceFromIngress(t *testing.T) {
+	// A single main container with a named port and an ingress but no service
+	// must auto-create a service keyed by the port name.
 	app := NewApp()
 	app.Name = "example"
 	app.Ingress = []Ingress{{Host: "example.com"}}
-	app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
-	c := &apiv1.Container{
-		Name:  "app",
-		Image: "example/app:v1",
-		Ports: []apiv1.ContainerPort{{Name: "http", ContainerPort: 8080}},
+	app.Deployment.Containers = map[string]apiv1.Container{
+		"app": {
+			Image: "example/app:v1",
+			Ports: []apiv1.ContainerPort{{Name: "http", ContainerPort: 8080}},
+		},
 	}
-	if err := app.processContainer(c, false); err != nil {
-		t.Fatalf("processContainer: %v", err)
+	if err := app.ensureImplicitService(); err != nil {
+		t.Fatalf("ensureImplicitService: %v", err)
 	}
 	svc, ok := app.Service["http"]
 	if !ok {

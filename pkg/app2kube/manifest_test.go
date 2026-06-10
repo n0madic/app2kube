@@ -141,6 +141,65 @@ ingress:
 	}
 }
 
+// The implicit Service (Ingress, no explicit Service, single app container) is
+// derived up front by GetManifest, not as a side effect of the Deployment
+// render. So a Service- or Ingress-only render — and the blue/green phase that
+// emits traffic resources without re-rendering the Deployment — must derive it
+// the same way a full render does. A regression would reintroduce the coupling
+// where rendering Service/Ingress without the Deployment in the same call
+// silently dropped the implicit Service.
+func TestGetManifestImplicitServiceWithoutDeploymentRender(t *testing.T) {
+	const values = `
+name: review
+common:
+  image:
+    repository: example/app
+    tag: v1
+deployment:
+  containers:
+    web:
+      ports:
+        - name: http
+          containerPort: 8080
+ingress:
+  - host: example.com
+`
+
+	cases := []struct {
+		name   string
+		render func(app *App) (string, error)
+	}{
+		{"service only", func(app *App) (string, error) {
+			return app.GetManifest("yaml", OutputService)
+		}},
+		{"ingress only", func(app *App) (string, error) {
+			return app.GetManifest("yaml", OutputIngress)
+		}},
+		{"all-other only (blue/green phase 2 without phase 1)", func(app *App) (string, error) {
+			return app.GetManifest("yaml", OutputAllOther)
+		}},
+		{"blue/green two-phase: deployment then all-other", func(app *App) (string, error) {
+			if _, err := app.GetManifest("yaml", OutputAllForDeployment); err != nil {
+				return "", err
+			}
+			return app.GetManifest("yaml", OutputAllOther)
+		}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := mustUnmarshalApp(t, values)
+			m, err := tc.render(app)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(m, "review-http") {
+				t.Errorf("implicit service must be derived, got:\n%s", m)
+			}
+		})
+	}
+}
+
 // #38: lock the two-phase blue/green apply contract. Phase 1
 // (OutputAllForDeployment) must carry the Deployment and the config it depends
 // on (Secret/ConfigMap/PVC) but NOT the traffic resources (Service/Ingress),

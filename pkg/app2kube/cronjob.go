@@ -66,7 +66,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 			if len(job.Container.Command) == 0 {
 				return crons, fmt.Errorf("command required for the 'container' of cronjob %q (set a command or move it under 'containers')", cronName)
 			}
-			if err := app.processContainerWithoutAutoService(&job.Container, false); err != nil {
+			if err := app.processContainer(&job.Container, false); err != nil {
 				return crons, err
 			}
 			if job.Container.Name == "" {
@@ -79,7 +79,7 @@ func (app *App) GetCronJobs() (crons []*batch.CronJob, err error) {
 		for _, name := range sortedKeys(job.Containers) {
 			container := job.Containers[name]
 			container.Name = strings.ToLower(name)
-			err = app.processContainerWithoutAutoService(&container, false)
+			err = app.processContainer(&container, false)
 			if err != nil {
 				return crons, err
 			}

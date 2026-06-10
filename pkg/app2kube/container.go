@@ -11,20 +11,15 @@ import (
 )
 
 // processContainer fills in defaults and injected configuration for a container.
-// When isInit is true the container is an init container: the auto-service
-// derivation and Liveness/Readiness probe injection are skipped, because the
-// Kubernetes API rejects probes on non-sidecar init containers and an init
-// container port must never drive the app's Service. Env/EnvFrom and volume
-// mounts are still applied (init containers legitimately use them).
+// When isInit is true the container is an init container: Liveness/Readiness
+// probe injection is skipped, because the Kubernetes API rejects probes on
+// non-sidecar init containers. Env/EnvFrom and volume mounts are still applied
+// (init containers legitimately use them). The implicit Service that an Ingress
+// needs is NOT derived here — that lives in ensureImplicitService, which the
+// manifest renderer calls once up front so a Service- or Ingress-only render
+// derives it the same way a full render does, and so no container processing
+// mutates app.Service as a side effect.
 func (app *App) processContainer(container *apiv1.Container, isInit bool) error {
-	return app.processContainerWithAutoService(container, isInit, !isInit)
-}
-
-func (app *App) processContainerWithoutAutoService(container *apiv1.Container, isInit bool) error {
-	return app.processContainerWithAutoService(container, isInit, false)
-}
-
-func (app *App) processContainerWithAutoService(container *apiv1.Container, isInit, allowAutoService bool) error {
 	if container.Image == "" {
 		if app.Common.Image.Repository != "" {
 			container.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
@@ -145,63 +140,82 @@ func (app *App) processContainerWithAutoService(container *apiv1.Container, isIn
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
-	if !isInit && len(container.Ports) > 0 {
-		// Automatic creation of a service for ingress if one is not specified
-		if allowAutoService && len(app.Service) == 0 && len(app.Ingress) > 0 && len(app.Deployment.Containers) == 1 {
-			app.Service = map[string]Service{}
-			for _, port := range container.Ports {
-				if port.Name != "" {
-					if _, ok := app.Service[port.Name]; ok {
-						return fmt.Errorf("container port names must be different: %s", container.Name)
-					}
-					app.Service[port.Name] = Service{
-						Port:     port.ContainerPort,
-						Protocol: port.Protocol,
-					}
-				}
+	if !isInit && len(container.Ports) == 1 {
+		containerPort := intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort}
+
+		// Add LivenessProbe to container port if probe not specified
+		if container.LivenessProbe == nil {
+			container.LivenessProbe = &apiv1.Probe{
+				ProbeHandler: apiv1.ProbeHandler{
+					TCPSocket: &apiv1.TCPSocketAction{
+						Port: containerPort,
+					},
+				},
+				InitialDelaySeconds: 5,
 			}
-			if len(app.Service) == 0 {
-				return fmt.Errorf("named container port required to create service for container: %s", container.Name)
+		} else {
+			// Add missing port to LivenessProbe
+			if container.LivenessProbe.TCPSocket != nil && portIsUnset(container.LivenessProbe.TCPSocket.Port) {
+				container.LivenessProbe.TCPSocket.Port = containerPort
+			}
+			if container.LivenessProbe.HTTPGet != nil && portIsUnset(container.LivenessProbe.HTTPGet.Port) {
+				container.LivenessProbe.HTTPGet.Port = containerPort
 			}
 		}
 
-		if len(container.Ports) == 1 {
-			containerPort := intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort}
-
-			// Add LivenessProbe to container port if probe not specified
-			if container.LivenessProbe == nil {
-				container.LivenessProbe = &apiv1.Probe{
-					ProbeHandler: apiv1.ProbeHandler{
-						TCPSocket: &apiv1.TCPSocketAction{
-							Port: containerPort,
-						},
-					},
-					InitialDelaySeconds: 5,
-				}
-			} else {
-				// Add missing port to LivenessProbe
-				if container.LivenessProbe.TCPSocket != nil && portIsUnset(container.LivenessProbe.TCPSocket.Port) {
-					container.LivenessProbe.TCPSocket.Port = containerPort
-				}
-				if container.LivenessProbe.HTTPGet != nil && portIsUnset(container.LivenessProbe.HTTPGet.Port) {
-					container.LivenessProbe.HTTPGet.Port = containerPort
-				}
-			}
-
-			// Only fill a missing port on an existing ReadinessProbe; do NOT
-			// auto-create one. A readiness probe gates Service traffic and rollout
-			// progress, so introducing it implicitly can wedge the rollout of an
-			// app that is not yet accepting connections on its first port —
-			// readiness is left to explicit configuration (pre-v0.7 behavior).
-			if container.ReadinessProbe != nil &&
-				container.ReadinessProbe.HTTPGet != nil &&
-				portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
-				container.ReadinessProbe.HTTPGet.Port = containerPort
-			}
-
+		// Only fill a missing port on an existing ReadinessProbe; do NOT
+		// auto-create one. A readiness probe gates Service traffic and rollout
+		// progress, so introducing it implicitly can wedge the rollout of an
+		// app that is not yet accepting connections on its first port —
+		// readiness is left to explicit configuration (pre-v0.7 behavior).
+		if container.ReadinessProbe != nil &&
+			container.ReadinessProbe.HTTPGet != nil &&
+			portIsUnset(container.ReadinessProbe.HTTPGet.Port) {
+			container.ReadinessProbe.HTTPGet.Port = containerPort
 		}
 	}
 
+	return nil
+}
+
+// ensureImplicitService derives the Service an Ingress needs when the user
+// declared an Ingress but no explicit Service and the workload is a single app
+// container. It reads only the Deployment's main container, so cronjob and init
+// container ports never drive the app's Service, and it is idempotent: a
+// populated app.Service (explicit, or a prior derivation) short-circuits. The
+// manifest renderer calls it once before emitting any resource so a
+// Service-/Ingress-only render — or the blue/green phase that emits traffic
+// resources without re-rendering the Deployment — derives it identically to a
+// full render, instead of depending on the Deployment render's side effect.
+func (app *App) ensureImplicitService() error {
+	if len(app.Service) > 0 || len(app.Ingress) == 0 || len(app.Deployment.Containers) != 1 {
+		return nil
+	}
+	// Exactly one key here; sortedKeys keeps the (single) lookup deterministic.
+	name := sortedKeys(app.Deployment.Containers)[0]
+	container := app.Deployment.Containers[name]
+	if len(container.Ports) == 0 {
+		return nil
+	}
+	// Mirror the container name the Deployment render assigns so any error
+	// message matches what the user sees from the Deployment path.
+	containerName := strings.ToLower(name)
+	service := map[string]Service{}
+	for _, port := range container.Ports {
+		if port.Name != "" {
+			if _, ok := service[port.Name]; ok {
+				return fmt.Errorf("container port names must be different: %s", containerName)
+			}
+			service[port.Name] = Service{
+				Port:     port.ContainerPort,
+				Protocol: port.Protocol,
+			}
+		}
+	}
+	if len(service) == 0 {
+		return fmt.Errorf("named container port required to create service for container: %s", containerName)
+	}
+	app.Service = service
 	return nil
 }
 

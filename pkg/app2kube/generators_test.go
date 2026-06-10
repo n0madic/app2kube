@@ -805,13 +805,19 @@ func TestInitContainerSkipsProbeAndAutoService(t *testing.T) {
 	if probe := dep.Spec.Template.Spec.InitContainers[0].LivenessProbe; probe != nil {
 		t.Errorf("init container must not receive an auto LivenessProbe, got %+v", probe)
 	}
+	// Implicit-service derivation reads only the main Deployment containers, so
+	// the init container's named port must not produce a Service.
+	if err := app.ensureImplicitService(); err != nil {
+		t.Fatalf("ensureImplicitService: %v", err)
+	}
 	if len(app.Service) != 0 {
 		t.Errorf("init container port must not create an auto-service, got %+v", app.Service)
 	}
 }
 
-// A main container with a single named port still gets the auto LivenessProbe
-// and drives auto-service derivation (the behavior init containers must skip).
+// A main container with a single named port gets the auto LivenessProbe (from
+// the Deployment render) and drives implicit-service derivation (now performed
+// up front by ensureImplicitService, not as a side effect of GetDeployment).
 func TestMainContainerGetsProbeAndAutoService(t *testing.T) {
 	app := deployApp(t)
 	app.Ingress = []Ingress{{Host: "example.com"}}
@@ -828,6 +834,9 @@ func TestMainContainerGetsProbeAndAutoService(t *testing.T) {
 	c := dep.Spec.Template.Spec.Containers[0]
 	if c.LivenessProbe == nil || c.LivenessProbe.TCPSocket == nil {
 		t.Errorf("main container with a single port must get a TCP LivenessProbe, got %+v", c.LivenessProbe)
+	}
+	if err := app.ensureImplicitService(); err != nil {
+		t.Fatalf("ensureImplicitService: %v", err)
 	}
 	if _, ok := app.Service["web"]; !ok {
 		t.Errorf("main container named port must create an auto-service, got %+v", app.Service)

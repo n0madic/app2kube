@@ -5,11 +5,31 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
+	"go.yaml.in/yaml/v3"
 )
+
+// decodeYAMLScalar parses a single YAML value fragment (everything after the
+// first colon on a secrets line) and returns its decoded scalar string. Unlike
+// strconv.Unquote it understands YAML quoting — single quotes ('it”s'), YAML
+// escape rules — and strips trailing inline comments.
+//
+// It returns ok=false when the fragment is not a plain scalar. The important case
+// is a Go template in value position ({{ ... }}), which YAML parses as a flow
+// mapping rather than a string; the caller leaves such values verbatim instead of
+// mangling them, since the normal pipeline renders templates before YAML parsing.
+func decodeYAMLScalar(raw string) (string, bool) {
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(raw), &node); err != nil {
+		return "", false
+	}
+	if len(node.Content) != 1 || node.Content[0].Kind != yaml.ScalarNode {
+		return "", false
+	}
+	return node.Content[0].Value, true
+}
 
 // resolveEncryptString returns the plaintext to encrypt for `config encrypt
 // --string`. A literal value is returned as-is; the sentinel "-" reads the
@@ -100,7 +120,6 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 					if strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
 						v := strings.SplitN(line, ":", 2)
 						if len(v) == 2 {
-							// unquote value if necessary
 							stripped := strings.TrimSpace(v[1])
 							// A YAML block scalar (key: | / key: >) puts the secret on
 							// the following, more-indented lines, which this line-based
@@ -126,9 +145,20 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 								}
 								continue
 							}
-							value, err := strconv.Unquote(stripped)
-							if err != nil {
-								value = stripped
+							value, ok := decodeYAMLScalar(v[1])
+							if !ok {
+								// Not a plain YAML scalar. The common case is a Go
+								// template in value position ({{ ... }}); the normal
+								// pipeline renders templates BEFORE YAML parsing, so
+								// encrypting the directive would store its literal text
+								// and defeat templating. Leave it verbatim — but warn for
+								// a non-empty, non-template value so a genuinely
+								// unparseable secret is not silently skipped.
+								if stripped != "" && !strings.HasPrefix(stripped, "{{") {
+									fmt.Fprintf(os.Stderr, "WARNING: secret %q is not a plain scalar and was NOT encrypted\n", strings.TrimSpace(v[0]))
+								}
+								newYAML += line + "\n"
+								continue
 							}
 							// encrypt value
 							if !app2kube.IsEncrypted(value) {

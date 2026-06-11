@@ -74,6 +74,109 @@ func TestEncryptBlankLineInSecrets(t *testing.T) {
 	}
 }
 
+// decryptSecret reads back an encrypted secrets file, extracts the AES blob for
+// key and decrypts it, so tests can assert on the plaintext that was actually
+// encrypted rather than only on the "AES#" prefix.
+func decryptSecret(t *testing.T, file, key string) string {
+	t.Helper()
+	out, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) != 2 || strings.TrimSpace(parts[0]) != key {
+			continue
+		}
+		blob := strings.TrimPrefix(strings.TrimSpace(parts[1]), "AES#")
+		plain, err := app2kube.DecryptAES("pass", blob)
+		if err != nil {
+			t.Fatalf("decrypt %s: %v", key, err)
+		}
+		return plain
+	}
+	t.Fatalf("key %q not found in:\n%s", key, string(out))
+	return ""
+}
+
+// Regression: a single-quoted YAML value must be decoded per YAML rules before
+// encryption, so the stored secret is the real value ("it's") and not the literal
+// token including the quotes ("'it''s'") that the old strconv.Unquote left intact
+// (Go quoting != YAML quoting).
+func TestEncryptDecodesSingleQuotedValue(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  q: 'it''s'\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	if got := decryptSecret(t, file, "q"); got != "it's" {
+		t.Errorf("single-quoted value decoded wrong: got %q, want %q", got, "it's")
+	}
+}
+
+// Regression: an inline comment after a secret value must not be folded into the
+// ciphertext; only the scalar ("secret") is encrypted, as YAML scalar parsing
+// strips the trailing comment.
+func TestEncryptStripsInlineComment(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  token: secret # note\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	if got := decryptSecret(t, file, "token"); got != "secret" {
+		t.Errorf("inline comment folded into ciphertext: got %q, want %q", got, "secret")
+	}
+}
+
+// A Go template in value position ({{ ... }}) is not a plain YAML scalar and must
+// be preserved verbatim: the normal pipeline renders value files through
+// text/template BEFORE YAML parsing, so encrypting the directive would store the
+// literal template text as the secret and defeat templating. An ordinary secret
+// after it must still be encrypted.
+func TestEncryptPreservesValueTemplate(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  api: {{ env \"API\" }}\n  token: plain\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	out, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+
+	if !strings.Contains(s, "  api: {{ env \"API\" }}\n") {
+		t.Errorf("value template not preserved verbatim:\n%s", s)
+	}
+	if !strings.Contains(s, "  token: AES#") {
+		t.Errorf("ordinary secret after template not encrypted:\n%s", s)
+	}
+}
+
 func TestEncryptSkipsEntireBlockScalarSecret(t *testing.T) {
 	t.Setenv(app2kube.EnvPassword, "pass")
 

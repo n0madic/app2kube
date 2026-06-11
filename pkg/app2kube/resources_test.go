@@ -181,7 +181,7 @@ func TestProcessContainerEnvContainerWins(t *testing.T) {
 
 func TestProcessContainerStagingClearsResources(t *testing.T) {
 	app := NewApp()
-	app.Staging = "stg"
+	app.Staging = Staging{Active: true, Name: "stg"}
 	c := &apiv1.Container{
 		Name:  "app",
 		Image: "example/app:v1",
@@ -332,7 +332,7 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 
 	// Staging still strips resources (the common default is not applied there).
 	app = newApp()
-	app.Staging = "stg"
+	app.Staging = Staging{Active: true, Name: "stg"}
 	c4 := &apiv1.Container{Name: "app", Image: "example/app:v1"}
 	if err := app.processContainer(c4, false); err != nil {
 		t.Fatalf("processContainer: %v", err)

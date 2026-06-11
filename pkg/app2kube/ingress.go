@@ -54,9 +54,9 @@ func addRuleForHost(rules []v1.IngressRule, host string, path v1.HTTPIngressPath
 // ing.Host. Aliases are suppressed when a staging environment is configured: a
 // staging host is environment-specific and must not also claim the production
 // aliases. Centralizing the rule here keeps the ingress generator and the
-// status printer from each re-implementing the Staging == "" gate (#69).
+// status printer from each re-implementing the staging gate (#69).
 func (app *App) IngressAliases(ing Ingress) []string {
-	if app.Staging != "" {
+	if app.Staging.Active {
 		return nil
 	}
 	return ing.Aliases

@@ -61,7 +61,7 @@ These keys live at the root of the YAML document.
 |---|---|---|---|
 | `name` | string | — (**required**) | Application name. Lowercased and `_`→`-` normalized. Backs object names and the `app.kubernetes.io/name` label. |
 | `namespace` | string | resolved (see below) | Target namespace. A `Namespace` object is emitted only when this is non-empty. |
-| `staging` | string | `""` | Staging environment name. When set, triggers [staging overrides](#staging-overrides). |
+| `staging` | string \| bool | `""` | Staging selector. A non-empty string is the environment name (becomes a host segment / instance label); `true` enables *anonymous* staging (machinery on, no host segment — deploy a branch onto the root domain). Either form triggers [staging overrides](#staging-overrides). The strings `"true"`/`"false"` are reserved aliases for the boolean. |
 | `branch` | string | `""` | Branch name, used together with `staging` for instance labels and ingress host prefixes. |
 | `labels` | map[string]string | see [`labels`](#labels) | Extra labels merged onto every object and pod template. |
 | `env` | map[string]string | `{}` | Plain environment variables injected into all app-image containers (see [`configmap`/`env`](#configmap--env)). |
@@ -184,7 +184,7 @@ object.
 
 | Key | Type | Default | Description |
 |---|---|---|---|
-| `ingress[].host` | string | — | Primary hostname. With `staging`, prefixed as `staging.host` / `branch.staging.host`. A leading `*` wildcard is invalid under staging. |
+| `ingress[].host` | string | — | Primary hostname. With a named `staging`, prefixed as `staging.host` / `branch.staging.host`; with anonymous staging (`staging: true`), prefixed as `branch.host` (or left bare when no `branch`). A leading `*` wildcard is invalid under staging. |
 | `ingress[].aliases` | list of string | `[]` | Additional hostnames routed to the same backend. Suppressed under staging. |
 | `ingress[].path` | string | `/` | HTTP path (`PathType: ImplementationSpecific`). |
 | `ingress[].class` | string | `nginx` | `ingressClassName`. Resolves to `common.ingress.class` then `nginx`. Two entries for the same host requesting different classes is an error. |
@@ -285,7 +285,7 @@ seeds the recommended Kubernetes labels (overridable via `labels`):
 | Label | Default | Notes |
 |---|---|---|
 | `app.kubernetes.io/name` | `name` | The (truncated) application name. |
-| `app.kubernetes.io/instance` | `production` | Set to the staging name (or `staging-branch`) under staging. |
+| `app.kubernetes.io/instance` | `production` | Set to the staging name (or `staging-branch`) under staging; just the `branch` under anonymous staging (`staging: true`), or `staging` when anonymous with no branch. |
 | `app.kubernetes.io/managed-by` | `app2kube` | Used by the prune/delete selector. |
 | `app.kubernetes.io/color` | _(unset)_ | Added only when `deployment.blueGreenColor` is set. |
 
@@ -378,7 +378,15 @@ for the full rationale):
 
 ## Staging overrides
 
-When `staging` is set, the following values are forced (overriding user input):
+Staging is enabled either by naming an environment (`staging: stg`) or
+anonymously (`staging: true`). Anonymous staging keeps all the machinery below
+but adds no segment of its own to the host, instance label or release name —
+only the `branch` does — so it publishes a branch onto the root domain
+(`branch.example.com`). The strings `"true"`/`"false"` are reserved aliases for
+the boolean, so `--set staging=true` (parsed as a bool) and `--set-string
+staging=true` behave identically and no environment can be named `true`.
+
+When `staging` is enabled, the following values are forced (overriding user input):
 
 ```yaml
 common:
@@ -395,8 +403,8 @@ Additionally:
 - container `resources` are stripped (denser packing);
 - `common.resources` baseline is not applied;
 - ingress `aliases` are suppressed;
-- ingress hosts are prefixed: `staging.example.com` or `branch.staging.example.com`;
-- the `app.kubernetes.io/instance` label becomes the staging (or `staging-branch`) name.
+- ingress hosts are prefixed — named: `staging.example.com` / `branch.staging.example.com`; anonymous: `branch.example.com` (or unchanged without a branch);
+- the `app.kubernetes.io/instance` label becomes the staging (or `staging-branch`) name; under anonymous staging it is just the `branch`, or `staging` when there is no branch.
 
 A wildcard ingress host (`*.example.com`) cannot be used with staging.
 
@@ -573,7 +581,7 @@ together. Omit any field to take its default.
 # ── Identity ────────────────────────────────────────────────────────────────
 name: example                       # REQUIRED; lowercased, "_" → "-"
 namespace: ""                       # "" → resolved to `default` (flag > value > default)
-staging: ""                         # set to enable a staging environment
+staging: ""                         # env name, or `true` for anonymous staging (branch on root domain)
 branch: ""                          # combined with `staging` for labels/hosts
 
 # ── Labels (merged onto every object; recommended labels are auto-seeded) ─────

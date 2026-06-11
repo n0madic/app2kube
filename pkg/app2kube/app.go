@@ -139,7 +139,7 @@ type App struct {
 	Namespace     string                 `json:"namespace"`
 	Secrets       map[string]string      `json:"secrets"`
 	Service       map[string]Service     `json:"service"`
-	Staging       string                 `json:"staging"`
+	Staging       Staging                `json:"staging"`
 	Volumes       map[string]VolumeSpec  `json:"volumes"`
 }
 
@@ -170,10 +170,15 @@ func (app *App) GetReleaseName() string {
 // 253-cap being re-capped to 63.
 func (app *App) releaseName() string {
 	releaseName := app.Name
-	if app.Staging != "" {
-		releaseName = app.Name + "-" + app.Staging
+	if app.Staging.Active {
+		// The branch (when set) identifies the release; otherwise the staging
+		// name does. Anonymous staging (no name, no branch) leaves it bare.
+		suffix := app.Staging.Name
 		if app.Branch != "" {
-			releaseName = app.Name + "-" + app.Branch
+			suffix = app.Branch
+		}
+		if suffix != "" {
+			releaseName = app.Name + "-" + suffix
 		}
 	}
 	return strings.ToLower(releaseName)
@@ -346,8 +351,12 @@ func (app *App) validate() error {
 // image pull policy when a staging environment is configured; otherwise it just
 // normalizes the blue/green color. It assumes app.Labels is already initialized
 // (LoadValues and NewApp both run ensureLabels first).
+//
+// Anonymous staging (Staging.Active with an empty Name) keeps all the machinery
+// but adds no segment to the host, instance label or release name — only the
+// branch does — so a branch can be published onto the root domain (feat.host).
 func (app *App) applyStaging() error {
-	if app.Staging == "" {
+	if !app.Staging.Active {
 		app.Deployment.BlueGreenColor = strings.ToLower(app.Deployment.BlueGreenColor)
 		return nil
 	}
@@ -355,7 +364,7 @@ func (app *App) applyStaging() error {
 	app.Common.Image.PullPolicy = apiv1.PullAlways
 	app.Deployment.BlueGreenColor = ""
 	app.Deployment.RevisionHistoryLimit = 0
-	app.Staging = strings.ToLower(app.Staging)
+	app.Staging.Name = strings.ToLower(app.Staging.Name)
 	app.Branch = strings.ToLower(app.Branch)
 
 	if app.Deployment.ReplicaCountStaging > 0 {
@@ -364,20 +373,33 @@ func (app *App) applyStaging() error {
 		app.Deployment.ReplicaCount = ptr.To(int32(1))
 	}
 
-	app.Labels[LabelInstance] = truncateName(app.Staging)
+	// Compose the instance label from the staging name and branch, skipping
+	// whichever is empty. Anonymous staging with no branch has neither, so it
+	// falls back to "staging" rather than leaving the production default.
+	instance := app.Staging.Name
 	if app.Branch != "" {
-		app.Labels[LabelInstance] = truncateName(app.Staging + "-" + app.Branch)
+		if instance != "" {
+			instance += "-" + app.Branch
+		} else {
+			instance = app.Branch
+		}
+	} else if instance == "" {
+		instance = "staging"
 	}
+	app.Labels[LabelInstance] = truncateName(instance)
 
 	for i, ingress := range app.Ingress {
 		if strings.HasPrefix(ingress.Host, "*") {
 			return fmt.Errorf("staging cannot be used with wildcard domain: %s", ingress.Host)
 		}
-		ingress.Host = app.Staging + "." + ingress.Host
-		if app.Branch != "" {
-			ingress.Host = app.Branch + "." + ingress.Host
+		host := ingress.Host
+		if app.Staging.Name != "" {
+			host = app.Staging.Name + "." + host
 		}
-		app.Ingress[i].Host = ingress.Host
+		if app.Branch != "" {
+			host = app.Branch + "." + host
+		}
+		app.Ingress[i].Host = host
 	}
 
 	return nil

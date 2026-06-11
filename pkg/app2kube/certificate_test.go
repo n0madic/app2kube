@@ -56,7 +56,7 @@ func TestCertificatesDNSNamesIncludeAliases(t *testing.T) {
 	}
 
 	// Under staging, aliases are suppressed.
-	app.Staging = "stg"
+	app.Staging = Staging{Active: true, Name: "stg"}
 	certs, err = app.GetCertificates()
 	if err != nil {
 		t.Fatalf("GetCertificates (staging): %v", err)

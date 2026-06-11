@@ -179,7 +179,20 @@ For a staging release, you must set the `staging` and optional `branch` paramete
 app2kube manifest --set staging=alpha --set branch=develop
 ```
 
-In this case, some values will be reset to more optimal for staging:
+`staging` accepts either an environment name (as above) or the boolean `true`.
+With `true`, staging is *anonymous*: all the staging overrides below still apply,
+but the staging name adds no segment to the host or labels — so a branch is
+published onto the root domain (`branch.example.com` instead of
+`branch.staging.example.com`). This is handy for per-branch preview deployments:
+
+```shell
+app2kube manifest --set staging=true --set branch=develop
+```
+
+The strings `"true"`/`"false"` are reserved aliases for the boolean, so
+`--set-string staging=true` works too and no environment can be named `true`.
+
+In either case, some values will be reset to more optimal for staging:
 
 ```yaml
 common:
@@ -193,7 +206,7 @@ deployment:
 
 Also, aliases for ingress and resource requests for containers (for a denser filling of the staging environment) will not be used.
 
-For ingress domains, prefixes from the above values will be automatically added: `staging.example.com` or `branch.staging.example.com`
+For ingress domains, prefixes from the above values will be automatically added — named staging: `staging.example.com` or `branch.staging.example.com`; anonymous staging (`staging: true`): `branch.example.com`, or the host unchanged when no `branch` is set.
 
 ## Defaults and hardening
 

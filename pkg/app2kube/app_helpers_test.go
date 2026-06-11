@@ -8,13 +8,18 @@ import (
 func TestGetReleaseName(t *testing.T) {
 	cases := []struct {
 		name    string
-		staging string
+		staging Staging
 		branch  string
 		want    string
 	}{
-		{"MyApp", "", "", "myapp"},
-		{"MyApp", "stg", "", "myapp-stg"},
-		{"MyApp", "stg", "feature", "myapp-feature"},
+		{"MyApp", Staging{}, "", "myapp"},
+		{"MyApp", Staging{Active: true, Name: "stg"}, "", "myapp-stg"},
+		{"MyApp", Staging{Active: true, Name: "stg"}, "feature", "myapp-feature"},
+		// Anonymous staging (staging: true) keeps staging active but contributes
+		// nothing to the release name: only the branch identifies the instance,
+		// and without a branch the release name stays bare.
+		{"MyApp", Staging{Active: true}, "feature", "myapp-feature"},
+		{"MyApp", Staging{Active: true}, "", "myapp"},
 	}
 	for _, tc := range cases {
 		app := NewApp()
@@ -22,7 +27,7 @@ func TestGetReleaseName(t *testing.T) {
 		app.Staging = tc.staging
 		app.Branch = tc.branch
 		if got := app.GetReleaseName(); got != tc.want {
-			t.Errorf("GetReleaseName(%q,%q,%q): got %q, want %q",
+			t.Errorf("GetReleaseName(%q,%+v,%q): got %q, want %q",
 				tc.name, tc.staging, tc.branch, got, tc.want)
 		}
 	}
@@ -57,12 +62,12 @@ func TestIngressAliases(t *testing.T) {
 	app := NewApp()
 	ing := Ingress{Host: "example.com", Aliases: []string{"www.example.com"}}
 
-	app.Staging = ""
+	app.Staging = Staging{}
 	if got := app.IngressAliases(ing); len(got) != 1 || got[0] != "www.example.com" {
 		t.Errorf("non-staging must return aliases, got %v", got)
 	}
 
-	app.Staging = "stg"
+	app.Staging = Staging{Active: true, Name: "stg"}
 	if got := app.IngressAliases(ing); got != nil {
 		t.Errorf("staging must suppress aliases, got %v", got)
 	}
@@ -139,8 +144,8 @@ func TestLoadValuesStagingDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadValues: %v", err)
 	}
-	if app.Staging != "stg" {
-		t.Errorf("staging not lowercased: %q", app.Staging)
+	if app.Staging.Name != "stg" {
+		t.Errorf("staging not lowercased: %q", app.Staging.Name)
 	}
 	// Staging forces replicaCount=1 and pull policy Always.
 	if app.Deployment.ReplicaCount == nil || *app.Deployment.ReplicaCount != 1 {
@@ -182,11 +187,104 @@ func TestLoadValuesStagingPrefixesHost(t *testing.T) {
 	}
 }
 
+// Anonymous staging (staging: true) deploys a branch onto the root domain
+// (branch.host) instead of the default branch.staging.host, while keeping
+// staging machinery active. `--set staging=true` is parsed as a YAML boolean.
+func TestLoadValuesStagingAnonymousRootDomain(t *testing.T) {
+	app := NewApp()
+	_, err := app.LoadValues(nil, []string{
+		"name=app",
+		"staging=true",
+		"branch=feat",
+		"ingress[0].host=example.com",
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("LoadValues: %v", err)
+	}
+	if app.Ingress[0].Host != "feat.example.com" {
+		t.Errorf("host: got %q, want feat.example.com", app.Ingress[0].Host)
+	}
+	// Anonymous staging contributes nothing to the instance label and release
+	// name; only the branch identifies the instance.
+	if got := app.Labels["app.kubernetes.io/instance"]; got != "feat" {
+		t.Errorf("instance label: got %q, want feat", got)
+	}
+	if got := app.GetReleaseName(); got != "app-feat" {
+		t.Errorf("release name: got %q, want app-feat", got)
+	}
+	// Anonymous staging still activates staging behavior (pull policy Always).
+	if string(app.Common.Image.PullPolicy) != "Always" {
+		t.Errorf("staging pull policy: got %q, want Always", app.Common.Image.PullPolicy)
+	}
+}
+
+// With anonymous staging but no branch the host is left bare (no segment added).
+func TestLoadValuesStagingAnonymousNoBranchBareHost(t *testing.T) {
+	app := NewApp()
+	_, err := app.LoadValues(nil, []string{
+		"name=app",
+		"staging=true",
+		"ingress[0].host=example.com",
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("LoadValues: %v", err)
+	}
+	if app.Ingress[0].Host != "example.com" {
+		t.Errorf("host: got %q, want example.com", app.Ingress[0].Host)
+	}
+	if got := app.GetReleaseName(); got != "app" {
+		t.Errorf("release name: got %q, want app", got)
+	}
+	// With no name and no branch to identify it, the instance label falls back to
+	// "staging" rather than the production default.
+	if got := app.Labels["app.kubernetes.io/instance"]; got != "staging" {
+		t.Errorf("instance label: got %q, want staging", got)
+	}
+}
+
+// The strings "true"/"false" are reserved: a quoted value or --set-string still
+// selects anonymous staging rather than a staging environment named "true".
+func TestLoadValuesStagingReservedStringTrue(t *testing.T) {
+	app := NewApp()
+	_, err := app.LoadValues(nil, []string{
+		"name=app",
+		"branch=feat",
+		"ingress[0].host=example.com",
+	}, []string{"staging=true"}, nil)
+	if err != nil {
+		t.Fatalf("LoadValues: %v", err)
+	}
+	if app.Ingress[0].Host != "feat.example.com" {
+		t.Errorf("host: got %q, want feat.example.com", app.Ingress[0].Host)
+	}
+}
+
+// staging: false (or the reserved "false" string) means no staging at all: the
+// host is untouched and staging defaults are not applied.
+func TestLoadValuesStagingFalseDisabled(t *testing.T) {
+	app := NewApp()
+	_, err := app.LoadValues(nil, []string{
+		"name=app",
+		"staging=false",
+		"branch=feat",
+		"ingress[0].host=example.com",
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("LoadValues: %v", err)
+	}
+	if app.Ingress[0].Host != "example.com" {
+		t.Errorf("host: got %q, want example.com", app.Ingress[0].Host)
+	}
+	if app.Staging.Active {
+		t.Errorf("staging must be inactive for staging=false")
+	}
+}
+
 // applyStaging is exercised directly (without parsing) to lock the instance
 // label composition when both staging and branch are set.
 func TestApplyStagingBranchInstanceLabel(t *testing.T) {
 	app := NewApp()
-	app.Staging = "STG"
+	app.Staging = Staging{Active: true, Name: "STG"}
 	app.Branch = "Feat"
 	if err := app.applyStaging(); err != nil {
 		t.Fatalf("applyStaging: %v", err)

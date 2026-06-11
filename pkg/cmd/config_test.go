@@ -93,7 +93,7 @@ func TestCollectDomainsEmpty(t *testing.T) {
 // domains the rendered Ingress does not serve.
 func TestCollectDomainsSuppressesAliasesUnderStaging(t *testing.T) {
 	app := app2kube.NewApp()
-	app.Staging = "dev"
+	app.Staging = app2kube.Staging{Active: true, Name: "dev"}
 	app.Ingress = []app2kube.Ingress{
 		{Host: "b.example.com", Aliases: []string{"a.example.com"}},
 	}

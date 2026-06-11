@@ -105,7 +105,7 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		// Apply the opt-in common.resources baseline to app-image containers
 		// that declare none. Skipped in staging, where resources are stripped
 		// below regardless.
-		if app.Staging == "" && app.Common.Resources != nil &&
+		if !app.Staging.Active && app.Common.Resources != nil &&
 			len(container.Resources.Requests) == 0 && len(container.Resources.Limits) == 0 {
 			// Deep-copy so each container gets its own Requests/Limits maps instead
 			// of aliasing the shared app.Common.Resources (and each other).
@@ -136,7 +136,7 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		container.ImagePullPolicy = defaultPullPolicy(container.Image)
 	}
 
-	if app.Staging != "" {
+	if app.Staging.Active {
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 

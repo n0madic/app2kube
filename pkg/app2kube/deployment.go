@@ -107,7 +107,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		// A mutable :latest common image tag in a non-staging deploy is not
 		// reproducible (and relies on the pull policy to refresh cached nodes);
 		// warn so the operator can pin a specific tag or digest (#45).
-		if app.Staging == "" && app.Common.Image.Repository != "" && app.Common.Image.Tag == "latest" {
+		if !app.Staging.Active && app.Common.Image.Repository != "" && app.Common.Image.Tag == "latest" {
 			fmt.Fprintf(os.Stderr, "WARNING: image %s:latest is a mutable tag; the deploy is not reproducible — pin a specific tag or digest\n", app.Common.Image.Repository)
 		}
 

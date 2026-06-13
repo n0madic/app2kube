@@ -14,21 +14,23 @@ import (
 // decodeYAMLScalar parses a single YAML value fragment (everything after the
 // first colon on a secrets line) and returns its decoded scalar string. Unlike
 // strconv.Unquote it understands YAML quoting — single quotes ('it”s'), YAML
-// escape rules — and strips trailing inline comments.
+// escape rules — and strips trailing inline comments. The stripped inline comment
+// (if any) is returned separately so the caller can warn when a '#' that may be
+// part of the secret was silently dropped from an unquoted value.
 //
 // It returns ok=false when the fragment is not a plain scalar. The important case
 // is a Go template in value position ({{ ... }}), which YAML parses as a flow
 // mapping rather than a string; the caller leaves such values verbatim instead of
 // mangling them, since the normal pipeline renders templates before YAML parsing.
-func decodeYAMLScalar(raw string) (string, bool) {
+func decodeYAMLScalar(raw string) (value, comment string, ok bool) {
 	var node yaml.Node
 	if err := yaml.Unmarshal([]byte(raw), &node); err != nil {
-		return "", false
+		return "", "", false
 	}
 	if len(node.Content) != 1 || node.Content[0].Kind != yaml.ScalarNode {
-		return "", false
+		return "", "", false
 	}
-	return node.Content[0].Value, true
+	return node.Content[0].Value, node.Content[0].LineComment, true
 }
 
 // resolveEncryptString returns the plaintext to encrypt for `config encrypt
@@ -145,7 +147,7 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 								}
 								continue
 							}
-							value, ok := decodeYAMLScalar(v[1])
+							value, comment, ok := decodeYAMLScalar(v[1])
 							if !ok {
 								// Not a plain YAML scalar. The common case is a Go
 								// template in value position ({{ ... }}); the normal
@@ -159,6 +161,14 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 								}
 								newYAML += line + "\n"
 								continue
+							}
+							// An inline '#' comment after an unquoted value is stripped
+							// by YAML parsing. That is intended for genuine comments, but
+							// a '#' can also be part of the secret (e.g. "p@ss #1"), in
+							// which case stripping silently truncates it. Warn so the
+							// truncation is never silent — quoting the value preserves it.
+							if comment != "" {
+								fmt.Fprintf(os.Stderr, "WARNING: secret %q had an inline comment %q stripped before encryption; if the '#' is part of the secret, quote the value\n", strings.TrimSpace(v[0]), comment)
 							}
 							// encrypt value
 							if !app2kube.IsEncrypted(value) {

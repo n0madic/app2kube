@@ -25,16 +25,16 @@ func TestValueFilesFlag(t *testing.T) {
 }
 
 func TestMergeValues(t *testing.T) {
-	dest := map[string]interface{}{
+	dest := map[string]any{
 		"a": "1",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"x": "old",
 			"y": "keep",
 		},
 	}
-	src := map[string]interface{}{
+	src := map[string]any{
 		"b": "2",
-		"nested": map[string]interface{}{
+		"nested": map[string]any{
 			"x": "new",
 		},
 	}
@@ -42,7 +42,7 @@ func TestMergeValues(t *testing.T) {
 	if out["a"] != "1" || out["b"] != "2" {
 		t.Errorf("top-level merge: %+v", out)
 	}
-	nested := out["nested"].(map[string]interface{})
+	nested := out["nested"].(map[string]any)
 	if nested["x"] != "new" {
 		t.Errorf("source must override: x=%v", nested["x"])
 	}
@@ -53,11 +53,39 @@ func TestMergeValues(t *testing.T) {
 
 func TestMergeValuesOverwriteNonMap(t *testing.T) {
 	// When source value is not a map, it overwrites the destination map.
-	dest := map[string]interface{}{"k": map[string]interface{}{"a": "1"}}
-	src := map[string]interface{}{"k": "scalar"}
+	dest := map[string]any{"k": map[string]any{"a": "1"}}
+	src := map[string]any{"k": "scalar"}
 	out := mergeValues(dest, src)
 	if out["k"] != "scalar" {
 		t.Errorf("non-map source must overwrite: got %v", out["k"])
+	}
+}
+
+func TestMergeValuesNilDoesNotClobber(t *testing.T) {
+	// #13: a bare/null key in a later file (e.g. `common:` with no value) must
+	// not wipe an already-populated subtree from an earlier file.
+	dest := map[string]any{
+		"common": map[string]any{"image": "repo", "resources": "set"},
+	}
+	src := map[string]any{"common": nil}
+	out := mergeValues(dest, src)
+	nested, ok := out["common"].(map[string]any)
+	if !ok {
+		t.Fatalf("nil source clobbered populated subtree: common=%v", out["common"])
+	}
+	if nested["image"] != "repo" || nested["resources"] != "set" {
+		t.Errorf("subtree contents lost: %+v", nested)
+	}
+}
+
+func TestMergeValuesNilSetsNewKey(t *testing.T) {
+	// A nil source value for a key absent from dest still sets it (no subtree to
+	// protect), preserving the "set the key to that value" behavior.
+	dest := map[string]any{"a": "1"}
+	src := map[string]any{"b": nil}
+	out := mergeValues(dest, src)
+	if v, ok := out["b"]; !ok || v != nil {
+		t.Errorf("new nil key not set: got %v (present=%v)", v, ok)
 	}
 }
 

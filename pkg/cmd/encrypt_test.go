@@ -101,7 +101,7 @@ func decryptSecret(t *testing.T, file, key string) string {
 
 // Regression: a single-quoted YAML value must be decoded per YAML rules before
 // encryption, so the stored secret is the real value ("it's") and not the literal
-// token including the quotes ("'it''s'") that the old strconv.Unquote left intact
+// token including the quotes ("'it”s'") that the old strconv.Unquote left intact
 // (Go quoting != YAML quoting).
 func TestEncryptDecodesSingleQuotedValue(t *testing.T) {
 	t.Setenv(app2kube.EnvPassword, "pass")
@@ -141,6 +141,54 @@ func TestEncryptStripsInlineComment(t *testing.T) {
 
 	if got := decryptSecret(t, file, "token"); got != "secret" {
 		t.Errorf("inline comment folded into ciphertext: got %q, want %q", got, "secret")
+	}
+}
+
+// #5: decodeYAMLScalar surfaces a stripped inline comment so the caller can warn
+// when a '#' that may be part of an unquoted secret was dropped; a quoted value
+// keeps the '#' and reports no comment.
+func TestDecodeYAMLScalarComment(t *testing.T) {
+	cases := []struct {
+		raw         string
+		wantVal     string
+		wantComment string
+		wantOK      bool
+	}{
+		{" hunter2 #1", "hunter2", "#1", true},
+		{" secret # note", "secret", "# note", true},
+		{" plain", "plain", "", true},
+		{" 'kept #x'", "kept #x", "", true},
+		{" no-space#1", "no-space#1", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.raw, func(t *testing.T) {
+			val, comment, ok := decodeYAMLScalar(tc.raw)
+			if ok != tc.wantOK || val != tc.wantVal || comment != tc.wantComment {
+				t.Errorf("decodeYAMLScalar(%q) = (%q, %q, %v), want (%q, %q, %v)",
+					tc.raw, val, comment, ok, tc.wantVal, tc.wantComment, tc.wantOK)
+			}
+		})
+	}
+}
+
+// #5: a quoted secret containing a '#' (which would otherwise be read as an
+// inline comment and silently truncated) is preserved end-to-end.
+func TestEncryptPreservesQuotedHash(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  token: 'hunter2 #1'\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	if got := decryptSecret(t, file, "token"); got != "hunter2 #1" {
+		t.Errorf("quoted hash truncated: got %q, want %q", got, "hunter2 #1")
 	}
 }
 

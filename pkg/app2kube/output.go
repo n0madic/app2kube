@@ -417,22 +417,57 @@ func printObj(obj runtime.Object, printer printers.ResourcePrinter) (string, err
 // that the serializer always emits, at any indentation. It matches the whole
 // trimmed line rather than the bare substring: a substring match would also
 // delete ConfigMap/Secret data values that merely contain the word (e.g. a
-// stored Kubernetes manifest), silently corrupting them. It preserves the final
-// line even when the input has no trailing newline — reading line-by-line with
-// ReadBytes('\n') previously dropped that unterminated last line on io.EOF,
-// silently losing data from any serialization not ending in a newline (#55).
+// stored Kubernetes manifest), silently corrupting them.
+//
+// It is also block-scalar aware: a `creationTimestamp: null` line *inside* a
+// data value rendered as a YAML block scalar (`key: |` / `key: >`, e.g. a
+// Kubernetes manifest stored in a ConfigMap) trims to the exact match too, so a
+// context-blind filter would corrupt it. Content lines of a block scalar (blank
+// lines or lines indented deeper than the key) are passed through verbatim;
+// only a real structural metadata key is stripped.
+//
+// It preserves the final line even when the input has no trailing newline —
+// reading line-by-line with ReadBytes('\n') previously dropped that unterminated
+// last line on io.EOF, silently losing data from any serialization not ending in
+// a newline (#55).
 func stripCreationTimestamp(in []byte) []byte {
 	buf := bytes.NewBuffer(in)
 	filtered := bytes.NewBuffer([]byte{})
+	inBlockScalar := false
+	blockIndent := 0
 	for {
 		line, err := buf.ReadBytes('\n')
 		// ReadBytes returns the data read so far together with io.EOF when the
 		// stream ends without a delimiter, so the final unterminated line must be
 		// processed before breaking.
 		if len(line) > 0 {
-			trimmed := bytes.TrimLeft(bytes.TrimRight(line, "\r\n"), " \t")
+			body := bytes.TrimRight(line, "\r\n")
+			trimmed := bytes.TrimLeft(body, " \t")
+			indent := len(body) - len(trimmed)
+
+			if inBlockScalar {
+				// A blank line, or a line indented deeper than the block key, is
+				// block-scalar content: pass it through untouched. A line at or
+				// below the key indent ends the block and is reprocessed normally.
+				if len(trimmed) == 0 || indent > blockIndent {
+					filtered.Write(line)
+					if err != nil {
+						break
+					}
+					continue
+				}
+				inBlockScalar = false
+			}
+
 			if !bytes.Equal(trimmed, []byte("creationTimestamp: null")) {
 				filtered.Write(line)
+			}
+
+			// Enter block-scalar mode when this mapping value opens a literal/
+			// folded scalar so its content is protected on subsequent lines.
+			if isBlockScalarHeader(trimmed) {
+				inBlockScalar = true
+				blockIndent = indent
 			}
 		}
 		if err != nil {
@@ -440,4 +475,17 @@ func stripCreationTimestamp(in []byte) []byte {
 		}
 	}
 	return filtered.Bytes()
+}
+
+// isBlockScalarHeader reports whether a (left-trimmed) mapping line opens a YAML
+// block scalar, i.e. its value after "key:" begins with a '|' or '>' indicator
+// (optionally followed by chomping/indentation indicators or a comment). A
+// quoted value that merely starts with those characters is not a block scalar.
+func isBlockScalarHeader(trimmed []byte) bool {
+	idx := bytes.LastIndex(trimmed, []byte(": "))
+	if idx < 0 {
+		return false
+	}
+	val := bytes.TrimLeft(trimmed[idx+2:], " ")
+	return len(val) > 0 && (val[0] == '|' || val[0] == '>')
 }

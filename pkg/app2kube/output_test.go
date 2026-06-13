@@ -154,6 +154,19 @@ func TestStripCreationTimestamp(t *testing.T) {
 			in:   "data:\n  note: creationTimestamp is a field\n  ts: \"2020 creationTimestamp\"\n",
 			want: "data:\n  note: creationTimestamp is a field\n  ts: \"2020 creationTimestamp\"\n",
 		},
+		// #8: a `creationTimestamp: null` line inside a block-scalar data value
+		// (e.g. a Kubernetes manifest stored in a ConfigMap) must be preserved,
+		// while the object's own metadata line is still stripped.
+		"block scalar data value timestamp kept; metadata stripped": {
+			in:   "data:\n  pod.yaml: |\n    metadata:\n      creationTimestamp: null\n    spec: {}\nmetadata:\n  creationTimestamp: null\n  name: cfg\n",
+			want: "data:\n  pod.yaml: |\n    metadata:\n      creationTimestamp: null\n    spec: {}\nmetadata:\n  name: cfg\n",
+		},
+		// Structural stripping still applies at any depth (e.g. a Deployment's
+		// pod template metadata), since that is a real key, not block content.
+		"deeply nested metadata line stripped": {
+			in:   "spec:\n  template:\n    metadata:\n      creationTimestamp: null\n      labels:\n        app: x\n",
+			want: "spec:\n  template:\n    metadata:\n      labels:\n        app: x\n",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {

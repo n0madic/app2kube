@@ -194,7 +194,17 @@ func NewCmdApply() *cobra.Command {
 
 				fmt.Fprintf(os.Stderr, "• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 
-				cmdutil.CheckErr(applyManifest(manifest, false))
+				// Unlike the pre-deploy phase, this final apply switches live
+				// traffic (Service selector, Ingress) and is NOT atomic: kubectl
+				// applies the objects sequentially with ContinueOnError, so a
+				// mid-apply failure can leave the Service pointing at the new color
+				// while the Ingress still lags. Warn that traffic may be partially
+				// switched (not "not switched" as in phase 1) so the operator knows
+				// to re-run to converge, instead of os.Exit()ing with no guidance.
+				if err := applyManifest(manifest, false); err != nil {
+					fmt.Fprintf(os.Stderr, "• WARNING: the final switch for [%s] failed partway; live traffic may be PARTIALLY switched. Re-run the blue-green deploy to converge.\n", colorize(app.Deployment.BlueGreenColor))
+					return err
+				}
 			} else {
 				manifest, err := getManifest(app2kube.OutputAll)
 				cmdutil.CheckErr(err)

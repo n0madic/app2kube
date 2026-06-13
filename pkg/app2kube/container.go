@@ -35,11 +35,16 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		// repository followed by a tag (":") or a digest ("@"). Splitting on ":"
 		// would misclassify repositories that contain a registry port (e.g.
 		// registry.io:5000/app) or digests (repo@sha256:...) as third-party.
-		if container.Image == repo ||
-			strings.HasPrefix(container.Image, repo+":") ||
-			strings.HasPrefix(container.Image, repo+"@") {
+		switch {
+		case container.Image == repo || strings.HasPrefix(container.Image, repo+":"):
 			container.Image = repo + ":" + app.Common.Image.Tag
-		} else {
+		case strings.HasPrefix(container.Image, repo+"@"):
+			// Digest-pinned to the app repository (repo@sha256:...): the image
+			// still belongs to the app, so env/secrets are injected below, but
+			// keep the explicit immutable digest instead of overwriting it with
+			// the mutable common tag — doing so would silently defeat
+			// supply-chain digest pinning.
+		default:
 			thirdpartyImage = true
 		}
 	}

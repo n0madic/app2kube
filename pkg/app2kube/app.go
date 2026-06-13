@@ -310,7 +310,7 @@ func (app *App) LoadValues(valueFiles ValueFiles, values, stringValues, fileValu
 
 	app.ensureLabels()
 
-	app.Name = strings.ToLower(strings.ReplaceAll(app.Name, "_", "-"))
+	app.Name = sanitizeDNSName(app.Name)
 	app.Labels[LabelName] = truncateName(app.Name)
 
 	// An explicit `image.tag: ""` in the values overwrites the seeded "latest"
@@ -364,8 +364,8 @@ func (app *App) applyStaging() error {
 	app.Common.Image.PullPolicy = apiv1.PullAlways
 	app.Deployment.BlueGreenColor = ""
 	app.Deployment.RevisionHistoryLimit = 0
-	app.Staging.Name = strings.ToLower(app.Staging.Name)
-	app.Branch = strings.ToLower(app.Branch)
+	app.Staging.Name = sanitizeDNSName(app.Staging.Name)
+	app.Branch = sanitizeDNSName(app.Branch)
 
 	if app.Deployment.ReplicaCountStaging > 0 {
 		app.Deployment.ReplicaCount = ptr.To(app.Deployment.ReplicaCountStaging)
@@ -435,6 +435,20 @@ func (app *App) ensureLabels() {
 	if _, ok := app.Labels[LabelManagedBy]; !ok {
 		app.Labels[LabelManagedBy] = ManagedByValue
 	}
+}
+
+// sanitizeDNSName lowercases name and replaces characters that are invalid in a
+// DNS-1123 name but common in app, git branch and staging names — underscores
+// and slashes (e.g. "My_Env", "feature/foo") — with a hyphen. Every value
+// derived from these (release/object names, instance label values, ingress
+// hosts) must be DNS-1123-valid, so a raw "feature/foo" would otherwise yield
+// names the API server rejects. It does not truncate; callers apply truncateName
+// where a length limit applies.
+func sanitizeDNSName(name string) string {
+	name = strings.ToLower(name)
+	name = strings.ReplaceAll(name, "_", "-")
+	name = strings.ReplaceAll(name, "/", "-")
+	return name
 }
 
 // truncateName trims a name to the DNS-1123 label limit (the strictest, used by

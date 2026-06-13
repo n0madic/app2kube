@@ -187,6 +187,32 @@ func TestLoadValuesStagingPrefixesHost(t *testing.T) {
 	}
 }
 
+// #9: branch and staging names must be DNS-sanitized like the app name —
+// slashes (common in git branches like "feature/foo") and underscores become
+// hyphens — so the derived release name, instance label and ingress host stay
+// DNS-1123-valid instead of being rejected by the API server.
+func TestLoadValuesStagingSanitizesBranchAndStaging(t *testing.T) {
+	app := NewApp()
+	_, err := app.LoadValues(nil, []string{
+		"name=app",
+		"staging=My_Env",
+		"branch=feature/foo",
+		"ingress[0].host=example.com",
+	}, nil, nil)
+	if err != nil {
+		t.Fatalf("LoadValues: %v", err)
+	}
+	if app.Ingress[0].Host != "feature-foo.my-env.example.com" {
+		t.Errorf("host: got %q, want feature-foo.my-env.example.com", app.Ingress[0].Host)
+	}
+	if got := app.Labels["app.kubernetes.io/instance"]; got != "my-env-feature-foo" {
+		t.Errorf("instance label: got %q, want my-env-feature-foo", got)
+	}
+	if got := app.GetReleaseName(); got != "app-feature-foo" {
+		t.Errorf("release name: got %q, want app-feature-foo", got)
+	}
+}
+
 // Anonymous staging (staging: true) deploys a branch onto the root domain
 // (branch.host) instead of the default branch.staging.host, while keeping
 // staging machinery active. `--set staging=true` is parsed as a YAML boolean.

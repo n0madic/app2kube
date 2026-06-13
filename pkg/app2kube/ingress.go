@@ -119,24 +119,39 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 				newIngress.Annotations[key] = value
 			}
 
-			serviceName := app.GetServiceName(app.Common.Ingress.ServiceName)
+			// Resolve the backend Service for this ingress entry in precedence
+			// order: an explicit per-entry serviceName; otherwise the common
+			// default backend (common.ingress.serviceName); otherwise the sole
+			// Service when exactly one is declared. A per-entry or common-default
+			// name must resolve to a declared Service.
+			var serviceName string
 			servicePort := app.Common.Ingress.ServicePort
-			if ing.ServiceName != "" {
-				if svc, ok := app.Service[ing.ServiceName]; ok {
-					serviceName = app.GetServiceName(ing.ServiceName)
-					servicePort = svc.effectiveServicePort()
-				} else {
+			switch {
+			case ing.ServiceName != "":
+				svc, ok := app.Service[ing.ServiceName]
+				if !ok {
 					return ingress, fmt.Errorf("service with name %s for the ingress %s not found", ing.ServiceName, ing.Host)
 				}
-			} else {
-				if app.Common.Ingress.ServiceName == "" && len(app.Service) == 1 {
-					for name, svc := range app.Service {
-						serviceName = app.GetServiceName(name)
-						servicePort = svc.effectiveServicePort()
-					}
-				} else {
-					return ingress, fmt.Errorf("you must specify a serviceName for the ingress %s", ing.Host)
+				serviceName = app.GetServiceName(ing.ServiceName)
+				servicePort = svc.effectiveServicePort()
+			case app.Common.Ingress.ServiceName != "":
+				svc, ok := app.Service[app.Common.Ingress.ServiceName]
+				if !ok {
+					return ingress, fmt.Errorf("default ingress service %s for the ingress %s not found", app.Common.Ingress.ServiceName, ing.Host)
 				}
+				serviceName = app.GetServiceName(app.Common.Ingress.ServiceName)
+				// Prefer an explicit common.ingress.servicePort; otherwise derive
+				// the port from the resolved Service.
+				if servicePort == 0 {
+					servicePort = svc.effectiveServicePort()
+				}
+			case len(app.Service) == 1:
+				for name, svc := range app.Service {
+					serviceName = app.GetServiceName(name)
+					servicePort = svc.effectiveServicePort()
+				}
+			default:
+				return ingress, fmt.Errorf("you must specify a serviceName for the ingress %s", ing.Host)
 			}
 
 			if servicePort == 0 {

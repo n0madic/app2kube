@@ -32,28 +32,35 @@ func (v *ValueFiles) Type() string {
 
 // Set ValueFiles
 func (v *ValueFiles) Set(value string) error {
-	for _, filePath := range strings.Split(value, ",") {
+	for filePath := range strings.SplitSeq(value, ",") {
 		*v = append(*v, filePath)
 	}
 	return nil
 }
 
 // Merges source and destination map, preferring values from the source map
-func mergeValues(dest map[string]interface{}, src map[string]interface{}) map[string]interface{} {
+func mergeValues(dest map[string]any, src map[string]any) map[string]any {
 	for k, v := range src {
 		// If the key doesn't exist already, then just set the key to that value
 		if _, exists := dest[k]; !exists {
 			dest[k] = v
 			continue
 		}
-		nextMap, ok := v.(map[string]interface{})
+		// A nil source value (a bare/null key like `common:` in a later -f file)
+		// must not clobber an already-populated destination subtree — that would
+		// silently drop the earlier file's whole map with no error. Treat it as
+		// "no override" and keep the existing value.
+		if v == nil {
+			continue
+		}
+		nextMap, ok := v.(map[string]any)
 		// If it isn't another map, overwrite the value
 		if !ok {
 			dest[k] = v
 			continue
 		}
 		// Edge case: If the key exists in the destination, but isn't a map
-		destMap, isMap := dest[k].(map[string]interface{})
+		destMap, isMap := dest[k].(map[string]any)
 		// If the source map has a map for this key, prefer it
 		if !isMap {
 			dest[k] = v
@@ -68,11 +75,11 @@ func mergeValues(dest map[string]interface{}, src map[string]interface{}) map[st
 // vals merges values from files specified via -f/--values and
 // directly via --set or --set-string or --set-file, marshaling them to YAML
 func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]byte, error) {
-	base := map[string]interface{}{}
+	base := map[string]any{}
 
 	// User specified a values files via -f/--values
 	for _, filePath := range valueFiles {
-		currentMap := map[string]interface{}{}
+		currentMap := map[string]any{}
 
 		var bytes []byte
 		var err error
@@ -115,7 +122,7 @@ func vals(valueFiles ValueFiles, values, stringValues, fileValues []string) ([]b
 
 	// User specified a value via --set-file
 	for _, value := range fileValues {
-		reader := func(rs []rune) (interface{}, error) {
+		reader := func(rs []rune) (any, error) {
 			b, err := os.ReadFile(string(rs))
 			if err != nil {
 				// Don't derive a value on the read-error path (#39): strvals stores

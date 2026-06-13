@@ -225,7 +225,9 @@ func TestProcessContainerRegistryPort(t *testing.T) {
 		wantEnv   bool
 	}{
 		{"registry port + tag", "registry.io:5000/app:v1", "registry.io:5000/app:v2", true},
-		{"registry port + digest", "registry.io:5000/app@sha256:" + zeros(64), "registry.io:5000/app:v2", true},
+		// A digest-pinned app image keeps its immutable digest (env still
+		// injected) rather than being rewritten to the mutable common tag.
+		{"registry port + digest", "registry.io:5000/app@sha256:" + zeros(64), "registry.io:5000/app@sha256:" + zeros(64), true},
 		{"bare repository", "registry.io:5000/app", "registry.io:5000/app:v2", true},
 		{"third party image", "other.io/lib:1.0", "other.io/lib:1.0", false},
 		{"prefix collision is not a match", "registry.io:5000/app-extra:v1", "registry.io:5000/app-extra:v1", false},
@@ -349,6 +351,46 @@ func TestIngressBackendPortFromInternalPort(t *testing.T) {
 	got := ings[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service.Port.Number
 	if got != 8080 {
 		t.Errorf("ingress backend port: got %d, want 8080", got)
+	}
+}
+
+// #7: common.ingress.serviceName must act as the default backend when an entry
+// omits its own serviceName and auto-derivation is unavailable (more than one
+// Service). Previously this errored ("you must specify a serviceName") because
+// the precomputed common-default values were discarded.
+func TestIngressCommonDefaultBackend(t *testing.T) {
+	app := ingressTestApp()
+	app.Service = map[string]Service{
+		"web": {Port: 80},
+		"api": {Port: 8080},
+	}
+	app.Common.Ingress.ServiceName = "api"
+	app.Ingress = []Ingress{{Host: "example.com"}}
+
+	ings, err := app.GetIngress()
+	if err != nil {
+		t.Fatalf("GetIngress: %v", err)
+	}
+	backend := ings[0].Spec.Rules[0].HTTP.Paths[0].Backend.Service
+	if want := app.GetServiceName("api"); backend.Name != want {
+		t.Errorf("backend service: got %q, want %q", backend.Name, want)
+	}
+	if backend.Port.Number != 8080 {
+		t.Errorf("backend port: got %d, want 8080", backend.Port.Number)
+	}
+}
+
+// A common default backend naming a Service that does not exist is a clear
+// misconfiguration and must error rather than wiring a backend to a missing
+// Service.
+func TestIngressCommonDefaultBackendMissingService(t *testing.T) {
+	app := ingressTestApp()
+	app.Service = map[string]Service{"web": {Port: 80}, "api": {Port: 8080}}
+	app.Common.Ingress.ServiceName = "nope"
+	app.Ingress = []Ingress{{Host: "example.com"}}
+
+	if _, err := app.GetIngress(); err == nil {
+		t.Fatal("expected error for unknown default ingress service, got nil")
 	}
 }
 

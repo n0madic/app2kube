@@ -206,13 +206,15 @@ Includes the common application value flags.
 | `--all-instances` | bool | With `delete all`, delete all instances of the application by omitting the instance label from the selector. | `false` |
 | `--blue-green` | bool | Resolve the blue/green target color before deleting generated resources. | `false` |
 | `--dry-run` | string | Must be `none`, `server`, or `client`. With `client`, print the object without sending it; with `server`, submit the request without persisting it. | `none` |
-| `--ignore-not-found` | bool | Treat "resource not found" as a successful delete. | `false` |
+| `--ignore-not-found` | bool | Treat "resource not found" as a successful delete. Defaults to enabled for the manifest delete (no positional argument) and for `delete all`, so a partially-removed app tears down cleanly; pass `--ignore-not-found=false` to opt out. | `false` |
 | `--wait` | bool | Wait for resources to be gone before returning, including finalizers. | `true` |
 
-With no positional argument, app2kube deletes the exact generated manifest.
-With `all`, it deletes all app2kube-generated resource kinds for the app using
-a safe label selector. `--include-namespace` deletes the Namespace itself and
-cannot be combined with `delete all`.
+With no positional argument, app2kube deletes the exact generated manifest. This
+path is idempotent: objects already absent from the cluster are skipped instead
+of aborting the command with `Error from server (NotFound)` (see
+`--ignore-not-found`). With `all`, it deletes all app2kube-generated resource
+kinds for the app using a safe label selector. `--include-namespace` deletes the
+Namespace itself and cannot be combined with `delete all`.
 
 ## `app2kube status`
 

@@ -109,6 +109,33 @@ func TestStreamDeleteResultParsesManifestWithoutStdin(t *testing.T) {
 	}
 }
 
+// Regression: `app2kube delete` (delete-by-manifest) must be idempotent — tearing
+// down an app whose resources are partially gone should succeed, not abort on the
+// first "Error from server (NotFound)". kubectl only auto-enables IgnoreNotFound
+// for selector/--all deletes, so the manifest path defaults it on itself, while
+// still honoring an explicit --ignore-not-found=false opt-out.
+func TestDefaultIgnoreNotFound(t *testing.T) {
+	t.Run("defaults on when flag absent", func(t *testing.T) {
+		o := &delete.DeleteOptions{}
+		defaultIgnoreNotFound(o, NewCmdDelete())
+		if !o.IgnoreNotFound {
+			t.Fatal("delete-by-manifest must default IgnoreNotFound to true")
+		}
+	})
+
+	t.Run("honors explicit --ignore-not-found=false", func(t *testing.T) {
+		o := &delete.DeleteOptions{}
+		cmd := NewCmdDelete()
+		if err := cmd.Flags().Set("ignore-not-found", "false"); err != nil {
+			t.Fatalf("set flag: %v", err)
+		}
+		defaultIgnoreNotFound(o, cmd)
+		if o.IgnoreNotFound {
+			t.Fatal("explicit --ignore-not-found=false must be honored")
+		}
+	})
+}
+
 // validateDeleteFlags must reject the contradictory "all" + --include-namespace
 // combination (which would silently nuke the whole namespace instead of doing
 // the scoped, label-selected delete the operator asked for) while leaving every

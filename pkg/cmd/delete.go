@@ -61,6 +61,20 @@ func validateDeleteFlags(includeNamespace bool, args []string) error {
 	return nil
 }
 
+// defaultIgnoreNotFound makes delete-by-manifest idempotent. kubectl reports a
+// missing object as a hard error ("Error from server (NotFound)") and aborts the
+// whole command unless DeleteOptions.IgnoreNotFound is set. It auto-enables that
+// for selector/--all deletes (DeleteOptions.Complete) but NOT for the filename
+// path that delete-by-manifest uses, so a teardown where some objects are already
+// gone (partial prior teardown, a resource that was never created) would fail.
+// Mirror kubectl's convention: default IgnoreNotFound on, unless the operator
+// explicitly opted out with --ignore-not-found=false.
+func defaultIgnoreNotFound(o *delete.DeleteOptions, cmd *cobra.Command) {
+	if f := cmd.Flags().Lookup("ignore-not-found"); f != nil && !f.Changed {
+		o.IgnoreNotFound = true
+	}
+}
+
 // NewCmdDelete return delete command
 func NewCmdDelete() *cobra.Command {
 	deleteFlags := delete.NewDeleteCommandFlags("containing the resource to delete.")
@@ -108,6 +122,9 @@ func NewCmdDelete() *cobra.Command {
 				// stdin-backed Result it builds is never read: it is overwritten
 				// with the Stream result before RunDelete visits it.
 				o.Filenames = []string{"-"}
+				// Teardown of an app whose resources are partially gone must
+				// succeed instead of aborting on the first NotFound (see helper).
+				defaultIgnoreNotFound(o, cmd)
 			}
 
 			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))

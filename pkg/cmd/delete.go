@@ -99,14 +99,23 @@ func NewCmdDelete() *cobra.Command {
 				deleteManifest, err = app.GetManifest("json", app2kube.OutputAll)
 				cmdutil.CheckErr(err)
 				byManifest = true
+				// o.Complete (below) builds a resource.Result from the
+				// FilenameOptions/args/selectors and rejects an empty set with
+				// "You must provide one or more resources by argument or filename."
+				// We hand it the manifest via an in-memory Stream, not stdin, but
+				// Complete still runs first to wire up the mapper/dynamic client/
+				// dry-run — so seed a "-" filename to satisfy that check. The
+				// stdin-backed Result it builds is never read: it is overwritten
+				// with the Stream result before RunDelete visits it.
+				o.Filenames = []string{"-"}
 			}
 
 			cmdutil.CheckErr(o.Complete(kubeFactory, args, cmd))
 
-			// For delete-by-manifest, Complete built an (empty) Result from the
-			// FilenameOptions; replace it with one fed from an in-memory reader so
-			// RunDelete never reads os.Stdin. Complete still wired up the mapper,
-			// dynamic client and dry-run strategy that DeleteResult needs.
+			// For delete-by-manifest, Complete built a stdin-backed Result from the
+			// "-" filename seeded above; replace it with one fed from an in-memory
+			// reader so RunDelete never reads os.Stdin. Complete still wired up the
+			// mapper, dynamic client and dry-run strategy that DeleteResult needs.
 			if byManifest {
 				cmdNamespace, enforceNamespace, err := kubeFactory.ToRawKubeConfigLoader().Namespace()
 				cmdutil.CheckErr(err)

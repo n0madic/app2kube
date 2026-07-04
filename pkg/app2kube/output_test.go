@@ -45,8 +45,9 @@ func TestPruneAndDeleteCertManagerConditional(t *testing.T) {
 		t.Errorf("delete list must not list %q without letsencrypt: %q", certRes, plain.DeleteResourceTypes())
 	}
 
-	// Per-entry letsencrypt.
-	perEntry := NewApp()
+	// Per-entry letsencrypt on a workload-bearing app: a Certificate is emitted,
+	// so the CRD must be referenced. ingressTestApp carries containers + service.
+	perEntry := ingressTestApp()
 	perEntry.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
 	if !slices.Contains(perEntry.PruneWhitelist(), certGVK) {
 		t.Errorf("prune whitelist must list %q with letsencrypt: %v", certGVK, perEntry.PruneWhitelist())
@@ -55,11 +56,57 @@ func TestPruneAndDeleteCertManagerConditional(t *testing.T) {
 		t.Errorf("delete list must list %q with letsencrypt: %q", certRes, perEntry.DeleteResourceTypes())
 	}
 
-	// common.ingress.letsencrypt also enables it.
-	common := NewApp()
+	// common.ingress.letsencrypt also enables it (workload present).
+	common := ingressTestApp()
 	common.Common.Ingress.Letsencrypt = true
 	if !slices.Contains(common.PruneWhitelist(), certGVK) {
 		t.Errorf("prune whitelist must list %q with common letsencrypt: %v", certGVK, common.PruneWhitelist())
+	}
+
+	// letsencrypt enabled but no workload (no containers/service) emits no
+	// Certificate, so the CRD must NOT be referenced — the prune/delete guard
+	// must mirror the GetCertificates emit guard, or a workload-less render on a
+	// cert-manager-less cluster fails `apply --prune`/`delete all` wholesale.
+	noWorkload := NewApp()
+	noWorkload.Common.Ingress.Letsencrypt = true
+	noWorkload.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+	if certs, err := noWorkload.GetCertificates(); err != nil || len(certs) != 0 {
+		t.Fatalf("precondition: no-workload app must emit 0 certificates, got %d (err=%v)", len(certs), err)
+	}
+	if slices.Contains(noWorkload.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must not list %q when no Certificate is emitted (no workload): %v", certGVK, noWorkload.PruneWhitelist())
+	}
+	if strings.Contains(noWorkload.DeleteResourceTypes(), certRes) {
+		t.Errorf("delete list must not list %q when no Certificate is emitted (no workload): %q", certRes, noWorkload.DeleteResourceTypes())
+	}
+}
+
+// The cert-manager Certificate is a locally-defined runtime.Object that is not
+// registered in scheme.Scheme, so GetManifest can only render it through the
+// printer's pre-set-TypeMeta path (the type-setter delegates on the
+// not-registered error, and the YAML/JSON printer honors the Certificate's own
+// TypeMeta). Every other Certificate test calls GetCertificates() directly, so a
+// regression in that render path (an empty GVK, a DeepCopyObject/TypeMeta change)
+// would ship silently and break every `manifest --type certificate` and every
+// letsencrypt `apply`. Assert the Certificate actually renders with its kind and
+// apiVersion via both OutputCertificate and OutputAll.
+func TestGetManifestRendersCertificate(t *testing.T) {
+	for _, out := range []OutputResource{OutputCertificate, OutputAll} {
+		app := ingressTestApp()
+		app.Common.Image.Repository = "example/app"
+		app.Common.Image.Tag = "v1"
+		app.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+
+		manifest, err := app.GetManifest("yaml", out)
+		if err != nil {
+			t.Fatalf("GetManifest(%d): %v", out, err)
+		}
+		if !strings.Contains(manifest, "kind: Certificate") {
+			t.Errorf("GetManifest(%d) missing `kind: Certificate`:\n%s", out, manifest)
+		}
+		if !strings.Contains(manifest, "apiVersion: cert-manager.io/v1") {
+			t.Errorf("GetManifest(%d) missing `apiVersion: cert-manager.io/v1`:\n%s", out, manifest)
+		}
 	}
 }
 
@@ -166,6 +213,14 @@ func TestStripCreationTimestamp(t *testing.T) {
 		"deeply nested metadata line stripped": {
 			in:   "spec:\n  template:\n    metadata:\n      creationTimestamp: null\n      labels:\n        app: x\n",
 			want: "spec:\n  template:\n    metadata:\n      labels:\n        app: x\n",
+		},
+		// A block scalar that is itself a sequence element ("- |-", e.g. a
+		// multiline container command/arg) must have its content protected too:
+		// a `creationTimestamp: null` line inside it is data, not metadata; only
+		// the object's own metadata line is stripped.
+		"sequence block scalar timestamp kept; metadata stripped": {
+			in:   "command:\n- |-\n  do stuff\n  creationTimestamp: null\nmetadata:\n  creationTimestamp: null\n  name: cfg\n",
+			want: "command:\n- |-\n  do stuff\n  creationTimestamp: null\nmetadata:\n  name: cfg\n",
 		},
 	}
 	for name, tc := range cases {

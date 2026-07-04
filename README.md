@@ -134,7 +134,7 @@ Track deployment till ready:
 app2kube track ready
 ```
 
-`apply --track ready|follow` tracks the rollout after applying; its `--timeout` (minutes, `0` waits forever) is honored — it is no longer fixed at 15 minutes.
+`apply --track ready|follow` tracks the rollout after applying; its `--timeout` (minutes, `0` waits forever) is honored — it is no longer fixed at 15 minutes. The same `--timeout` also governs the `--blue-green` pre-deploy readiness wait (phase 1), so a long blue-green rollout can raise the window before it reports that traffic was not switched.
 
 Delete application manifest from kubernetes:
 

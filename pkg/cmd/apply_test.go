@@ -80,6 +80,30 @@ func TestBlueGreenNotSwitchedMsg(t *testing.T) {
 	}
 }
 
+// Regression: `apply --blue-green` phase-1 readiness wait must honor --timeout
+// instead of a hardcoded 15m. --timeout binds to applyTimeout, which phase-1
+// passes to trackReady, and the flag help must document the blue-green scope so
+// neither the wiring nor the documented contract silently regresses.
+func TestApplyTimeoutFlagGovernsBlueGreenWait(t *testing.T) {
+	orig := applyTimeout
+	defer func() { applyTimeout = orig }()
+
+	cmd := NewCmdApply()
+	f := cmd.Flags().Lookup("timeout")
+	if f == nil {
+		t.Fatal("apply has no --timeout flag")
+	}
+	if err := cmd.Flags().Set("timeout", "42"); err != nil {
+		t.Fatalf("set --timeout: %v", err)
+	}
+	if applyTimeout != 42 {
+		t.Errorf("applyTimeout = %d, want 42 (--timeout must bind to it)", applyTimeout)
+	}
+	if !strings.Contains(strings.ToLower(f.Usage), "blue-green") {
+		t.Errorf("--timeout help must document it governs the blue-green wait: %q", f.Usage)
+	}
+}
+
 // Regression (#26): the --track value must be validated at parse time (before
 // the cluster is mutated), accepting only "", "ready", "follow" (case-insensitive)
 // and rejecting typos like "redy".

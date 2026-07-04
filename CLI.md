@@ -142,7 +142,7 @@ Includes the common application value flags.
 | `--show-managed-fields` | bool | Keep `managedFields` when printing objects in JSON or YAML. | `false` |
 | `--status` | bool | Show application resource status after apply. | `false` |
 | `--template` | string | Template string or template file path for `go-template` and related output formats. | empty |
-| `--timeout` | int | Timeout in minutes for `--track`; `0` waits forever. | `15` |
+| `--timeout` | int | Timeout in minutes for `--track` and the `--blue-green` pre-deploy readiness wait; `0` waits forever. | `15` |
 | `--track` | string | Track the Deployment after apply. Accepted values are `ready` and `follow`. | empty |
 | `--validate` | string | Schema validation mode. Accepted values: `strict` or `true`, `warn`, `ignore` or `false`. | `strict` |
 

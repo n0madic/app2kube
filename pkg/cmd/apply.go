@@ -184,7 +184,10 @@ func NewCmdApply() *cobra.Command {
 					return err
 				}
 
-				if err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, defaultTrackTimeout, time.Now()); err != nil {
+				// Honor --timeout for the phase-1 readiness wait (applyTimeout),
+				// not a hardcoded 15m: a long rollout must be able to raise the
+				// window it is allowed before reporting "not switched".
+				if err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now()); err != nil {
 					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
 					return err
 				}
@@ -247,7 +250,7 @@ func NewCmdApply() *cobra.Command {
 	applyCmd.Flags().BoolVar(&flags.Prune, "prune", false, "Automatically delete resource objects, including the uninitialized ones, that do not appear in the configs and are created by either apply.")
 	applyCmd.Flags().BoolVar(&applyWithStatus, "status", false, "Show application resources status in kubernetes after apply")
 	applyCmd.Flags().StringVar(&applyWithTrack, "track", "", "Track Deployment (ready|follow)")
-	applyCmd.Flags().IntVar(&applyTimeout, "timeout", defaultTrackTimeout, "Timeout in minutes for --track. 0 is wait forever")
+	applyCmd.Flags().IntVar(&applyTimeout, "timeout", defaultTrackTimeout, "Timeout in minutes for --track and the blue-green pre-deploy readiness wait. 0 is wait forever")
 
 	return applyCmd
 }

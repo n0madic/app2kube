@@ -230,9 +230,16 @@ var emittedKinds = []EmittedKind{
 // `certificates` CRDs from other operators.
 var certManagerEmittedKind = EmittedKind{"cert-manager.io/v1/Certificate", "certificates.cert-manager.io"}
 
-// usesCertManager reports whether the app emits any cert-manager Certificate,
-// i.e. letsencrypt is enabled globally or on at least one ingress entry.
+// usesCertManager reports whether the app emits any cert-manager Certificate.
+// It must stay in lockstep with the GetCertificates emit guard: letsencrypt is
+// enabled (globally or on an entry) AND the app carries a workload (containers +
+// service). Reporting true when no Certificate is actually emitted would make
+// prune/delete reference the cert-manager CRD on a workload-less render — failing
+// the whole operation on a cluster that has no cert-manager installed.
 func (app *App) usesCertManager() bool {
+	if len(app.Deployment.Containers) == 0 || len(app.Service) == 0 {
+		return false
+	}
 	if app.Common.Ingress.Letsencrypt {
 		return true
 	}
@@ -477,11 +484,23 @@ func stripCreationTimestamp(in []byte) []byte {
 	return filtered.Bytes()
 }
 
-// isBlockScalarHeader reports whether a (left-trimmed) mapping line opens a YAML
-// block scalar, i.e. its value after "key:" begins with a '|' or '>' indicator
-// (optionally followed by chomping/indentation indicators or a comment). A
-// quoted value that merely starts with those characters is not a block scalar.
+// isBlockScalarHeader reports whether a (left-trimmed) YAML line opens a block
+// scalar, i.e. its value begins with a '|' or '>' indicator (optionally followed
+// by chomping/indentation indicators or a comment). A quoted value that merely
+// starts with those characters is not a block scalar. Both forms are covered:
+//   - a mapping value ("key: |") — the value after the last "key:";
+//   - a sequence element that is itself a block scalar ("- |-", e.g. a multiline
+//     container command/arg), including nested sequences ("- - |") and a mapping
+//     inside a sequence element ("- key: |", matched via the "key:" path).
 func isBlockScalarHeader(trimmed []byte) bool {
+	// Strip leading YAML sequence-entry indicators so a bare block scalar in a
+	// sequence is detected, not only mapping values.
+	for bytes.HasPrefix(trimmed, []byte("- ")) {
+		trimmed = bytes.TrimLeft(trimmed[2:], " ")
+	}
+	if len(trimmed) > 0 && (trimmed[0] == '|' || trimmed[0] == '>') {
+		return true
+	}
 	idx := bytes.LastIndex(trimmed, []byte(": "))
 	if idx < 0 {
 		return false

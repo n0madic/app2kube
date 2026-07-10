@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestRenderDotenv(t *testing.T) {
@@ -113,5 +114,76 @@ func TestRenderSecrets(t *testing.T) {
 	want := "secrets:\n  a: one\n  b: two\n"
 	if out != want {
 		t.Errorf("secrets:\ngot  %q\nwant %q", out, want)
+	}
+}
+
+// Regression: a secret containing a newline used to be written verbatim into the
+// .env output, so `foo\nINJECTED=bar` produced a second line that parses as
+// another variable assignment. Values that are not safe unquoted are now always
+// double-quoted and escaped, with or without --quotes.
+func TestRenderDotenvEscapesUnsafeValues(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"newline injection", "foo\nINJECTED=bar", `KEY="foo\nINJECTED=bar"` + "\n"},
+		{"embedded double quote", `a"b`, `KEY="a\"b"` + "\n"},
+		{"backslash", `a\b`, `KEY="a\\b"` + "\n"},
+		{"space", "a b", `KEY="a b"` + "\n"},
+		{"empty", "", `KEY=""` + "\n"},
+		{"safe value stays bare", "plain-value_1.2", "KEY=plain-value_1.2\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			app := app2kube.NewApp()
+			app.Env = map[string]string{"KEY": tc.value}
+			out, err := renderDotenv(app, false, false)
+			if err != nil {
+				t.Fatalf("renderDotenv: %v", err)
+			}
+			if out != tc.want {
+				t.Errorf("got %q, want %q", out, tc.want)
+			}
+			// Whatever the escaping, the output must never grow an extra assignment.
+			if n := strings.Count(strings.TrimRight(out, "\n"), "\n"); n != 0 {
+				t.Errorf("value leaked a newline into the .env output: %q", out)
+			}
+		})
+	}
+}
+
+// Regression: renderSecrets concatenated "  key: value" by hand, so a secret with
+// a newline, a leading '#' or a colon produced a broken (or differently-parsing)
+// YAML document. The output must always round-trip back to the input secrets.
+func TestRenderSecretsRoundTripsUnsafeValues(t *testing.T) {
+	secrets := map[string]string{
+		"multiline": "line1\nline2",
+		"comment":   "#not-a-comment",
+		"colon":     "host: port",
+		"quote":     `say "hi"`,
+		"plain":     "simple",
+	}
+	app := app2kube.NewApp()
+	app.Secrets = secrets
+
+	out, err := renderSecrets(app)
+	if err != nil {
+		t.Fatalf("renderSecrets: %v", err)
+	}
+
+	var got struct {
+		Secrets map[string]string `yaml:"secrets"`
+	}
+	if err := yaml.Unmarshal([]byte(out), &got); err != nil {
+		t.Fatalf("output is not valid YAML: %v\n%s", err, out)
+	}
+	if len(got.Secrets) != len(secrets) {
+		t.Fatalf("got %d secrets, want %d:\n%s", len(got.Secrets), len(secrets), out)
+	}
+	for k, want := range secrets {
+		if got.Secrets[k] != want {
+			t.Errorf("secret %q = %q, want %q\n%s", k, got.Secrets[k], want, out)
+		}
 	}
 }

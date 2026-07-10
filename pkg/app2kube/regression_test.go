@@ -235,7 +235,7 @@ func TestProcessContainerRegistryPort(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			c := &apiv1.Container{Name: "app", Image: tc.image}
-			if err := app.processContainer(c, false); err != nil {
+			if err := app.processContainer(c, containerModeDeployment); err != nil {
 				t.Fatalf("processContainer: %v", err)
 			}
 			if c.Image != tc.wantImage {
@@ -262,7 +262,7 @@ func TestProbeNamedPortPreserved(t *testing.T) {
 			HTTPGet: &apiv1.HTTPGetAction{Port: intstr.FromString("http")},
 		}},
 	}
-	if err := app.processContainer(named, false); err != nil {
+	if err := app.processContainer(named, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if got := named.LivenessProbe.HTTPGet.Port; got.StrVal != "http" {
@@ -277,7 +277,7 @@ func TestProbeNamedPortPreserved(t *testing.T) {
 			HTTPGet: &apiv1.HTTPGetAction{},
 		}},
 	}
-	if err := app.processContainer(unset, false); err != nil {
+	if err := app.processContainer(unset, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if got := unset.LivenessProbe.HTTPGet.Port.IntVal; got != 8080 {

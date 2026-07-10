@@ -32,7 +32,7 @@ func TestResolveEncryptString(t *testing.T) {
 func TestRunEncryptFileOpenErrorIsWrapped(t *testing.T) {
 	t.Setenv(app2kube.EnvPassword, "pass")
 
-	err := runEncrypt("", app2kube.ValueFiles{filepath.Join(t.TempDir(), "does-not-exist.yaml")})
+	err := runEncrypt("", false, app2kube.ValueFiles{filepath.Join(t.TempDir(), "does-not-exist.yaml")})
 	if err == nil {
 		t.Fatal("expected an error for a missing value file")
 	}
@@ -53,7 +53,7 @@ func TestEncryptBlankLineInSecrets(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -113,7 +113,7 @@ func TestEncryptDecodesSingleQuotedValue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -135,7 +135,7 @@ func TestEncryptStripsInlineComment(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -183,7 +183,7 @@ func TestEncryptPreservesQuotedHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -207,7 +207,7 @@ func TestEncryptPreservesValueTemplate(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -235,7 +235,7 @@ func TestEncryptSkipsEntireBlockScalarSecret(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runEncrypt("", app2kube.ValueFiles{file}); err != nil {
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
 		t.Fatalf("encrypt: %v", err)
 	}
 
@@ -256,5 +256,127 @@ func TestEncryptSkipsEntireBlockScalarSecret(t *testing.T) {
 	}
 	if !strings.Contains(s, "other: keep") {
 		t.Errorf("non-secret content not preserved:\n%s", s)
+	}
+}
+
+// Regression: the secrets file must be replaced atomically. An in-place
+// os.WriteFile truncates before writing, so an interruption between the two
+// (SIGINT, full disk, panic) left the file empty or half-written, destroying
+// already-encrypted secrets. writeSecretsFile writes a sibling temp file and
+// renames it over the target, and tightens the mode to 0600 even when the
+// pre-existing file was world-readable.
+func TestWriteSecretsFileAtomicAndOwnerOnly(t *testing.T) {
+	t.Run("replaces content and tightens a loose mode", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "secrets.yaml")
+		if err := os.WriteFile(path, []byte("old: value\n"), 0644); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+
+		const want = "new: CRYPT#abc\n"
+		if err := writeSecretsFile(path, want); err != nil {
+			t.Fatalf("writeSecretsFile: %v", err)
+		}
+
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read back: %v", err)
+		}
+		if string(got) != want {
+			t.Errorf("content = %q, want %q", got, want)
+		}
+
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat: %v", err)
+		}
+		if perm := info.Mode().Perm(); perm != 0600 {
+			t.Errorf("mode = %04o, want 0600 (a secrets file must not stay group/world-readable)", perm)
+		}
+	})
+
+	t.Run("leaves no temp file behind", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "secrets.yaml")
+		if err := writeSecretsFile(path, "a: b\n"); err != nil {
+			t.Fatalf("writeSecretsFile: %v", err)
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			t.Fatalf("readdir: %v", err)
+		}
+		if len(entries) != 1 || entries[0].Name() != "secrets.yaml" {
+			names := make([]string, 0, len(entries))
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			t.Errorf("directory = %v, want only secrets.yaml (temp file leaked)", names)
+		}
+	})
+
+	t.Run("a failed write does not destroy the original", func(t *testing.T) {
+		// An unwritable directory makes the temp-file creation fail. The original
+		// must survive untouched — the whole point of not truncating in place.
+		if os.Geteuid() == 0 {
+			t.Skip("root bypasses directory permissions")
+		}
+		dir := t.TempDir()
+		path := filepath.Join(dir, "secrets.yaml")
+		const orig = "keep: me\n"
+		if err := os.WriteFile(path, []byte(orig), 0600); err != nil {
+			t.Fatalf("seed: %v", err)
+		}
+		if err := os.Chmod(dir, 0500); err != nil {
+			t.Fatalf("chmod dir: %v", err)
+		}
+		t.Cleanup(func() { _ = os.Chmod(dir, 0700) })
+
+		if err := writeSecretsFile(path, "clobbered\n"); err == nil {
+			t.Fatal("expected an error when the directory is unwritable")
+		}
+		got, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read back: %v", err)
+		}
+		if string(got) != orig {
+			t.Errorf("original content was destroyed: got %q, want %q", got, orig)
+		}
+	})
+}
+
+// Regression: `config encrypt --string -` with empty stdin resolves the secret to
+// "", which used to be indistinguishable from "--string was not passed". The
+// command then fell into the files branch and reported "need to specify yaml
+// files" — diagnosing the wrong problem. An empty secret has no encryption (
+// EncryptSecret maps "" to ""), so it must be rejected on its own terms.
+func TestRunEncryptEmptyStringIsDiagnosedCorrectly(t *testing.T) {
+	t.Run("explicit empty --string reports the empty value", func(t *testing.T) {
+		err := runEncrypt("", true, nil)
+		if err == nil {
+			t.Fatal("expected an error for an empty --string")
+		}
+		if !strings.Contains(err.Error(), "empty value") {
+			t.Errorf("error = %q, want it to mention the empty value, not missing files", err)
+		}
+	})
+
+	t.Run("no --string and no files still reports missing files", func(t *testing.T) {
+		err := runEncrypt("", false, nil)
+		if err == nil || !strings.Contains(err.Error(), "need to specify yaml files") {
+			t.Errorf("error = %v, want the missing-files error", err)
+		}
+	})
+}
+
+// resolveEncryptString maps the "-" sentinel to stdin so the secret never lands
+// in shell history; an empty stdin legitimately yields an empty string, which the
+// caller (runEncrypt) is responsible for rejecting.
+func TestResolveEncryptStringEmptyStdin(t *testing.T) {
+	got, err := resolveEncryptString("-", strings.NewReader(""))
+	if err != nil {
+		t.Fatalf("resolveEncryptString: %v", err)
+	}
+	if got != "" {
+		t.Errorf("got %q, want empty", got)
 	}
 }

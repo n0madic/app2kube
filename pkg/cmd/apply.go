@@ -76,9 +76,17 @@ func NewCmdApply() *cobra.Command {
 			return validateTrackValue(applyWithTrack)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			// Every failure below is a runtime error, not a misuse of the CLI. Without
+			// this cobra dumps the full usage text after the error, burying the
+			// blue-green "traffic was NOT switched"/"PARTIALLY switched" guidance the
+			// operator has to act on. Matches every other app2kube command.
+			cmd.SilenceUsage = true
+
 			ctx := cmd.Context()
 			app, err := opts.initApp(ctx)
-			cmdutil.CheckErr(err)
+			if err != nil {
+				return err
+			}
 
 			// The prune whitelist is derived per-app from the generator registry
 			// (output.go) so it cannot drift: every kind app2kube can emit is
@@ -90,14 +98,21 @@ func NewCmdApply() *cobra.Command {
 			// pruned when this app actually uses letsencrypt.
 			applyPruneWhitelist := app.PruneWhitelist()
 
+			// Every failure in here is returned, never cmdutil.CheckErr'd: CheckErr
+			// os.Exit()s, and the blue/green caller must regain control to report
+			// whether live traffic was switched before the process exits (#60).
 			applyManifest := func(manifest string, prune bool) error {
 				flags.Overwrite = true
 				flags.Prune = prune
 				flags.PruneWhitelist = applyPruneWhitelist
 				o, err := flags.ToOptions(kubeFactory, cmd, "app2kube", args)
-				cmdutil.CheckErr(err)
+				if err != nil {
+					return err
+				}
 				o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
-				cmdutil.CheckErr(err)
+				if err != nil {
+					return err
+				}
 
 				if o.Namespace != "" {
 					o.EnforceNamespace = true
@@ -105,20 +120,20 @@ func NewCmdApply() *cobra.Command {
 
 				if o.Prune {
 					o.Selector, err = scopedSelector(app.Labels)
-					cmdutil.CheckErr(err)
+					if err != nil {
+						return err
+					}
 				}
 
-				cmdutil.CheckErr(o.Validate())
+				if err := o.Validate(); err != nil {
+					return err
+				}
 
 				// Pre-build the objects from an in-memory reader and hand them to
 				// apply via SetObjects, so Run() uses them directly and never reads
 				// os.Stdin. This replaces the previous global os.Stdin hijack and its
 				// pipe-buffer deadlock window.
 				infos, err := streamApplyObjects(o.Builder, o.Validator, o.Namespace, o.EnforceNamespace, o.Selector, manifest)
-				// Return the error instead of cmdutil.CheckErr (which os.Exit()s): a
-				// parse error means app2kube emitted an invalid manifest (a bug), and
-				// blue/green callers must regain control to report that traffic was
-				// NOT switched before the process exits (#60).
 				if err != nil {
 					return err
 				}
@@ -160,16 +175,22 @@ func NewCmdApply() *cobra.Command {
 				}
 
 				kcs, err := kubeFactory.KubernetesClientSet()
-				cmdutil.CheckErr(err)
+				if err != nil {
+					return err
+				}
 
 				// Pre-delete the stale target-color deployment before recreating
 				// it. A NotFound is expected on the first deploy (nothing to delete)
 				// and is ignored; a real RBAC/connectivity error aborts the deploy
 				// instead of being printed while the doomed apply proceeds (#65).
-				cmdutil.CheckErr(preDeleteDeployment(ctx, kcs, app.GetDeploymentName(), app.Namespace))
+				if err := preDeleteDeployment(ctx, kcs, app.GetDeploymentName(), app.Namespace); err != nil {
+					return err
+				}
 
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
-				cmdutil.CheckErr(err)
+				if err != nil {
+					return err
+				}
 
 				// Progress/diagnostics go to stderr so piped manifest/data on stdout
 				// stays clean (#61).
@@ -192,8 +213,14 @@ func NewCmdApply() *cobra.Command {
 					return err
 				}
 
+				// The new color is deployed and ready, but the traffic-switching
+				// resources have not been applied yet: a render failure here leaves the
+				// live color untouched, same as a phase-1 failure.
 				manifest, err = app.GetManifest("json", app2kube.OutputAllOther)
-				cmdutil.CheckErr(err)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
+					return err
+				}
 
 				fmt.Fprintf(os.Stderr, "• Final deploy for [%s]:\n", colorize(app.Deployment.BlueGreenColor))
 
@@ -210,16 +237,20 @@ func NewCmdApply() *cobra.Command {
 				}
 			} else {
 				manifest, err := getManifest(app2kube.OutputAll)
-				cmdutil.CheckErr(err)
+				if err != nil {
+					return err
+				}
 
-				cmdutil.CheckErr(applyManifest(manifest, flags.Prune))
+				if err := applyManifest(manifest, flags.Prune); err != nil {
+					return err
+				}
 			}
 
 			if applyWithTrack != "" && len(app.Deployment.Containers) > 0 {
 				// Scope the tracking error to its own variable instead of reusing
-				// the outer err, and CheckErr it inside the block. Reusing err meant
-				// any future early path leaving err non-nil before here would be
-				// re-surfaced via CheckErr's os.Exit even when tracking ran fine (#68).
+				// the outer err. Reusing err meant any future early path leaving err
+				// non-nil before here would be re-surfaced even when tracking ran
+				// fine (#68).
 				var trackErr error
 				switch strings.ToLower(applyWithTrack) {
 				case "follow":
@@ -227,12 +258,16 @@ func NewCmdApply() *cobra.Command {
 				case "ready":
 					trackErr = trackReady(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now())
 				}
-				cmdutil.CheckErr(trackErr)
+				if trackErr != nil {
+					return trackErr
+				}
 			}
 
 			if applyWithStatus {
 				fmt.Println()
-				cmdutil.CheckErr(status(ctx, app))
+				if err := status(ctx, app); err != nil {
+					return err
+				}
 			}
 
 			return nil

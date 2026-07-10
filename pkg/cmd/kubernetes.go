@@ -76,6 +76,12 @@ func scopedSelector(labels map[string]string) (string, error) {
 	return selector, nil
 }
 
+// deleteDeployment removes a Deployment by name. A NotFound is treated as success
+// so `blue-green prune` is idempotent: the target color is the non-live one, and
+// it legitimately does not exist on an app that has only ever run one color, or
+// on a second prune run. Aborting there would also skip the PDB cleanup that
+// follows. This mirrors the convention of prunePodDisruptionBudget,
+// preDeleteDeployment and the `delete` command's default --ignore-not-found.
 func deleteDeployment(ctx context.Context, name, namespace string) error {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
@@ -83,11 +89,10 @@ func deleteDeployment(ctx context.Context, name, namespace string) error {
 	}
 
 	err = kcs.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil {
-		return err
+	if apierrors.IsNotFound(err) {
+		return nil
 	}
-
-	return nil
+	return err
 }
 
 // prunePodDisruptionBudget removes the PodDisruptionBudget that accompanies a

@@ -291,7 +291,11 @@ func getDeploymentStatus(ctx context.Context, kcs kubernetes.Interface, namespac
 			if sel := deployment.Spec.Selector; sel != nil {
 				currentColor = sel.MatchLabels[app2kube.LabelColor]
 			}
-			if currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
+			// The "*" marks the blue/green color the Service currently routes to, so
+			// it is meaningless without a color: an app whose Deployments carry no
+			// color label matches `"" == ""` and used to get the mark on every row,
+			// falsely implying an active blue/green color.
+			if currentColor != "" && currentColor == serviceColor && len(list.Items) > 1 && !flagAllInstances && !flagAllApplications {
 				activeMark = "*"
 			}
 			if currentColor != "" {

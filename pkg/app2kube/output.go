@@ -231,20 +231,25 @@ var emittedKinds = []EmittedKind{
 var certManagerEmittedKind = EmittedKind{"cert-manager.io/v1/Certificate", "certificates.cert-manager.io"}
 
 // usesCertManager reports whether the app emits any cert-manager Certificate.
-// It must stay in lockstep with the GetCertificates emit guard: letsencrypt is
-// enabled (globally or on an entry) AND the app carries a workload (containers +
-// service). Reporting true when no Certificate is actually emitted would make
-// prune/delete reference the cert-manager CRD on a workload-less render — failing
-// the whole operation on a cluster that has no cert-manager installed.
+// It must stay in lockstep with the GetCertificates emit guard, in both
+// directions:
+//
+//   - Reporting true when no Certificate is emitted makes prune/delete reference
+//     the cert-manager CRD, failing the whole operation on a cluster that has no
+//     cert-manager installed. So a workload-less render, and a render with no
+//     ingress entry at all, must report false — GetCertificates only emits while
+//     iterating app.Ingress, so a global common.ingress.letsencrypt with an empty
+//     Ingress list emits nothing.
+//   - Reporting false when a Certificate IS emitted orphans it: the kind is
+//     missing from the prune whitelist and from `delete all`. So the Service must
+//     be tested through hasEffectiveService, which counts the implicit Service
+//     GetManifest derives — the prune/delete callers run before that derivation.
 func (app *App) usesCertManager() bool {
-	if len(app.Deployment.Containers) == 0 || len(app.Service) == 0 {
+	if len(app.Deployment.Containers) == 0 || !app.hasEffectiveService() {
 		return false
 	}
-	if app.Common.Ingress.Letsencrypt {
-		return true
-	}
 	for _, ing := range app.Ingress {
-		if ing.Letsencrypt {
+		if app.Common.Ingress.Letsencrypt || ing.Letsencrypt {
 			return true
 		}
 	}

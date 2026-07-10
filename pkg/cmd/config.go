@@ -3,12 +3,38 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
+	"go.yaml.in/yaml/v3"
 )
+
+// defaultConfigAppName is the placeholder name the read-only `config`
+// subcommands fall back to when the values carry none. Their output (env vars,
+// domains, secrets) does not depend on it.
+const defaultConfigAppName = "app"
+
+// dotenvSafe matches values that can be written to a .env file unquoted: no
+// whitespace, newlines, quotes, backslashes or shell metacharacters that would
+// change how the line parses.
+var dotenvSafe = regexp.MustCompile(`^[A-Za-z0-9_@%+=:,./-]+$`)
+
+// dotenvValue renders a value for a .env line. An unsafe value is always
+// double-quoted and escaped, even without --quotes: a secret containing a newline
+// would otherwise start a new line that parses as another variable assignment
+// (`foo\nINJECTED=bar` injects INJECTED), and a value containing a double quote
+// would break out of the quoting --quotes adds. strconv.Quote's escapes (\n, \",
+// \\) are the ones .env parsers understand inside double quotes.
+func dotenvValue(v string, quotes bool) string {
+	if quotes || !dotenvSafe.MatchString(v) {
+		return strconv.Quote(v)
+	}
+	return v
+}
 
 // renderDotenv builds the .env representation of an app's configmap, env and
 // decrypted secrets, with keys sorted for deterministic output.
@@ -40,14 +66,10 @@ func renderDotenv(app *app2kube.App, export, quotes bool) (string, error) {
 	if export {
 		prefix = "export "
 	}
-	quote := ""
-	if quotes {
-		quote = "\""
-	}
 
 	var b strings.Builder
 	for _, key := range keys {
-		b.WriteString(prefix + key + "=" + quote + cfg[key] + quote + "\n")
+		b.WriteString(prefix + key + "=" + dotenvValue(cfg[key], quotes) + "\n")
 	}
 	return b.String(), nil
 }
@@ -77,7 +99,13 @@ func collectDomains(app *app2kube.App) []string {
 	return domains[:j+1]
 }
 
-// renderSecrets builds the YAML-ish listing of decrypted secrets, sorted by key.
+// renderSecrets builds the YAML listing of decrypted secrets, sorted by key.
+//
+// The values are emitted through the YAML encoder rather than concatenated, so a
+// secret containing a newline, a colon, a leading '#' or a quote produces valid,
+// round-trippable YAML. Hand-built "  key: value" lines silently emitted a broken
+// document for any such secret. Keys are ordered explicitly (a yaml.Node mapping)
+// so the output stays deterministic.
 func renderSecrets(app *app2kube.App) (string, error) {
 	secrets, err := app.GetDecryptedSecrets()
 	if err != nil {
@@ -89,10 +117,26 @@ func renderSecrets(app *app2kube.App) (string, error) {
 	}
 	sort.Strings(keys)
 
-	var b strings.Builder
-	b.WriteString("secrets:\n")
+	inner := &yaml.Node{Kind: yaml.MappingNode}
 	for _, key := range keys {
-		b.WriteString("  " + key + ": " + secrets[key] + "\n")
+		inner.Content = append(inner.Content,
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: key},
+			&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: secrets[key]},
+		)
+	}
+	root := &yaml.Node{Kind: yaml.MappingNode, Content: []*yaml.Node{
+		{Kind: yaml.ScalarNode, Tag: "!!str", Value: "secrets"},
+		inner,
+	}}
+
+	var b strings.Builder
+	enc := yaml.NewEncoder(&b)
+	enc.SetIndent(2)
+	if err := enc.Encode(root); err != nil {
+		return "", err
+	}
+	if err := enc.Close(); err != nil {
+		return "", err
 	}
 	return b.String(), nil
 }
@@ -105,16 +149,31 @@ func NewCmdConfig() *cobra.Command {
 	}
 
 	// addConfigSub wires a config subcommand with its own appOptions. These
-	// commands inject a default application name so they work without one.
+	// commands default the application name so they work without one.
 	addConfigSub := func(use, short string, run func(cmd *cobra.Command, app *app2kube.App) error) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
 		_ = c.Flags().MarkHidden("include-namespace")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
-			opts.stringValues = append(opts.stringValues, "name=app")
+			// These read-only subcommands must work with no value source at all, so
+			// seed one to satisfy initApp's "values are required" check — but only
+			// when the user really supplied nothing (initApp also picks up
+			// .app2kube.yml from the working directory).
+			if _, err := os.Stat(defaultFile); err != nil &&
+				len(opts.valueFiles)+len(opts.values)+len(opts.stringValues)+len(opts.fileValues) == 0 {
+				opts.stringValues = append(opts.stringValues, "name="+defaultConfigAppName)
+			}
 			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				return err
+			}
+			// The output of these subcommands never depends on the name, but a
+			// non-empty one keeps downstream helpers happy. Apply it as a default
+			// rather than appending "name=app" to --set-string, which has the highest
+			// precedence and so silently overrode a name the user set explicitly in a
+			// values file or on the command line.
+			if app.Name == "" {
+				app.Name = defaultConfigAppName
 			}
 			cmd.SilenceUsage = true
 			return run(cmd, app)
@@ -166,7 +225,8 @@ func NewCmdConfig() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			return runEncrypt(str, encryptFiles)
+			cmd.SilenceUsage = true
+			return runEncrypt(str, cmd.Flags().Changed("string"), encryptFiles)
 		},
 	}
 	encryptCmd.Flags().StringVarP(&encryptString, "string", "", "", "Encrypt the specified string ('-' reads it from stdin to keep it out of shell history)")

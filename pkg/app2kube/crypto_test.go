@@ -383,3 +383,54 @@ func TestEncryptDecryptRSARoundTripLengths(t *testing.T) {
 		}
 	}
 }
+
+// Regression: deriveKey used to copy the password into a 32-byte buffer, silently
+// discarding everything past byte 32. Two passwords sharing a 32-byte prefix
+// produced the same key, so "rotating" a long password to another with the same
+// prefix left every existing secret decryptable under the old one — a rotation
+// that looks successful but changes nothing. An over-long password is now
+// rejected outright rather than truncated.
+func TestDeriveKeyRejectsOverlongPassword(t *testing.T) {
+	prefix := strings.Repeat("a", maxPasswordLen)
+
+	t.Run("exactly the key size is accepted", func(t *testing.T) {
+		key, err := deriveKey(prefix)
+		if err != nil {
+			t.Fatalf("deriveKey(%d bytes): %v", len(prefix), err)
+		}
+		if len(key) != maxPasswordLen {
+			t.Errorf("key length = %d, want %d", len(key), maxPasswordLen)
+		}
+	})
+
+	t.Run("a short password is zero-padded", func(t *testing.T) {
+		key, err := deriveKey("short")
+		if err != nil {
+			t.Fatalf("deriveKey: %v", err)
+		}
+		if len(key) != maxPasswordLen {
+			t.Fatalf("key length = %d, want %d", len(key), maxPasswordLen)
+		}
+		if string(key[:5]) != "short" {
+			t.Errorf("key prefix = %q, want %q", key[:5], "short")
+		}
+	})
+
+	t.Run("an over-long password is rejected, not truncated", func(t *testing.T) {
+		if _, err := deriveKey(prefix + "EXTRA"); err == nil {
+			t.Fatal("expected an error for a password longer than the key")
+		}
+	})
+
+	// The two passwords below used to collide. They must now both be refused, and
+	// crucially must never encrypt/decrypt each other's data.
+	t.Run("colliding long passwords are refused by EncryptAES and DecryptAES", func(t *testing.T) {
+		a, b := prefix+"AAAA", prefix+"BBBB"
+		if _, err := EncryptAES(a, "secret"); err == nil {
+			t.Error("EncryptAES accepted an over-long password")
+		}
+		if _, err := DecryptAES(b, "AAAA"); err == nil {
+			t.Error("DecryptAES accepted an over-long password")
+		}
+	})
+}

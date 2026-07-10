@@ -148,7 +148,13 @@ func (app *App) GetIngress() (ingress []*v1.Ingress, err error) {
 			case len(app.Service) == 1:
 				for name, svc := range app.Service {
 					serviceName = app.GetServiceName(name)
-					servicePort = svc.effectiveServicePort()
+					// Prefer an explicit common.ingress.servicePort, exactly as the
+					// common-serviceName branch above does; otherwise derive the port
+					// from the sole Service. This branch used to overwrite the
+					// configured port unconditionally, silently ignoring it.
+					if servicePort == 0 {
+						servicePort = svc.effectiveServicePort()
+					}
 				}
 			default:
 				return ingress, fmt.Errorf("you must specify a serviceName for the ingress %s", ing.Host)

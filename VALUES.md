@@ -99,7 +99,7 @@ Settings shared by the Deployment and every CronJob pod template.
 | `common.dnsPolicy` | string | `""` (k8s `ClusterFirst`) | Pod [DNS policy](https://kubernetes.io/docs/concepts/services-networking/dns-pod-service/#pod-s-dns-policy). |
 | `common.enableServiceLinks` | bool | `false` | Sets pod `enableServiceLinks`. **Note:** Kubernetes defaults this to `true`; app2kube emits `false` unless you set it. |
 | `common.gracePeriod` | int64 (seconds) | `0` (k8s `30`) | Pod `terminationGracePeriodSeconds`. Only emitted when `> 0`. |
-| `common.sharedData` | string | `""` | Mount path of a `shared-data` `emptyDir` shared by all app-image containers (main + init). The volume is emitted whenever this is set. |
+| `common.sharedData` | string | `""` | Mount path of a `shared-data` `emptyDir` shared by all app-image containers (main + init). The volume is emitted only when at least one container actually mounts it, so a workload built entirely from third-party images carries no dangling volume. |
 | `common.serviceAccountName` | string | `""` | Pod `serviceAccountName`. |
 | `common.mountServiceAccountToken` | bool | `false` | Sets pod `automountServiceAccountToken`. Enabling without `serviceAccountName` mounts the namespace **default** SA token. |
 | `common.cronjobSuspend` | bool | `false` | When `true`, every generated CronJob is created with `suspend: true`. |
@@ -208,7 +208,7 @@ object.
 | `common.ingress.clusterIssuer` | string | `letsencrypt-prod` | Default cert-manager `ClusterIssuer` for every entry's `Certificate` (entry-level `clusterIssuer` overrides it). |
 | `common.ingress.sslRedirect` | bool | `false` | Enable SSL redirect for all entries. |
 | `common.ingress.serviceName` | string | `""` | Default backend Service name. |
-| `common.ingress.servicePort` | int32 | `0` | Default backend Service port. |
+| `common.ingress.servicePort` | int32 | `0` | Default backend Service port. When non-zero it wins over the port derived from the resolved Service, whether that Service came from `common.ingress.serviceName` or from being the app's only one. |
 
 ---
 
@@ -275,6 +275,12 @@ If both AES and RSA keys are set, RSA takes precedence. Encrypt with
 `app2kube config encrypt --string -` (reads stdin to keep it out of shell
 history).
 
+`APP2KUBE_PASSWORD` is used directly as the AES-256 key (no KDF, so legacy
+`AES#`/`CRYPT#` blobs stay decryptable), which caps it at **32 bytes**. A longer
+password is rejected rather than silently truncated — truncation made any two
+passwords sharing a 32-byte prefix interchangeable. A shorter one is zero-padded,
+so its effective strength is its own length: use a full 32 bytes of entropy.
+
 ---
 
 ## `labels`
@@ -331,7 +337,11 @@ from `common.image`; third-party images are never modified):
 - a TCP `livenessProbe` on the single port is created when absent;
 - a `readinessProbe` is **never** auto-created — an existing one only has its
   missing `httpGet`/`tcpSocket` port filled in;
-- init containers never receive auto probes.
+- init containers never receive auto probes;
+- **cronjob containers never receive an auto liveness probe** — a Job pod runs to
+  completion under `restartPolicy: Never`, where a failing probe would kill a job
+  that would otherwise have succeeded. An explicitly configured cronjob probe
+  still has its missing port filled in.
 
 ### Image resolution
 
@@ -362,7 +372,7 @@ for the full rationale):
 
 | Area | Default behavior |
 |---|---|
-| Liveness probe | Single-port app containers get an auto TCP liveness probe. |
+| Liveness probe | Single-port app containers get an auto TCP liveness probe. Cronjob containers do not. |
 | Readiness probe | Never auto-created; only a missing port on an existing probe is filled. |
 | Container securityContext | `allowPrivilegeEscalation: false` (capabilities are not dropped). |
 | Pod securityContext | `seccompProfile: { type: RuntimeDefault }`. |

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
@@ -33,6 +34,53 @@ func decodeYAMLScalar(raw string) (value, comment string, ok bool) {
 	return node.Content[0].Value, node.Content[0].LineComment, true
 }
 
+// writeSecretsFile replaces a secrets file atomically: it writes the new content
+// to a temporary file in the same directory, fsyncs it, and renames it over the
+// target. An in-place os.WriteFile truncates first, so an interruption (the
+// SIGINT/SIGTERM handler in root.go, a full disk, a panic) between truncate and
+// write would leave the file empty or half-written — losing already-encrypted
+// secrets that exist nowhere else. rename(2) within a directory is atomic, so a
+// reader sees either the old or the new file, never a partial one.
+//
+// The file is owner-only (0600). The temp file is created 0600 and chmod'ed after
+// the rename as well, to tighten a pre-existing target that was group- or
+// world-readable — a secrets file should never be.
+func writeSecretsFile(filePath, content string) error {
+	dir := filepath.Dir(filePath)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(filePath)+".tmp")
+	if err != nil {
+		return fmt.Errorf("file write error: %w", err)
+	}
+	tmpName := tmp.Name()
+	// Best-effort cleanup: a no-op once the rename below has succeeded.
+	defer func() {
+		tmp.Close()
+		os.Remove(tmpName)
+	}()
+
+	if err := tmp.Chmod(0600); err != nil {
+		return fmt.Errorf("file chmod error: %w", err)
+	}
+	if _, err := tmp.WriteString(content); err != nil {
+		return fmt.Errorf("file write error: %w", err)
+	}
+	// Flush to disk before the rename, so a crash right after it cannot leave the
+	// renamed file with unwritten (zero) contents.
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("file sync error: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("file close error: %w", err)
+	}
+	if err := os.Rename(tmpName, filePath); err != nil {
+		return fmt.Errorf("file write error: %w", err)
+	}
+	if err := os.Chmod(filePath, 0600); err != nil {
+		return fmt.Errorf("file chmod error: %w", err)
+	}
+	return nil
+}
+
 // resolveEncryptString returns the plaintext to encrypt for `config encrypt
 // --string`. A literal value is returned as-is; the sentinel "-" reads the
 // secret from stdin (bounded, trailing newline trimmed) so it never lands in
@@ -55,10 +103,19 @@ func leadingWhitespace(s string) int {
 
 // runEncrypt encrypts the given string and/or the secrets sections of the
 // provided value files in place.
-func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
+//
+// stringSet reports whether --string was passed, which is not the same as
+// encryptString being non-empty: `--string -` on empty stdin resolves to "". That
+// used to fall through to the files branch and report "need to specify yaml
+// files", diagnosing the wrong problem. An empty secret cannot be encrypted
+// (EncryptSecret maps "" to ""), so it is rejected explicitly.
+func runEncrypt(encryptString string, stringSet bool, valueFiles app2kube.ValueFiles) error {
 	app := app2kube.NewApp()
 
-	if encryptString != "" {
+	if stringSet {
+		if encryptString == "" {
+			return fmt.Errorf("nothing to encrypt: --string resolved to an empty value")
+		}
 		encrypted, err := app.EncryptSecret(encryptString)
 		if err != nil {
 			return err
@@ -198,16 +255,8 @@ func runEncrypt(encryptString string, valueFiles app2kube.ValueFiles) error {
 		}
 
 		if modified {
-			// Write the secrets file owner-only (0600). os.WriteFile only applies
-			// the mode when it creates the file, so Chmod afterwards tightens an
-			// existing file that was previously group/world-readable — a secrets
-			// file should never be.
-			err = os.WriteFile(filePath, []byte(newYAML), 0600)
-			if err != nil {
-				return fmt.Errorf("file write error: %w", err)
-			}
-			if err = os.Chmod(filePath, 0600); err != nil {
-				return fmt.Errorf("file chmod error: %w", err)
+			if err := writeSecretsFile(filePath, newYAML); err != nil {
+				return err
 			}
 		}
 	}

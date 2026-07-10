@@ -56,9 +56,10 @@ func TestPruneAndDeleteCertManagerConditional(t *testing.T) {
 		t.Errorf("delete list must list %q with letsencrypt: %q", certRes, perEntry.DeleteResourceTypes())
 	}
 
-	// common.ingress.letsencrypt also enables it (workload present).
+	// common.ingress.letsencrypt also enables it (workload + an ingress entry).
 	common := ingressTestApp()
 	common.Common.Ingress.Letsencrypt = true
+	common.Ingress = []Ingress{{Host: "le.example.com"}}
 	if !slices.Contains(common.PruneWhitelist(), certGVK) {
 		t.Errorf("prune whitelist must list %q with common letsencrypt: %v", certGVK, common.PruneWhitelist())
 	}
@@ -78,6 +79,51 @@ func TestPruneAndDeleteCertManagerConditional(t *testing.T) {
 	}
 	if strings.Contains(noWorkload.DeleteResourceTypes(), certRes) {
 		t.Errorf("delete list must not list %q when no Certificate is emitted (no workload): %q", certRes, noWorkload.DeleteResourceTypes())
+	}
+
+	// Regression: a global common.ingress.letsencrypt with NO ingress entry emits
+	// no Certificate — GetCertificates only emits while iterating app.Ingress. The
+	// guard used to return true on the global flag alone, so an internal service
+	// inheriting letsencrypt from a shared base values file made `apply --prune`
+	// and `delete all` reference the cert-manager CRD on a cluster that may not
+	// have it installed, failing the whole operation.
+	noIngress := ingressTestApp()
+	noIngress.Common.Ingress.Letsencrypt = true
+	if certs, err := noIngress.GetCertificates(); err != nil || len(certs) != 0 {
+		t.Fatalf("precondition: app with no ingress must emit 0 certificates, got %d (err=%v)", len(certs), err)
+	}
+	if slices.Contains(noIngress.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must not list %q when no ingress entry exists: %v", certGVK, noIngress.PruneWhitelist())
+	}
+	if strings.Contains(noIngress.DeleteResourceTypes(), certRes) {
+		t.Errorf("delete list must not list %q when no ingress entry exists: %q", certRes, noIngress.DeleteResourceTypes())
+	}
+
+	// Regression (the other direction): an app whose Service is implicit — derived
+	// by ensureImplicitService from a single container's named port — DOES emit a
+	// Certificate. The guard used to test len(app.Service) directly, but the
+	// prune/delete callers run before GetManifest performs that derivation, so the
+	// Certificate was applied yet excluded from the prune whitelist and from
+	// `delete all`, orphaning it and its cert-manager-populated TLS Secret.
+	implicitSvc := NewApp()
+	implicitSvc.Name = "example"
+	implicitSvc.Deployment.Containers = map[string]apiv1.Container{"app": {
+		Image: "example/app:v1",
+		Ports: []apiv1.ContainerPort{{Name: "http", ContainerPort: 8080}},
+	}}
+	implicitSvc.Ingress = []Ingress{{Host: "le.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+	if !slices.Contains(implicitSvc.PruneWhitelist(), certGVK) {
+		t.Errorf("prune whitelist must list %q for an implicit-Service app: %v", certGVK, implicitSvc.PruneWhitelist())
+	}
+	if !strings.Contains(implicitSvc.DeleteResourceTypes(), certRes) {
+		t.Errorf("delete list must list %q for an implicit-Service app: %q", certRes, implicitSvc.DeleteResourceTypes())
+	}
+	// The guard must agree with what a real render emits.
+	if err := implicitSvc.ensureImplicitService(); err != nil {
+		t.Fatalf("ensureImplicitService: %v", err)
+	}
+	if certs, err := implicitSvc.GetCertificates(); err != nil || len(certs) != 1 {
+		t.Fatalf("implicit-Service app must emit 1 certificate, got %d (err=%v)", len(certs), err)
 	}
 }
 

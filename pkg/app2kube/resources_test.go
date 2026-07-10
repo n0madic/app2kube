@@ -87,7 +87,7 @@ func TestProcessContainerImageFromCommon(t *testing.T) {
 	app.Common.Image.Repository = "registry.io/app"
 	app.Common.Image.Tag = "v9"
 	c := &apiv1.Container{Name: "app"}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c.Image != "registry.io/app:v9" {
@@ -98,7 +98,7 @@ func TestProcessContainerImageFromCommon(t *testing.T) {
 func TestProcessContainerNoImageError(t *testing.T) {
 	app := NewApp()
 	c := &apiv1.Container{Name: "app"}
-	if err := app.processContainer(c, false); err == nil {
+	if err := app.processContainer(c, containerModeDeployment); err == nil {
 		t.Errorf("expected error when no image and no common repository")
 	}
 }
@@ -109,7 +109,7 @@ func TestProcessContainerEnvFromConfigAndSecret(t *testing.T) {
 	app.ConfigMap = map[string]string{"K": "v"}
 	app.Secrets = map[string]string{"s": "v"}
 	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	var hasCM, hasSecret bool
@@ -130,7 +130,7 @@ func TestProcessContainerEnvSorted(t *testing.T) {
 	app := NewApp()
 	app.Env = map[string]string{"B": "2", "A": "1", "C": "3"}
 	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if len(c.Env) != 3 {
@@ -154,7 +154,7 @@ func TestProcessContainerEnvContainerWins(t *testing.T) {
 		Image: "example/app:v1",
 		Env:   []apiv1.EnvVar{{Name: "FOO", Value: "container"}},
 	}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 
@@ -190,7 +190,7 @@ func TestProcessContainerStagingClearsResources(t *testing.T) {
 		},
 	}
 	c.Resources.Limits = apiv1.ResourceList{apiv1.ResourceCPU: {}}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if len(c.Resources.Limits) != 0 || len(c.Resources.Requests) != 0 {
@@ -205,7 +205,7 @@ func TestProcessContainerDefaultLivenessProbe(t *testing.T) {
 		Image: "example/app:v1",
 		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
 	}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c.LivenessProbe == nil || c.LivenessProbe.TCPSocket == nil {
@@ -250,7 +250,7 @@ func TestProcessContainerDefaultSecurityContext(t *testing.T) {
 	app.Common.Image.Repository = "example/app"
 
 	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c.SecurityContext == nil {
@@ -268,7 +268,7 @@ func TestProcessContainerDefaultSecurityContext(t *testing.T) {
 	runAsUser := int64(1000)
 	userSC := &apiv1.SecurityContext{RunAsUser: &runAsUser}
 	c2 := &apiv1.Container{Name: "app", Image: "example/app:v1", SecurityContext: userSC}
-	if err := app.processContainer(c2, false); err != nil {
+	if err := app.processContainer(c2, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c2.SecurityContext != userSC {
@@ -277,7 +277,7 @@ func TestProcessContainerDefaultSecurityContext(t *testing.T) {
 
 	// A third-party image gets no default securityContext.
 	c3 := &apiv1.Container{Name: "side", Image: "other.io/lib:1.0"}
-	if err := app.processContainer(c3, false); err != nil {
+	if err := app.processContainer(c3, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c3.SecurityContext != nil {
@@ -302,7 +302,7 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 	// App-image container without resources inherits the common default.
 	app := newApp()
 	c := &apiv1.Container{Name: "app", Image: "example/app:v1"}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c.Resources.Requests.Cpu().MilliValue() != 10 {
@@ -313,7 +313,7 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 	app = newApp()
 	own := apiv1.ResourceRequirements{Requests: apiv1.ResourceList{apiv1.ResourceCPU: resource.MustParse("50m")}}
 	c2 := &apiv1.Container{Name: "app", Image: "example/app:v1", Resources: own}
-	if err := app.processContainer(c2, false); err != nil {
+	if err := app.processContainer(c2, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c2.Resources.Requests.Cpu().MilliValue() != 50 {
@@ -323,7 +323,7 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 	// Third-party images do not inherit the default.
 	app = newApp()
 	c3 := &apiv1.Container{Name: "side", Image: "other.io/lib:1.0"}
-	if err := app.processContainer(c3, false); err != nil {
+	if err := app.processContainer(c3, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if len(c3.Resources.Requests) != 0 {
@@ -334,7 +334,7 @@ func TestProcessContainerCommonResourcesDefault(t *testing.T) {
 	app = newApp()
 	app.Staging = Staging{Active: true, Name: "stg"}
 	c4 := &apiv1.Container{Name: "app", Image: "example/app:v1"}
-	if err := app.processContainer(c4, false); err != nil {
+	if err := app.processContainer(c4, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if len(c4.Resources.Requests) != 0 || len(c4.Resources.Limits) != 0 {
@@ -354,7 +354,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Image: "example/app:v1",
 		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
 	}
-	if err := app.processContainer(c, false); err != nil {
+	if err := app.processContainer(c, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c.ReadinessProbe != nil {
@@ -369,7 +369,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Ports:          []apiv1.ContainerPort{{ContainerPort: 8080}},
 		ReadinessProbe: userRP,
 	}
-	if err := app.processContainer(c2, false); err != nil {
+	if err := app.processContainer(c2, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c2.ReadinessProbe.HTTPGet == nil || c2.ReadinessProbe.HTTPGet.Path != "/healthz" {
@@ -385,7 +385,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Image: "example/app:v1",
 		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}},
 	}
-	if err := app.processContainer(c3, true); err != nil {
+	if err := app.processContainer(c3, containerModeInit); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c3.ReadinessProbe != nil {
@@ -401,7 +401,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Image: "redis:latest",
 		Ports: []apiv1.ContainerPort{{ContainerPort: 6379}},
 	}
-	if err := tpApp.processContainer(c4, false); err != nil {
+	if err := tpApp.processContainer(c4, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c4.ReadinessProbe != nil {
@@ -414,7 +414,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Image: "example/app:v1",
 		Ports: []apiv1.ContainerPort{{ContainerPort: 8080}, {ContainerPort: 9090}},
 	}
-	if err := app.processContainer(c5, false); err != nil {
+	if err := app.processContainer(c5, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c5.ReadinessProbe != nil {
@@ -429,7 +429,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Ports:         []apiv1.ContainerPort{{ContainerPort: 8080}},
 		LivenessProbe: &apiv1.Probe{ProbeHandler: apiv1.ProbeHandler{HTTPGet: &apiv1.HTTPGetAction{Path: "/live"}}},
 	}
-	if err := app.processContainer(c6, false); err != nil {
+	if err := app.processContainer(c6, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c6.ReadinessProbe != nil {
@@ -444,7 +444,7 @@ func TestProcessContainerDefaultReadinessProbe(t *testing.T) {
 		Ports:          []apiv1.ContainerPort{{ContainerPort: 8080}},
 		ReadinessProbe: userTCP,
 	}
-	if err := app.processContainer(c7, false); err != nil {
+	if err := app.processContainer(c7, containerModeDeployment); err != nil {
 		t.Fatalf("processContainer: %v", err)
 	}
 	if c7.ReadinessProbe != userTCP || c7.ReadinessProbe.TCPSocket.Port.IntVal != 7000 {

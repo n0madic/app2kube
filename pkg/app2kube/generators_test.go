@@ -1170,3 +1170,230 @@ func TestCronJobContainerOrderDeterministic(t *testing.T) {
 		t.Errorf("cron container order: got %v, want %v (sorted by name)", got, want)
 	}
 }
+
+// Regression: a CronJob container with exactly one port must NOT receive an
+// auto-injected LivenessProbe. Cron containers used to go through the same
+// probe-injection path as Deployment containers, so a batch job declaring a
+// single port got a TCPSocket liveness probe it never asked for — and with the
+// default restartPolicy: Never a probe failure (a process that binds the port
+// late, or never) kills a job that would otherwise have run to completion.
+// A Deployment container with the same shape still gets the probe, and an
+// explicitly configured cron probe still has its missing port filled in.
+func TestCronJobContainerHasNoInjectedLivenessProbe(t *testing.T) {
+	port := []apiv1.ContainerPort{{Name: "metrics", ContainerPort: 9000}}
+
+	t.Run("no probe injected into cron container", func(t *testing.T) {
+		app := deployApp(t)
+		app.Cronjob = map[string]CronjobSpec{"backup": {
+			Schedule:  "* * * * *",
+			Container: apiv1.Container{Image: "example/app:v1", Command: []string{"backup"}, Ports: port},
+		}}
+
+		crons, err := app.GetCronJobs()
+		if err != nil {
+			t.Fatalf("GetCronJobs: %v", err)
+		}
+		containers := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers
+		if len(containers) != 1 {
+			t.Fatalf("got %d cron containers, want 1", len(containers))
+		}
+		if p := containers[0].LivenessProbe; p != nil {
+			t.Errorf("cron container must not get an injected LivenessProbe, got %+v", p)
+		}
+		if policy := crons[0].Spec.JobTemplate.Spec.Template.Spec.RestartPolicy; policy != apiv1.RestartPolicyNever {
+			t.Fatalf("precondition: cron restartPolicy = %q, want Never", policy)
+		}
+	})
+
+	t.Run("cron containers map gets no probe either", func(t *testing.T) {
+		app := deployApp(t)
+		app.Cronjob = map[string]CronjobSpec{"backup": {
+			Schedule: "* * * * *",
+			Containers: map[string]apiv1.Container{
+				"worker": {Image: "example/app:v1", Command: []string{"work"}, Ports: port},
+			},
+		}}
+
+		crons, err := app.GetCronJobs()
+		if err != nil {
+			t.Fatalf("GetCronJobs: %v", err)
+		}
+		if p := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers[0].LivenessProbe; p != nil {
+			t.Errorf("cron container must not get an injected LivenessProbe, got %+v", p)
+		}
+	})
+
+	t.Run("an explicit cron probe still has its port filled", func(t *testing.T) {
+		app := deployApp(t)
+		app.Cronjob = map[string]CronjobSpec{"backup": {
+			Schedule: "* * * * *",
+			Container: apiv1.Container{
+				Image: "example/app:v1", Command: []string{"backup"}, Ports: port,
+				LivenessProbe: &apiv1.Probe{
+					ProbeHandler: apiv1.ProbeHandler{TCPSocket: &apiv1.TCPSocketAction{}},
+				},
+			},
+		}}
+
+		crons, err := app.GetCronJobs()
+		if err != nil {
+			t.Fatalf("GetCronJobs: %v", err)
+		}
+		probe := crons[0].Spec.JobTemplate.Spec.Template.Spec.Containers[0].LivenessProbe
+		if probe == nil || probe.TCPSocket == nil {
+			t.Fatalf("explicit probe was dropped: %+v", probe)
+		}
+		if got := probe.TCPSocket.Port.IntVal; got != 9000 {
+			t.Errorf("explicit cron probe port = %d, want 9000 (missing port must be filled)", got)
+		}
+	})
+
+	t.Run("deployment container still gets the probe", func(t *testing.T) {
+		app := deployApp(t)
+		app.Deployment.Containers = map[string]apiv1.Container{
+			"web": {Image: "example/app:v1", Ports: port},
+		}
+
+		dep, err := app.GetDeployment()
+		if err != nil {
+			t.Fatalf("GetDeployment: %v", err)
+		}
+		probe := dep.Spec.Template.Spec.Containers[0].LivenessProbe
+		if probe == nil || probe.TCPSocket == nil || probe.TCPSocket.Port.IntVal != 9000 {
+			t.Errorf("deployment container must keep its injected LivenessProbe, got %+v", probe)
+		}
+	})
+}
+
+// Regression (#18, second half): the shared-data EmptyDir was emitted whenever
+// common.sharedData was set, even when no container mounted it. processContainer
+// only adds the shared-data mount to app-image containers, so a workload built
+// entirely from third-party images carried a dangling volume. The PVC path below
+// it already suppressed unmounted volumes; shared-data now matches.
+func TestSharedDataVolumeOnlyWhenMounted(t *testing.T) {
+	hasSharedData := func(t *testing.T, volumes []apiv1.Volume) bool {
+		t.Helper()
+		for _, v := range volumes {
+			if v.Name == sharedDataVolumeName {
+				return true
+			}
+		}
+		return false
+	}
+
+	t.Run("third-party-only deployment carries no shared-data volume", func(t *testing.T) {
+		app := NewApp()
+		app.Name = "example"
+		app.Common.SharedData = "/shared"
+		app.Common.Image.Repository = "example/app"
+		app.Common.Image.Tag = "v1"
+		app.Deployment.Containers = map[string]apiv1.Container{
+			"proxy": {Image: "nginx:1.25"}, // third-party: no shared-data mount
+		}
+
+		dep, err := app.GetDeployment()
+		if err != nil {
+			t.Fatalf("GetDeployment: %v", err)
+		}
+		spec := dep.Spec.Template.Spec
+		for _, c := range spec.Containers {
+			for _, vm := range c.VolumeMounts {
+				if vm.Name == sharedDataVolumeName {
+					t.Fatalf("precondition: third-party container must not mount shared-data")
+				}
+			}
+		}
+		if hasSharedData(t, spec.Volumes) {
+			t.Errorf("dangling shared-data volume with no mount: %+v", spec.Volumes)
+		}
+	})
+
+	t.Run("third-party-only cronjob carries no shared-data volume", func(t *testing.T) {
+		app := NewApp()
+		app.Name = "example"
+		app.Common.SharedData = "/shared"
+		app.Common.Image.Repository = "example/app"
+		app.Common.Image.Tag = "v1"
+		app.Deployment.Containers = map[string]apiv1.Container{"app": {}}
+		app.Cronjob = map[string]CronjobSpec{"backup": {
+			Schedule:  "* * * * *",
+			Container: apiv1.Container{Image: "alpine:3", Command: []string{"sh"}},
+		}}
+
+		crons, err := app.GetCronJobs()
+		if err != nil {
+			t.Fatalf("GetCronJobs: %v", err)
+		}
+		if hasSharedData(t, crons[0].Spec.JobTemplate.Spec.Template.Spec.Volumes) {
+			t.Errorf("dangling shared-data volume in cronjob with no mount")
+		}
+	})
+
+	t.Run("app-image container still gets the volume", func(t *testing.T) {
+		app := deployApp(t)
+		app.Common.SharedData = "/shared"
+
+		dep, err := app.GetDeployment()
+		if err != nil {
+			t.Fatalf("GetDeployment: %v", err)
+		}
+		if !hasSharedData(t, dep.Spec.Template.Spec.Volumes) {
+			t.Errorf("app-image container mounts shared-data, so the volume must exist")
+		}
+	})
+}
+
+// Regression: the single-Service ingress branch overwrote an explicitly configured
+// common.ingress.servicePort with the Service's own port, silently ignoring it.
+// The common-serviceName branch already preferred the explicit port; both branches
+// now share that precedence.
+func TestIngressExplicitCommonServicePortWins(t *testing.T) {
+	backendPort := func(t *testing.T, app *App) int32 {
+		t.Helper()
+		ingresses, err := app.GetIngress()
+		if err != nil {
+			t.Fatalf("GetIngress: %v", err)
+		}
+		if len(ingresses) != 1 {
+			t.Fatalf("got %d ingresses, want 1", len(ingresses))
+		}
+		paths := ingresses[0].Spec.Rules[0].HTTP.Paths
+		if len(paths) != 1 {
+			t.Fatalf("got %d paths, want 1", len(paths))
+		}
+		return paths[0].Backend.Service.Port.Number
+	}
+
+	t.Run("explicit common servicePort is honored with a single Service", func(t *testing.T) {
+		app := ingressTestApp()
+		app.Service = map[string]Service{"web": {Port: 8080}}
+		app.Common.Ingress.ServicePort = 443
+		app.Ingress = []Ingress{{Host: "example.com"}}
+
+		if got := backendPort(t, app); got != 443 {
+			t.Errorf("backend port = %d, want 443 (explicit common.ingress.servicePort)", got)
+		}
+	})
+
+	t.Run("without an explicit port the Service port is used", func(t *testing.T) {
+		app := ingressTestApp()
+		app.Service = map[string]Service{"web": {Port: 8080}}
+		app.Ingress = []Ingress{{Host: "example.com"}}
+
+		if got := backendPort(t, app); got != 8080 {
+			t.Errorf("backend port = %d, want 8080 (derived from the Service)", got)
+		}
+	})
+
+	t.Run("the common-serviceName branch keeps honoring it", func(t *testing.T) {
+		app := ingressTestApp()
+		app.Service = map[string]Service{"web": {Port: 8080}, "api": {Port: 9090}}
+		app.Common.Ingress.ServiceName = "web"
+		app.Common.Ingress.ServicePort = 443
+		app.Ingress = []Ingress{{Host: "example.com"}}
+
+		if got := backendPort(t, app); got != 443 {
+			t.Errorf("backend port = %d, want 443", got)
+		}
+	})
+}

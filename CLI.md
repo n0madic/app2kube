@@ -214,7 +214,9 @@ path is idempotent: objects already absent from the cluster are skipped instead
 of aborting the command with `Error from server (NotFound)` (see
 `--ignore-not-found`). With `all`, it deletes all app2kube-generated resource
 kinds for the app using a safe label selector. `--include-namespace` deletes the
-Namespace itself and cannot be combined with `delete all`.
+Namespace itself; it cannot be combined with `delete all`, and it is refused for
+the `default` namespace (which is what an app without an explicit `namespace:`
+resolves to) because deleting it would cascade to every unrelated resource in it.
 
 ## `app2kube status`
 

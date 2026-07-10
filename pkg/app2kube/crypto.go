@@ -30,14 +30,29 @@ const (
 	rsaPrefix = "RSA#"
 )
 
+// maxPasswordLen is the AES-256 key size, and therefore the longest password
+// deriveKey can represent without discarding input.
+const maxPasswordLen = 32
+
 // deriveKey turns a password into a 32-byte AES-256 key by copying it into a
 // zero-filled buffer. This derivation is intentionally kept (no KDF/salt) so
 // that legacy AES#/CRYPT# blobs encrypted before the AES-GCM migration still
 // decrypt under the same key. It is shared by the GCM path and the CBC fallback.
-func deriveKey(password string) []byte {
-	key := make([]byte, 32)
+//
+// A password longer than the key is rejected rather than silently truncated:
+// truncation made any two passwords sharing the first 32 bytes interchangeable,
+// so rotating a long password to another with the same prefix appeared to work
+// while every existing secret still decrypted under the old one. Passwords
+// shorter than 32 bytes are zero-padded, which caps effective key entropy at the
+// password length — inherent to the no-KDF format, and why a long password is
+// worth surfacing rather than quietly cutting short.
+func deriveKey(password string) ([]byte, error) {
+	if len(password) > maxPasswordLen {
+		return nil, fmt.Errorf("password must be at most %d bytes, got %d (it would be silently truncated)", maxPasswordLen, len(password))
+	}
+	key := make([]byte, maxPasswordLen)
 	copy(key, []byte(password))
-	return key
+	return key, nil
 }
 
 // EncryptAES encrypts plaintext with AES-256-GCM (authenticated encryption) and
@@ -48,7 +63,11 @@ func EncryptAES(password string, plaintext string) (string, error) {
 		return "", nil
 	}
 
-	block, err := aes.NewCipher(deriveKey(password))
+	key, err := deriveKey(password)
+	if err != nil {
+		return "", err
+	}
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -82,7 +101,13 @@ func DecryptAES(password string, crypt64 string) (string, error) {
 		return "", nil
 	}
 
-	key := deriveKey(password)
+	// An over-long password is a caller mistake, not a decryption failure, so it
+	// surfaces its own error. It depends only on the password, never on the
+	// ciphertext, so it leaks nothing about the blob (no oracle).
+	key, err := deriveKey(password)
+	if err != nil {
+		return "", err
+	}
 
 	raw, err := base64.StdEncoding.DecodeString(crypt64)
 	if err != nil {

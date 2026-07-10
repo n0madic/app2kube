@@ -48,15 +48,25 @@ func deleteArgs(cmd *cobra.Command, args []string) error {
 	}
 }
 
-// validateDeleteFlags rejects contradictory delete invocations: "all" (a scoped,
-// label-selected delete of this app's resources) cannot be combined with
-// --include-namespace, which deletes the whole namespace and cascades to every
-// resource in it — including unrelated ones sharing the namespace. Letting
-// --include-namespace silently win over an explicit "all" was a surprising,
-// destructive footgun.
-func validateDeleteFlags(includeNamespace bool, args []string) error {
+// validateDeleteFlags rejects contradictory or destructive delete invocations.
+//
+// "all" (a scoped, label-selected delete of this app's resources) cannot be
+// combined with --include-namespace, which deletes the whole namespace and
+// cascades to every resource in it — including unrelated ones sharing the
+// namespace. Letting --include-namespace silently win over an explicit "all" was
+// a surprising, destructive footgun.
+//
+// --include-namespace is also refused for the "default" namespace. initApp always
+// resolves a namespace (flag > file > "default"), so an app deployed without an
+// explicit namespace lands in "default"; deleting it would cascade to every
+// resource in the cluster's default namespace, and the API server has no built-in
+// protection against that. Erroring out is safer than silently ignoring the flag.
+func validateDeleteFlags(includeNamespace bool, namespace string, args []string) error {
 	if includeNamespace && len(args) == 1 && args[0] == "all" {
 		return fmt.Errorf(`--include-namespace cannot be combined with "all" (deleting the namespace already removes every resource in it)`)
+	}
+	if includeNamespace && namespace == app2kube.NamespaceDefault {
+		return fmt.Errorf("refusing to delete the %q namespace: --include-namespace requires an explicit non-default namespace (deleting %q would cascade to every resource in it)", app2kube.NamespaceDefault, app2kube.NamespaceDefault)
 	}
 	return nil
 }
@@ -94,11 +104,11 @@ func NewCmdDelete() *cobra.Command {
 			o.DryRunStrategy, err = cmdutil.GetDryRunStrategy(cmd)
 			cmdutil.CheckErr(err)
 
-			cmdutil.CheckErr(validateDeleteFlags(opts.includeNamespace, args))
+			cmdutil.CheckErr(validateDeleteFlags(opts.includeNamespace, app.Namespace, args))
 
 			var deleteManifest string
 			byManifest := false
-			if opts.includeNamespace && app.Namespace != "" {
+			if opts.includeNamespace && app.Namespace != app2kube.NamespaceDefault {
 				args = []string{"namespace", app.Namespace}
 			} else if len(args) == 1 && args[0] == "all" {
 				// The kubectl resource list is derived per-app from the generator

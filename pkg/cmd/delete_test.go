@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
 
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -140,21 +141,32 @@ func TestDefaultIgnoreNotFound(t *testing.T) {
 // combination (which would silently nuke the whole namespace instead of doing
 // the scoped, label-selected delete the operator asked for) while leaving every
 // other invocation valid.
+//
+// Regression: --include-namespace against the "default" namespace must be
+// refused. initApp resolves an unset namespace to "default", so the previous
+// `app.Namespace != ""` guard was always true and `delete --include-namespace`
+// on an app deployed without an explicit namespace issued the equivalent of
+// `kubectl delete namespace default`, cascading to every unrelated resource in
+// it.
 func TestValidateDeleteFlags(t *testing.T) {
 	cases := []struct {
 		name             string
 		includeNamespace bool
+		namespace        string
 		args             []string
 		wantErr          bool
 	}{
-		{"all alone", false, []string{"all"}, false},
-		{"no args", false, nil, false},
-		{"include-namespace, no args", true, nil, false},
-		{"include-namespace + all is rejected", true, []string{"all"}, true},
+		{"all alone", false, "app", []string{"all"}, false},
+		{"no args", false, "app", nil, false},
+		{"include-namespace, no args", true, "app", nil, false},
+		{"include-namespace + all is rejected", true, "app", []string{"all"}, true},
+		{"include-namespace on default namespace is rejected", true, app2kube.NamespaceDefault, nil, true},
+		{"default namespace without include-namespace is fine", false, app2kube.NamespaceDefault, nil, false},
+		{"default namespace with all is fine", false, app2kube.NamespaceDefault, []string{"all"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			err := validateDeleteFlags(tc.includeNamespace, tc.args)
+			err := validateDeleteFlags(tc.includeNamespace, tc.namespace, tc.args)
 			if tc.wantErr && err == nil {
 				t.Errorf("expected error, got nil")
 			}

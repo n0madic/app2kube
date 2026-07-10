@@ -146,7 +146,7 @@ app2kube delete
 
 ## Secrets
 
-The `secrets:` section of the YAML file can store secrets, which can be encrypted using either AES-256 GCM or RSA-2048. To use AES-256 GCM, set the `APP2KUBE_PASSWORD` environment variable. For RSA-2048, set the `APP2KUBE_ENCRYPT_KEY` or `APP2KUBE_DECRYPT_KEY` environment variable. If both are set, RSA will take precedence over AES. Secrets encrypted with the legacy AES-256 CBC format are still decrypted transparently for backward compatibility.
+The `secrets:` section of the YAML file can store secrets, which can be encrypted using either AES-256 GCM or RSA-2048. To use AES-256 GCM, set the `APP2KUBE_PASSWORD` environment variable (used directly as the key, so it must be at most 32 bytes; a longer password is rejected rather than silently truncated). For RSA-2048, set the `APP2KUBE_ENCRYPT_KEY` or `APP2KUBE_DECRYPT_KEY` environment variable. If both are set, RSA will take precedence over AES. Secrets encrypted with the legacy AES-256 CBC format are still decrypted transparently for backward compatibility.
 
 To encrypt YAML file:
 ```shell
@@ -212,7 +212,7 @@ For ingress domains, prefixes from the above values will be automatically added 
 
 To produce safe-by-default manifests, app2kube fills in a few fields when you do not set them explicitly. All of them are overridable.
 
-**Probes.** A container that exposes exactly one port and has no `livenessProbe` gets a TCP liveness probe on that port. A `readinessProbe` is **not** auto-created — readiness gates Service traffic and rollout progress, so it is left to explicit configuration; an existing readiness probe only has its missing `httpGet` port filled in. Init containers never receive auto probes.
+**Probes.** A Deployment container that exposes exactly one port and has no `livenessProbe` gets a TCP liveness probe on that port. A `readinessProbe` is **not** auto-created — readiness gates Service traffic and rollout progress, so it is left to explicit configuration; an existing readiness probe only has its missing `httpGet` port filled in. Init containers never receive auto probes. Cronjob containers never receive an auto liveness probe either: a Job pod runs to completion under `restartPolicy: Never`, where a failing probe would kill a job that would otherwise have succeeded. An explicitly configured probe still has its missing port filled in, in both Deployment and cronjob pods.
 
 **Container securityContext.** App-image containers (those built from `common.image`) that declare no `securityContext` get a conservative, non-breaking default:
 

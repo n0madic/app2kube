@@ -52,23 +52,16 @@ func (app *App) commonPodSpec(affinity *apiv1.Affinity) apiv1.PodSpec {
 }
 
 // podVolumes builds the pod volume list shared by the Deployment and CronJob pod
-// templates: the shared-data EmptyDir (emitted whenever SharedData is set, to
-// match the mount processContainer adds to every app-image container) plus a PVC
-// volume for each app.Volume actually mounted by one of the given containers — a
-// workload built entirely from third-party images mounts none and must not carry
-// a dangling volume (#18). Volumes are emitted in sorted order so the rendered
-// list is stable across runs. When replicas>1 it warns about ReadWriteOnce
-// volumes that cannot be shared across nodes (#48); CronJob pods pass replicas=1
-// to skip that Deployment-only check.
+// templates: the shared-data EmptyDir plus a PVC volume for each app.Volume, each
+// emitted only when one of the given containers actually mounts it. processContainer
+// adds both kinds of mount to app-image containers only, so a workload built
+// entirely from third-party images mounts neither and must not carry a dangling
+// volume (#18) — that applied to the PVCs but not to shared-data, which used to be
+// emitted on the mere presence of common.sharedData. Volumes are emitted in sorted
+// order so the rendered list is stable across runs. When replicas>1 it warns about
+// ReadWriteOnce volumes that cannot be shared across nodes (#48); CronJob pods pass
+// replicas=1 to skip that Deployment-only check.
 func (app *App) podVolumes(replicas int32, containerGroups ...[]apiv1.Container) []apiv1.Volume {
-	var volumes []apiv1.Volume
-	if app.Common.SharedData != "" {
-		volumes = append(volumes, apiv1.Volume{
-			Name:         sharedDataVolumeName,
-			VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
-		})
-	}
-
 	mounted := make(map[string]bool)
 	for _, group := range containerGroups {
 		for _, c := range group {
@@ -76,6 +69,14 @@ func (app *App) podVolumes(replicas int32, containerGroups ...[]apiv1.Container)
 				mounted[vm.Name] = true
 			}
 		}
+	}
+
+	var volumes []apiv1.Volume
+	if app.Common.SharedData != "" && mounted[sharedDataVolumeName] {
+		volumes = append(volumes, apiv1.Volume{
+			Name:         sharedDataVolumeName,
+			VolumeSource: apiv1.VolumeSource{EmptyDir: &apiv1.EmptyDirVolumeSource{}},
+		})
 	}
 	for _, volName := range sortedKeys(app.Volumes) {
 		if !mounted[volName] {
@@ -129,7 +130,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		for _, name := range sortedKeys(app.Deployment.Containers) {
 			container := app.Deployment.Containers[name]
 			container.Name = strings.ToLower(name)
-			err = app.processContainer(&container, false)
+			err = app.processContainer(&container, containerModeDeployment)
 			if err != nil {
 				return
 			}
@@ -140,7 +141,7 @@ func (app *App) GetDeployment() (deployment *appsv1.Deployment, err error) {
 		for _, name := range sortedKeys(app.Deployment.InitContainers) {
 			icontainer := app.Deployment.InitContainers[name]
 			icontainer.Name = strings.ToLower(name)
-			err = app.processContainer(&icontainer, true)
+			err = app.processContainer(&icontainer, containerModeInit)
 			if err != nil {
 				return
 			}

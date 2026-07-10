@@ -10,16 +10,37 @@ import (
 	"k8s.io/utils/ptr"
 )
 
+// containerMode selects the probe-injection policy for a container, which is the
+// only part of processContainer that depends on the workload the container is
+// rendered into. Env/EnvFrom, image defaulting and volume mounts are applied
+// identically in every mode.
+type containerMode int
+
+const (
+	// containerModeDeployment is a long-running Deployment pod container: a
+	// missing LivenessProbe is auto-created from a sole container port.
+	containerModeDeployment containerMode = iota
+	// containerModeInit is an init container: no probe is created and none is
+	// completed, because the Kubernetes API rejects probes on non-sidecar init
+	// containers.
+	containerModeInit
+	// containerModeJob is a CronJob/Job pod container: a probe is never
+	// auto-created. A Job pod is expected to run to completion, and the default
+	// restartPolicy: Never means a failing liveness probe kills a job that would
+	// otherwise have succeeded (e.g. a batch process that binds its port late, or
+	// not at all). An explicitly configured probe is still completed with the
+	// container port, so opting in stays possible.
+	containerModeJob
+)
+
 // processContainer fills in defaults and injected configuration for a container.
-// When isInit is true the container is an init container: Liveness/Readiness
-// probe injection is skipped, because the Kubernetes API rejects probes on
-// non-sidecar init containers. Env/EnvFrom and volume mounts are still applied
-// (init containers legitimately use them). The implicit Service that an Ingress
-// needs is NOT derived here — that lives in ensureImplicitService, which the
-// manifest renderer calls once up front so a Service- or Ingress-only render
-// derives it the same way a full render does, and so no container processing
-// mutates app.Service as a side effect.
-func (app *App) processContainer(container *apiv1.Container, isInit bool) error {
+// Probe handling depends on mode (see containerMode); Env/EnvFrom and volume
+// mounts are always applied (init and job containers legitimately use them). The
+// implicit Service that an Ingress needs is NOT derived here — that lives in
+// ensureImplicitService, which the manifest renderer calls once up front so a
+// Service- or Ingress-only render derives it the same way a full render does, and
+// so no container processing mutates app.Service as a side effect.
+func (app *App) processContainer(container *apiv1.Container, mode containerMode) error {
 	if container.Image == "" {
 		if app.Common.Image.Repository != "" {
 			container.Image = app.Common.Image.Repository + ":" + app.Common.Image.Tag
@@ -145,18 +166,22 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 		container.Resources = apiv1.ResourceRequirements{}
 	}
 
-	if !isInit && len(container.Ports) == 1 {
+	if mode != containerModeInit && len(container.Ports) == 1 {
 		containerPort := intstr.IntOrString{Type: intstr.Int, IntVal: container.Ports[0].ContainerPort}
 
-		// Add LivenessProbe to container port if probe not specified
+		// Add LivenessProbe to container port if probe not specified. Only for a
+		// Deployment pod: a Job pod runs to completion under restartPolicy: Never,
+		// where an injected probe can kill an otherwise-successful job.
 		if container.LivenessProbe == nil {
-			container.LivenessProbe = &apiv1.Probe{
-				ProbeHandler: apiv1.ProbeHandler{
-					TCPSocket: &apiv1.TCPSocketAction{
-						Port: containerPort,
+			if mode == containerModeDeployment {
+				container.LivenessProbe = &apiv1.Probe{
+					ProbeHandler: apiv1.ProbeHandler{
+						TCPSocket: &apiv1.TCPSocketAction{
+							Port: containerPort,
+						},
 					},
-				},
-				InitialDelaySeconds: 5,
+					InitialDelaySeconds: 5,
+				}
 			}
 		} else {
 			// Add missing port to LivenessProbe
@@ -193,14 +218,30 @@ func (app *App) processContainer(container *apiv1.Container, isInit bool) error 
 // resources without re-rendering the Deployment — derives it identically to a
 // full render, instead of depending on the Deployment render's side effect.
 func (app *App) ensureImplicitService() error {
+	service, err := app.implicitService()
+	if err != nil {
+		return err
+	}
+	if service != nil {
+		app.Service = service
+	}
+	return nil
+}
+
+// implicitService computes the derivation ensureImplicitService applies, without
+// mutating the app. It returns a nil map when no derivation applies (an explicit
+// Service exists, or the shape does not match). Keeping the computation pure lets
+// the prune/delete guards ask whether a render will have a Service before
+// GetManifest has derived it — see hasEffectiveService.
+func (app *App) implicitService() (map[string]Service, error) {
 	if len(app.Service) > 0 || len(app.Ingress) == 0 || len(app.Deployment.Containers) != 1 {
-		return nil
+		return nil, nil
 	}
 	// Exactly one key here; sortedKeys keeps the (single) lookup deterministic.
 	name := sortedKeys(app.Deployment.Containers)[0]
 	container := app.Deployment.Containers[name]
 	if len(container.Ports) == 0 {
-		return nil
+		return nil, nil
 	}
 	// Mirror the container name the Deployment render assigns so any error
 	// message matches what the user sees from the Deployment path.
@@ -209,7 +250,7 @@ func (app *App) ensureImplicitService() error {
 	for _, port := range container.Ports {
 		if port.Name != "" {
 			if _, ok := service[port.Name]; ok {
-				return fmt.Errorf("container port names must be different: %s", containerName)
+				return nil, fmt.Errorf("container port names must be different: %s", containerName)
 			}
 			service[port.Name] = Service{
 				Port:     port.ContainerPort,
@@ -218,10 +259,21 @@ func (app *App) ensureImplicitService() error {
 		}
 	}
 	if len(service) == 0 {
-		return fmt.Errorf("named container port required to create service for container: %s", containerName)
+		return nil, fmt.Errorf("named container port required to create service for container: %s", containerName)
 	}
-	app.Service = service
-	return nil
+	return service, nil
+}
+
+// hasEffectiveService reports whether a render of this app will emit at least one
+// Service, counting the implicit one GetManifest derives. The prune/delete guards
+// run before GetManifest, so testing len(app.Service) alone would miss an app
+// whose Service is derived from a single container's named port.
+func (app *App) hasEffectiveService() bool {
+	if len(app.Service) > 0 {
+		return true
+	}
+	service, err := app.implicitService()
+	return err == nil && len(service) > 0
 }
 
 // portIsUnset reports whether an IntOrString probe port carries no value, i.e.

@@ -120,7 +120,9 @@ func NewCmdDelete() *cobra.Command {
 				o.LabelSelector, err = scopedSelector(app.Labels)
 				cmdutil.CheckErr(err)
 			} else if len(args) == 0 {
-				deleteManifest, err = app.GetManifest("json", app2kube.OutputAll)
+				// Teardown order, not the apply path's creation order: kubectl
+				// deletes manifest objects in the order it reads them.
+				deleteManifest, err = app.GetTeardownManifest("json")
 				cmdutil.CheckErr(err)
 				byManifest = true
 				// o.Complete (below) builds a resource.Result from the

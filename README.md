@@ -144,6 +144,8 @@ app2kube delete
 
 `delete all` removes this app's resources by label selector. `delete --include-namespace` deletes the whole namespace instead (cascading to everything in it), so the two are mutually exclusive — combining `all` with `--include-namespace` is rejected.
 
+Either way resources go in teardown order (the reverse of creation): `Certificate` and `Ingress`, then `Service`, then the workloads, then the `PersistentVolumeClaim`/`ConfigMap`/`Secret` they mount — so live traffic is cut at the edge first and pods keep their config until they are gone.
+
 ## Secrets
 
 The `secrets:` section of the YAML file can store secrets, which can be encrypted using either AES-256 GCM or RSA-2048. To use AES-256 GCM, set the `APP2KUBE_PASSWORD` environment variable (used directly as the key, so it must be at most 32 bytes; a longer password is rejected rather than silently truncated). For RSA-2048, set the `APP2KUBE_ENCRYPT_KEY` or `APP2KUBE_DECRYPT_KEY` environment variable. If both are set, RSA will take precedence over AES. Secrets encrypted with the legacy AES-256 CBC format are still decrypted transparently for backward compatibility.

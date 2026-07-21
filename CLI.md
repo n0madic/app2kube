@@ -218,6 +218,13 @@ Namespace itself; it cannot be combined with `delete all`, and it is refused for
 the `default` namespace (which is what an app without an explicit `namespace:`
 resolves to) because deleting it would cascade to every unrelated resource in it.
 
+Both paths remove resources in teardown order — the reverse of the order `apply`
+creates them: cert-manager `Certificate` and `Ingress` first (so traffic stops at
+the edge instead of hitting a backend whose Service is already gone), then
+`Service`, then the workloads (`PodDisruptionBudget`, `Deployment`, `CronJob`),
+and finally the `PersistentVolumeClaim`/`ConfigMap`/`Secret` they depend on — so
+running pods do not lose their config while they are still serving.
+
 ## `app2kube status`
 
 Shows application resource status in Kubernetes.

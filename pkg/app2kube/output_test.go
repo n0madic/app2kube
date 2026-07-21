@@ -156,11 +156,11 @@ func TestGetManifestRendersCertificate(t *testing.T) {
 	}
 }
 
-// Every kind app2kube actually renders must be registered in emittedKinds,
-// otherwise `apply --prune`/`delete all` would orphan it. Rendering a fully
-// populated app and checking each emitted kind against the registry catches a
-// new generator that forgot to register its kind.
-func TestEmittedKindsCoverAllGeneratedResources(t *testing.T) {
+// fullTestApp builds an app that exercises every generator: a multi-replica
+// Deployment (so the PDB is emitted), a Service, a ConfigMap, a Secret, a PVC, a
+// CronJob and a letsencrypt Ingress (so both the TLS Secret and the cert-manager
+// Certificate are emitted).
+func fullTestApp() *App {
 	app := NewApp()
 	app.Name = "full"
 	app.Common.Image.Repository = "example/app"
@@ -180,7 +180,116 @@ func TestEmittedKindsCoverAllGeneratedResources(t *testing.T) {
 	app.Cronjob = map[string]CronjobSpec{
 		"tick": {Schedule: "* * * * *", Container: apiv1.Container{Command: []string{"true"}}},
 	}
-	app.Ingress = []Ingress{{Host: "full.example.com", TLSCrt: "C", TLSKey: "K"}}
+	app.Ingress = []Ingress{{Host: "full.example.com", IngressCommon: IngressCommon{Letsencrypt: true}}}
+	return app
+}
+
+// manifestKinds returns the kinds of a rendered YAML manifest, in order. Only
+// unindented `kind:` lines count: a nested one is a field of some spec, not an
+// emitted object (a Certificate's `issuerRef.kind: ClusterIssuer`).
+func manifestKinds(manifest string) []string {
+	var kinds []string
+	for _, line := range strings.Split(manifest, "\n") {
+		if after, ok := strings.CutPrefix(line, "kind:"); ok {
+			kinds = append(kinds, strings.TrimSpace(after))
+		}
+	}
+	return kinds
+}
+
+// Regression: `delete all` used to name the resource types in creation order, so
+// kubectl tore the app down bottom-up — the Secret a still-running Deployment
+// mounts went first, and the Service backing a live Ingress went before the
+// Ingress. The list must be in teardown order instead: cert-manager Certificate
+// and Ingress first (traffic stops at the edge), then Service, then the
+// workloads, then the data and config they depend on.
+func TestDeleteResourceTypesIsInTeardownOrder(t *testing.T) {
+	want := []string{
+		"certificates.cert-manager.io",
+		"ingresses",
+		"services",
+		"poddisruptionbudgets",
+		"deployments",
+		"cronjobs",
+		"persistentvolumeclaims",
+		"configmaps",
+		"secrets",
+	}
+	got := strings.Split(fullTestApp().DeleteResourceTypes(), ",")
+	if !slices.Equal(got, want) {
+		t.Errorf("delete order:\n got %v\nwant %v", got, want)
+	}
+}
+
+// Regression (the delete-by-manifest path, `delete` with no arguments): kubectl
+// deletes the objects of a manifest in the order it reads them, so the teardown
+// manifest must be the creation order reversed — the same traffic-first,
+// data-last sequence `delete all` gets from emittedKinds. Relative constraints
+// are asserted rather than the exact sequence so adding a generator does not
+// break this test for the wrong reason.
+func TestGetTeardownManifestIsReverseOfCreationOrder(t *testing.T) {
+	app := fullTestApp()
+
+	created, err := app.GetManifest("yaml", OutputAll)
+	if err != nil {
+		t.Fatalf("GetManifest: %v", err)
+	}
+	torn, err := fullTestApp().GetTeardownManifest("yaml")
+	if err != nil {
+		t.Fatalf("GetTeardownManifest: %v", err)
+	}
+
+	createdKinds := manifestKinds(created)
+	tornKinds := manifestKinds(torn)
+	if len(createdKinds) != len(tornKinds) {
+		t.Fatalf("teardown manifest must contain the same resources as the full manifest:\n created %v\nteardown %v", createdKinds, tornKinds)
+	}
+
+	// first/last occurrence: Secret is emitted twice (app Secret, ingress TLS).
+	pos := func(kinds []string, kind string, last bool) int {
+		idx := -1
+		for i, k := range kinds {
+			if k == kind && (idx < 0 || last) {
+				idx = i
+			}
+		}
+		if idx < 0 {
+			t.Fatalf("kind %q missing from manifest %v", kind, kinds)
+		}
+		return idx
+	}
+	before := func(earlier, later string) {
+		t.Helper()
+		if e, l := pos(tornKinds, earlier, true), pos(tornKinds, later, false); e >= l {
+			t.Errorf("%s (index %d) must be deleted before %s (index %d): %v", earlier, e, later, l, tornKinds)
+		}
+	}
+	before("Certificate", "Ingress")
+	before("Ingress", "Service")
+	before("Service", "Deployment")
+	before("PodDisruptionBudget", "Deployment")
+	before("Deployment", "PersistentVolumeClaim")
+	before("CronJob", "ConfigMap")
+
+	// The workload's own Secret/ConfigMap must outlive it: they are the last
+	// objects in the manifest, after every workload.
+	if d, s := pos(tornKinds, "Deployment", true), pos(tornKinds, "Secret", true); d >= s {
+		t.Errorf("Deployment (index %d) must be deleted before its Secret (index %d): %v", d, s, tornKinds)
+	}
+
+	// The Namespace is never part of a teardown manifest (it is deleted only on
+	// explicit --include-namespace).
+	if slices.Contains(tornKinds, "Namespace") {
+		t.Errorf("teardown manifest must not contain the Namespace: %v", tornKinds)
+	}
+}
+
+// Every kind app2kube actually renders must be registered in emittedKinds,
+// otherwise `apply --prune`/`delete all` would orphan it. Rendering a fully
+// populated app and checking each emitted kind against the registry catches a
+// new generator that forgot to register its kind.
+func TestEmittedKindsCoverAllGeneratedResources(t *testing.T) {
+	app := fullTestApp()
 
 	manifest, err := app.GetManifest("yaml", OutputAll)
 	if err != nil {
@@ -194,20 +303,18 @@ func TestEmittedKindsCoverAllGeneratedResources(t *testing.T) {
 	}
 
 	seen := map[string]bool{}
-	for _, line := range strings.Split(manifest, "\n") {
-		line = strings.TrimSpace(line)
-		if !strings.HasPrefix(line, "kind:") {
-			continue
-		}
-		kind := strings.TrimSpace(strings.TrimPrefix(line, "kind:"))
+	for _, kind := range manifestKinds(manifest) {
 		seen[kind] = true
 		if !registered[kind] {
 			t.Errorf("manifest emits kind %q not registered in emittedKinds (prune/delete would orphan it)", kind)
 		}
 	}
-	// Sanity: the full app must have actually exercised the PDB path.
-	if !seen["PodDisruptionBudget"] {
-		t.Errorf("expected a PodDisruptionBudget in the full manifest, kinds seen: %v", seen)
+	// Sanity: the full app must have actually exercised the PDB and the
+	// letsencrypt Certificate paths.
+	for _, kind := range []string{"PodDisruptionBudget", "Certificate"} {
+		if !seen[kind] {
+			t.Errorf("expected a %s in the full manifest, kinds seen: %v", kind, seen)
+		}
 	}
 }
 

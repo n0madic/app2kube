@@ -203,6 +203,12 @@ var manifestGenerators = []generator{
 type EmittedKind struct {
 	GVK      string
 	Resource string
+	// certManager marks a kind served by a cert-manager CRD. Such a kind is
+	// only handed to `apply --prune`/`delete all` when the app actually uses
+	// letsencrypt (usesCertManager); referencing it unconditionally would make
+	// those commands name certificates.cert-manager.io on clusters that have no
+	// cert-manager CRD installed, failing the whole operation.
+	certManager bool
 }
 
 // emittedKinds is the single source of truth for the resource kinds app2kube
@@ -210,25 +216,29 @@ type EmittedKind struct {
 // all` so neither can drift from the generators. The Namespace is intentionally
 // excluded — it is never pruned and is deleted only on explicit request. When a
 // new generator is added to manifestGenerators, add its kind here too.
+//
+// The list is kept in *teardown* order — the reverse of the creation order in
+// manifestGenerators — because kubectl deletes the resource types in the order
+// `delete all` names them. Deleting in creation order tears an app down from the
+// bottom up: the Secret/ConfigMap a still-running Deployment mounts disappears
+// first (its pods start crash-looping), and the Service backing a live Ingress
+// goes before the Ingress (requests 503 instead of stopping at the edge). In
+// teardown order traffic is cut first (Ingress, then Service), then the
+// workloads, then the config and data they depend on. Prune ignores the order.
 var emittedKinds = []EmittedKind{
-	{"/v1/ConfigMap", "configmaps"},
-	{"/v1/PersistentVolumeClaim", "persistentvolumeclaims"},
-	{"/v1/Secret", "secrets"},
-	{"/v1/Service", "services"},
-	{"apps/v1/Deployment", "deployments"},
-	{"batch/v1/CronJob", "cronjobs"},
-	{"networking.k8s.io/v1/Ingress", "ingresses"},
-	{"policy/v1/PodDisruptionBudget", "poddisruptionbudgets"},
+	// The fully qualified resource name avoids colliding with unrelated
+	// `certificates` CRDs from other operators. It goes before the Secret it
+	// points at, so cert-manager cannot re-issue into a secret being removed.
+	{GVK: "cert-manager.io/v1/Certificate", Resource: "certificates.cert-manager.io", certManager: true},
+	{GVK: "networking.k8s.io/v1/Ingress", Resource: "ingresses"},
+	{GVK: "/v1/Service", Resource: "services"},
+	{GVK: "policy/v1/PodDisruptionBudget", Resource: "poddisruptionbudgets"},
+	{GVK: "apps/v1/Deployment", Resource: "deployments"},
+	{GVK: "batch/v1/CronJob", Resource: "cronjobs"},
+	{GVK: "/v1/PersistentVolumeClaim", Resource: "persistentvolumeclaims"},
+	{GVK: "/v1/ConfigMap", Resource: "configmaps"},
+	{GVK: "/v1/Secret", Resource: "secrets"},
 }
-
-// certManagerEmittedKind is the cert-manager Certificate kind, kept out of the
-// unconditional emittedKinds: it is only added to the prune/delete sets when the
-// app actually uses letsencrypt (usesCertManager). Listing it unconditionally
-// would make `apply --prune`/`delete all` reference certificates.cert-manager.io
-// on clusters that have no cert-manager CRD installed, which fails the whole
-// operation. The fully qualified resource name avoids colliding with unrelated
-// `certificates` CRDs from other operators.
-var certManagerEmittedKind = EmittedKind{"cert-manager.io/v1/Certificate", "certificates.cert-manager.io"}
 
 // usesCertManager reports whether the app emits any cert-manager Certificate.
 // It must stay in lockstep with the GetCertificates emit guard, in both
@@ -257,16 +267,18 @@ func (app *App) usesCertManager() bool {
 }
 
 // pruneAndDeleteKinds returns the resource kinds app2kube can emit for this
-// specific app, conditionally including the cert-manager Certificate so the
-// prune/delete tooling only references its CRD when letsencrypt is actually in
-// use.
+// specific app, in the order of emittedKinds, dropping the cert-manager kinds
+// unless letsencrypt is actually in use so the prune/delete tooling only
+// references the CRD when the cluster is known to have it.
 func (app *App) pruneAndDeleteKinds() []EmittedKind {
-	if !app.usesCertManager() {
-		return emittedKinds
+	useCertManager := app.usesCertManager()
+	kinds := make([]EmittedKind, 0, len(emittedKinds))
+	for _, k := range emittedKinds {
+		if k.certManager && !useCertManager {
+			continue
+		}
+		kinds = append(kinds, k)
 	}
-	kinds := make([]EmittedKind, 0, len(emittedKinds)+1)
-	kinds = append(kinds, emittedKinds...)
-	kinds = append(kinds, certManagerEmittedKind)
 	return kinds
 }
 
@@ -290,6 +302,8 @@ func (app *App) PruneWhitelist() []string {
 // app2kube emits (configmaps, secrets, pvc, ingress, PDB), so every kind is
 // named explicitly; pods/replicasets/jobs are cascade-deleted with their owners.
 // The cert-manager Certificate is included only when this app uses letsencrypt.
+// kubectl deletes the types in the order they are named, and emittedKinds is
+// ordered for teardown, so the list comes out traffic-first / data-last.
 func (app *App) DeleteResourceTypes() string {
 	kinds := app.pruneAndDeleteKinds()
 	names := make([]string, 0, len(kinds))
@@ -299,8 +313,31 @@ func (app *App) DeleteResourceTypes() string {
 	return strings.Join(names, ",")
 }
 
-// GetManifest returns a manifest with the specified resource types.
+// GetManifest returns a manifest with the specified resource types, in creation
+// order (the order of manifestGenerators).
 func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (string, error) {
+	return app.renderManifest(outputFormat, manifestGenerators, typeOutput)
+}
+
+// GetTeardownManifest returns the manifest of every resource of the app (except
+// the Namespace) in teardown order: manifestGenerators reversed, so `delete`
+// fed this manifest removes the Ingress and Service before the Deployment, and
+// the Secret/ConfigMap/PVC the workload depends on last. kubectl deletes the
+// objects of a manifest in the order it reads them, so rendering in creation
+// order — as the apply path does — would pull config out from under still
+// running pods and 503 live traffic on the way down. Mirrors the type ordering
+// `delete all` gets from emittedKinds.
+func (app *App) GetTeardownManifest(outputFormat string) (string, error) {
+	reversed := make([]generator, 0, len(manifestGenerators))
+	for i := len(manifestGenerators) - 1; i >= 0; i-- {
+		reversed = append(reversed, manifestGenerators[i])
+	}
+	return app.renderManifest(outputFormat, reversed, []OutputResource{OutputAll})
+}
+
+// renderManifest renders the generators matching typeOutput, in the order they
+// are given.
+func (app *App) renderManifest(outputFormat string, generators []generator, typeOutput []OutputResource) (string, error) {
 	// Derive the implicit Service (Ingress with no explicit Service, single app
 	// container) once, deterministically, before rendering. This makes a
 	// Service-/Ingress-only render — and the blue/green phase that emits traffic
@@ -321,7 +358,7 @@ func (app *App) GetManifest(outputFormat string, typeOutput ...OutputResource) (
 
 	var manifest string
 	for _, out := range typeOutput {
-		for _, g := range manifestGenerators {
+		for _, g := range generators {
 			if !g.matches(out) {
 				continue
 			}

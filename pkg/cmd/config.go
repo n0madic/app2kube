@@ -153,27 +153,17 @@ func NewCmdConfig() *cobra.Command {
 	addConfigSub := func(use, short string, run func(cmd *cobra.Command, app *app2kube.App) error) *cobra.Command {
 		c := &cobra.Command{Use: use, Short: short, Args: cobra.NoArgs}
 		opts := addAppFlags(c)
+		// The output of these subcommands never depends on the application name, so
+		// they neither require a value source nor a `name` in the values they are
+		// given (a values file with just an `env:` section is a valid input). A name
+		// the user does set still wins — the default is seeded before the values are
+		// parsed, not forced on top of them.
+		opts.nameOptional = true
 		_ = c.Flags().MarkHidden("include-namespace")
 		c.RunE = func(cmd *cobra.Command, args []string) error {
-			// These read-only subcommands must work with no value source at all, so
-			// seed one to satisfy initApp's "values are required" check — but only
-			// when the user really supplied nothing (initApp also picks up
-			// .app2kube.yml from the working directory).
-			if _, err := os.Stat(defaultFile); err != nil &&
-				len(opts.valueFiles)+len(opts.values)+len(opts.stringValues)+len(opts.fileValues) == 0 {
-				opts.stringValues = append(opts.stringValues, "name="+defaultConfigAppName)
-			}
 			app, err := opts.initApp(cmd.Context())
 			if err != nil {
 				return err
-			}
-			// The output of these subcommands never depends on the name, but a
-			// non-empty one keeps downstream helpers happy. Apply it as a default
-			// rather than appending "name=app" to --set-string, which has the highest
-			// precedence and so silently overrode a name the user set explicitly in a
-			// values file or on the command line.
-			if app.Name == "" {
-				app.Name = defaultConfigAppName
 			}
 			cmd.SilenceUsage = true
 			return run(cmd, app)

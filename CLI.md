@@ -87,6 +87,11 @@ base values file before any `--values`, `--set`, `--set-string`, or `--set-file`
 overrides. Values are required unless the command supports a special mode such
 as `status --all`.
 
+The read-only `config dotenv`, `config domain`, and `config secrets` commands are
+an exception: their output does not depend on the application name, so they run
+without any values at all and accept values that define no `name`. A `name` that
+is set is still used.
+
 Namespace precedence is: `--namespace` flag, then value-file `namespace:`, then
 `default`. An explicitly set empty namespace flag, `--namespace ""`, forces the
 `default` namespace.

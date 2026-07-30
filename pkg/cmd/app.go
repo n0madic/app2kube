@@ -27,8 +27,14 @@ type appOptions struct {
 	// blue-green subcommands) rather than a package global, so commands no longer
 	// leak it into each other.
 	blueGreen bool
+	// nameOptional marks a command whose output does not depend on the application
+	// name (the read-only `config` subcommands). It makes value sources optional
+	// and seeds defaultConfigAppName before the values are parsed, so a values file
+	// without a `name` is accepted instead of failing validation.
+	nameOptional bool
 }
 
+// initApp initializes an app2kube.App from the command's flags and values files.
 func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 	if flagAllApplications {
 		return &app2kube.App{
@@ -46,11 +52,18 @@ func (o *appOptions) initApp(ctx context.Context) (*app2kube.App, error) {
 		valueFiles = append(app2kube.ValueFiles{defaultFile}, valueFiles...)
 	}
 
-	if len(valueFiles)+len(o.values)+len(o.stringValues)+len(o.fileValues) == 0 {
+	if !o.nameOptional && len(valueFiles)+len(o.values)+len(o.stringValues)+len(o.fileValues) == 0 {
 		return nil, errors.New("values are required")
 	}
 
 	app := app2kube.NewApp()
+
+	// Seeded here rather than after LoadValues, which validates the name and would
+	// have already failed. A `name` in the values still wins: parseValues
+	// unmarshals over it and only overwrites the field when it is present.
+	if o.nameOptional {
+		app.Name = defaultConfigAppName
+	}
 
 	rawVals, err := app.LoadValues(valueFiles, o.values, o.stringValues, o.fileValues)
 	if err != nil {

@@ -1,12 +1,105 @@
 package cmd
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"go.yaml.in/yaml/v3"
 )
+
+// writeValuesFile writes a values file into a temp dir and returns its path.
+func writeValuesFile(t *testing.T, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "values.yaml")
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write values: %v", err)
+	}
+	return path
+}
+
+// Regression: `config dotenv -f values.yaml` failed with "app name is required"
+// when the values file carried no `name`. The read-only config subcommands do
+// not use the name, so it must be defaulted instead of demanded — the default
+// was only applied when no value source at all was given.
+func TestInitAppOptionalNameWithValuesFile(t *testing.T) {
+	resetAppFlags()
+	defer resetAppFlags()
+	o := &appOptions{
+		valueFiles:   app2kube.ValueFiles{writeValuesFile(t, "env:\n  KEY: value\n")},
+		nameOptional: true,
+	}
+
+	app, err := o.initApp(context.Background())
+	if err != nil {
+		t.Fatalf("initApp: %v", err)
+	}
+	if app.Name != defaultConfigAppName {
+		t.Errorf("name: got %q, want %q", app.Name, defaultConfigAppName)
+	}
+	if app.Env["KEY"] != "value" {
+		t.Errorf("values were not loaded: %+v", app.Env)
+	}
+}
+
+// A name the user does supply must still win over the placeholder: the default
+// is seeded before the values are parsed, not forced on top of them.
+func TestInitAppOptionalNameDoesNotOverrideValues(t *testing.T) {
+	resetAppFlags()
+	defer resetAppFlags()
+	o := &appOptions{
+		valueFiles:   app2kube.ValueFiles{writeValuesFile(t, "name: myapp\n")},
+		nameOptional: true,
+	}
+
+	app, err := o.initApp(context.Background())
+	if err != nil {
+		t.Fatalf("initApp: %v", err)
+	}
+	if app.Name != "myapp" {
+		t.Errorf("name: got %q, want myapp", app.Name)
+	}
+}
+
+// Commands that do render manifests keep requiring both a value source and a
+// name — the relaxation is scoped to the read-only config subcommands.
+func TestInitAppWithoutOptionalNameStillRequiresName(t *testing.T) {
+	resetAppFlags()
+	defer resetAppFlags()
+	o := &appOptions{valueFiles: app2kube.ValueFiles{writeValuesFile(t, "env:\n  KEY: value\n")}}
+
+	if _, err := o.initApp(context.Background()); err == nil {
+		t.Error("expected an error for values without a name")
+	}
+}
+
+// End-to-end through cobra: every read-only config subcommand must run against a
+// nameless values file, and with no values at all.
+func TestConfigSubcommandsRunWithoutAppName(t *testing.T) {
+	resetAppFlags()
+	defer resetAppFlags()
+	values := writeValuesFile(t, "env:\n  KEY: value\n")
+
+	for _, args := range [][]string{
+		{"dotenv", "-f", values},
+		{"domain", "-f", values},
+		{"secrets", "-f", values},
+		{"dotenv"},
+	} {
+		t.Run(strings.Join(args, " "), func(t *testing.T) {
+			cmd := NewCmdConfig()
+			cmd.SetArgs(args)
+			cmd.SetOut(&strings.Builder{})
+			cmd.SetErr(&strings.Builder{})
+			if err := cmd.ExecuteContext(context.Background()); err != nil {
+				t.Errorf("execute %v: %v", args, err)
+			}
+		})
+	}
+}
 
 func TestRenderDotenv(t *testing.T) {
 	app := app2kube.NewApp()

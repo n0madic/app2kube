@@ -10,12 +10,14 @@ The easiest way to create and apply kubernetes manifests for an application
 * Templating values in YAML file with [sprig](http://masterminds.github.io/sprig/) functions
 * Safe-by-default manifests: an automatic liveness probe and a conservative `securityContext` (all overridable, see [Defaults and hardening](#defaults-and-hardening))
 * Supported Kubernetes resources:
+  * Certificate (cert-manager)
   * ConfigMap
   * CronJob
   * Deployment
   * Ingress
   * Namespace
   * PersistentVolumeClaim
+  * PodDisruptionBudget
   * Secret
   * Service
 * Secret value encryption with AES-256 GCM or RSA-2048
@@ -33,7 +35,7 @@ Download binaries from [release](https://github.com/n0madic/app2kube/releases) p
 Or install from source:
 
 ```shell
-go get -u github.com/n0madic/app2kube
+go install github.com/n0madic/app2kube@latest
 ```
 
 ## Help
@@ -46,7 +48,7 @@ Available Commands:
   apply       Apply a configuration to a resource in kubernetes
   blue-green  Commands for blue-green deployment
   build       Build and push an image from a Dockerfile
-  completion  Generates bash completion scripts
+  completion  Generate completion script
   config      Manage application config
   delete      Delete resources from kubernetes
   help        Help about any command
@@ -55,21 +57,26 @@ Available Commands:
   track       Track application deployment in kubernetes
 
 Flags:
+      --as-uid string                  UID to impersonate for the operation.
       --certificate-authority string   Path to a cert file for the certificate authority
       --client-certificate string      Path to a client certificate file for TLS
       --client-key string              Path to a client key file for TLS
       --cluster string                 The name of the kubeconfig cluster to use
       --context string                 The name of the kubeconfig context to use
+      --disable-compression            If true, opt-out of response compression for all requests to the server
   -h, --help                           help for app2kube
       --insecure-skip-tls-verify       If true, the server's certificate will not be checked for validity. This will make your HTTPS connections insecure
       --kubeconfig string              Path to the kubeconfig file to use for CLI requests.
   -n, --namespace string               If present, the namespace scope for this CLI request
       --request-timeout string         The length of time to wait before giving up on a single server request. Non-zero values should contain a corresponding time unit (e.g. 1s, 2m, 3h). A value of zero means don't timeout requests. (default "0")
   -s, --server string                  The address and port of the Kubernetes API server
+      --tls-server-name string         Server name to use for server certificate validation. If it is not provided, the hostname used to contact the server is used
       --token string                   Bearer token for authentication to the API server
       --user string                    The name of the kubeconfig user to use
-      --version                        version for app2kube
+  -v, --version                        version for app2kube
 ```
+
+Every command, subcommand and flag is documented in [CLI.md](CLI.md).
 
 ## Usage
 
@@ -79,7 +86,7 @@ Minimum required values for application deployment in kubernetes - `name` and `i
 app2kube manifest --set name=example --set deployment.containers.example.image=example/image:latest
 ```
 
-For a structured description of every configuration value, see [VALUES.md](VALUES.md).
+For a structured description of every configuration value, see [VALUES.md](VALUES.md); for the command-line surface, see [CLI.md](CLI.md).
 
 > **Value files are trusted input.** Each value file is rendered through [sprig](http://masterminds.github.io/sprig/) templating *before* YAML parsing, with the full function set — including `env`/`expandenv` (host environment access) and `getHostByName` (DNS lookup). This is intentional (e.g. `{{ env "VAR" }}`), but it means a value file can read host environment variables and perform DNS lookups. Treat value files and the arguments naming them at the same trust level as the operator running app2kube; do not feed attacker-controlled value files to it.
 
@@ -142,7 +149,7 @@ Delete application manifest from kubernetes:
 app2kube delete
 ```
 
-`delete all` removes this app's resources by label selector. `delete --include-namespace` deletes the whole namespace instead (cascading to everything in it), so the two are mutually exclusive — combining `all` with `--include-namespace` is rejected.
+`delete all` removes this app's resources by label selector, scoped to one instance (`production` or the staging name); add `--all-instances` to drop the instance label from the selector and remove every instance of the application at once. `delete --include-namespace` deletes the whole namespace instead (cascading to everything in it), so the two are mutually exclusive — combining `all` with `--include-namespace` is rejected, and `--include-namespace` is also refused for the `default` namespace.
 
 Either way resources go in teardown order (the reverse of creation): `Certificate` and `Ingress`, then `Service`, then the workloads, then the `PersistentVolumeClaim`/`ConfigMap`/`Secret` they mount — so live traffic is cut at the edge first and pods keep their config until they are gone.
 
@@ -172,6 +179,8 @@ To decrypt, set environment variable `APP2KUBE_PASSWORD` or `APP2KUBE_DECRYPT_KE
 app2kube config secrets
 ```
 `config secrets` and `config dotenv` print **decrypted** secrets to stdout — redirect them with care.
+
+The read-only subcommands `config` do not need an application `name`: their output never depends on it, so a values file carrying only an `env:`/`secrets:`/`ingress:` section is valid input. A `name` you do set is still used.
 
 ## Staging
 

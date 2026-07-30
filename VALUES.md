@@ -352,15 +352,21 @@ containers):
 | Container `image` | Result | Treated as |
 |---|---|---|
 | _(omitted)_ | `common.image.repository:common.image.tag` | app image |
-| same repository as `common.image.repository` (`repo`, `repo:tag`, or `repo@digest`) | repository kept, but **tag/digest replaced** with `common.image.tag` | app image |
+| app repository with a tag (`repo` or `repo:tag`) | repository kept, but the **tag is replaced** with `common.image.tag` | app image |
+| app repository pinned to a digest (`repo@sha256:…`) | **kept exactly as written** — the digest is never overwritten | app image |
 | a different repository | left exactly as written | third-party |
 
-The middle row is the subtle case: a per-container tag or digest on the **app
-repository is discarded** in favor of `common.image.tag` — `common.image` is the
-single source of the app image's tag. To deploy a different tag for one
-container, point it at a different repository (third-party path) or change
-`common.image.tag`. Only third-party images (different repository) keep their
-exact reference and are never injected into.
+The tag row is the subtle case: a per-container tag on the **app repository is
+discarded** in favor of `common.image.tag` — `common.image` is the single source
+of the app image's tag. To deploy a different tag for one container, point it at
+a different repository (third-party path) or change `common.image.tag`.
+
+A digest-pinned reference to the app repository is the deliberate exception:
+overwriting `repo@sha256:…` with the mutable `common.image.tag` would silently
+defeat supply-chain pinning, so the digest stays and the container is still
+treated as an app image (config, mounts and defaults are injected into it).
+Third-party images (different repository) also keep their exact reference, but
+are never injected into.
 
 ---
 
@@ -429,8 +435,11 @@ Behaviors that are easy to miss when writing values or generating manifests.
 - A `.app2kube.yml` in the current directory is always loaded as the base, even
   when you pass your own `-f`; your files and `--set` overrides are layered on
   top. A missing file is silently skipped.
-- At least one value source (`-f`, `--set`, `--set-string`, `--set-file`) is
-  required, or the command fails with `values are required`.
+- At least one value source (`-f`, `--set`, `--set-string`, `--set-file`, or a
+  `.app2kube.yml` in the current directory) is required, or the command fails
+  with `values are required`. The read-only `config domain`, `config dotenv` and
+  `config secrets` commands are exempt: they run with no values at all (and
+  without a `name`), because their output does not depend on either.
 
 **CronJobs.**
 
@@ -641,7 +650,7 @@ deployment:
   initContainers: {}                # map<name, Container> — no auto probes
   containers:                       # map<name, Container> — see "Container spec"
     app:
-      image: ""                     # omit → common.image; same-repo tag is replaced by common.image.tag
+      image: ""                     # omit → common.image; same-repo tag is replaced by common.image.tag (a same-repo digest is kept)
       command: []
       args: []
       env: []                       # per-container env wins over global `env`

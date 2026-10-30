@@ -92,6 +92,14 @@ func NewCmdBlueGreen() *cobra.Command {
 
 		if len(services.Items) > 0 {
 			for _, service := range services.Items {
+				ready, err := deploymentIsAvailable(ctx, kcs, app.Namespace, app.GetDeploymentName())
+				if err != nil {
+					return fmt.Errorf("cannot verify rollback target readiness: %w", err)
+				}
+				if !ready {
+					return fmt.Errorf("previous deployment is not ready; no working rollback available")
+				}
+
 				fmt.Printf("Patch service %s in [%s] color\n", service.Name, colorize(app.Deployment.BlueGreenColor))
 				payloadBytes := []byte(`[{
 					"op": "replace",

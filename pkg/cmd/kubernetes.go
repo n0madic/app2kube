@@ -81,7 +81,7 @@ func scopedSelector(labels map[string]string) (string, error) {
 // it legitimately does not exist on an app that has only ever run one color, or
 // on a second prune run. Aborting there would also skip the PDB cleanup that
 // follows. This mirrors the convention of prunePodDisruptionBudget,
-// preDeleteDeployment and the `delete` command's default --ignore-not-found.
+// and the `delete` command's default --ignore-not-found.
 func deleteDeployment(ctx context.Context, name, namespace string) error {
 	kcs, err := kubeFactory.KubernetesClientSet()
 	if err != nil {
@@ -104,19 +104,6 @@ func deleteDeployment(ctx context.Context, name, namespace string) error {
 // cleans it up either).
 func prunePodDisruptionBudget(ctx context.Context, kcs kubernetes.Interface, name, namespace string) error {
 	err := kcs.PolicyV1().PodDisruptionBudgets(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if apierrors.IsNotFound(err) {
-		return nil
-	}
-	return err
-}
-
-// preDeleteDeployment removes the stale target-color Deployment before a
-// blue/green rotation recreates it. A NotFound is the expected case — on the
-// first (zero) deploy of a color there is nothing to delete — and is ignored;
-// any other error (RBAC, connectivity) is returned so the caller aborts instead
-// of proceeding into an apply the same problem would also break (#65).
-func preDeleteDeployment(ctx context.Context, kcs kubernetes.Interface, name, namespace string) error {
-	err := kcs.AppsV1().Deployments(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}

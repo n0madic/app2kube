@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/n0madic/app2kube/pkg/app2kube"
 	"github.com/spf13/cobra"
@@ -39,9 +43,9 @@ func streamApplyObjects(b *resource.Builder, validator validation.Schema, namesp
 
 // blueGreenNotSwitchedMsg explains that a blue/green deploy created (or updated)
 // the new color but did not switch live traffic to it, and that re-running is
-// safe — the stale target-color Deployment is replaced on the next run (#60).
+// safe — the target-color Deployment is updated on the next run.
 func blueGreenNotSwitchedMsg(color string) string {
-	return fmt.Sprintf("[%s] was deployed but traffic was NOT switched; the live color is unchanged. Re-run the blue-green deploy to retry — the stale %s deployment will be replaced.", color, color)
+	return fmt.Sprintf("[%s] was deployed but traffic was NOT switched; the live color is unchanged. Re-run the blue-green deploy to retry — the %s deployment will be updated.", color, color)
 }
 
 var (
@@ -67,12 +71,19 @@ func NewCmdApply() *cobra.Command {
 	flags := apply.NewApplyFlags(ioStreams)
 	flags.DeleteFlags.FileNameFlags.Filenames = &[]string{"-"}
 	var opts *appOptions
+	var stability, observe time.Duration
 
 	applyCmd := &cobra.Command{
 		Use:   "apply",
 		Short: "Apply a configuration to a resource in kubernetes",
 		Args:  cobra.NoArgs,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if applyTimeout < 0 {
+				return fmt.Errorf("timeout cannot be negative")
+			}
+			if stability <= 0 || observe <= 0 {
+				return fmt.Errorf("blue-green stability and observation durations must be positive")
+			}
 			return validateTrackValue(applyWithTrack)
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -179,12 +190,39 @@ func NewCmdApply() *cobra.Command {
 					return err
 				}
 
-				// Pre-delete the stale target-color deployment before recreating
-				// it. A NotFound is expected on the first deploy (nothing to delete)
-				// and is ignored; a real RBAC/connectivity error aborts the deploy
-				// instead of being printed while the doomed apply proceeds (#65).
-				if err := preDeleteDeployment(ctx, kcs, app.GetDeploymentName(), app.Namespace); err != nil {
+				dryRun, err := cmdutil.GetDryRunStrategy(cmd)
+				if err != nil {
 					return err
+				}
+				previous, err := blueGreenServices(ctx, kcs, app)
+				if err != nil {
+					return err
+				}
+				previousName := ""
+				if len(previous) > 0 {
+					previousColor := previous[0].Spec.Selector[app2kube.LabelColor]
+					if previousColor == app.Deployment.BlueGreenColor {
+						return fmt.Errorf("active color changed; re-run deploy")
+					}
+					previousApp := *app
+					previousApp.Deployment.BlueGreenColor = previousColor
+					previousName = previousApp.GetDeploymentName()
+					ready, healthErr := deploymentIsAvailable(ctx, kcs, app.Namespace, previousName)
+					if healthErr != nil || !ready {
+						fmt.Fprintf(os.Stderr, "WARNING: active deployment %s is not confirmed ready (check error: %v); continuing recovery deploy of %s. No working rollback is currently confirmed.\n", previousName, healthErr, app.GetDeploymentName())
+					}
+				}
+				succeeded := false
+				if dryRun == cmdutil.DryRunNone {
+					defer func() {
+						if !succeeded {
+							blueGreenDiagnostics(ctx, os.Stderr, kcs, app)
+							ready, err := deploymentIsAvailable(ctx, kcs, app.Namespace, previousName)
+							if err != nil || !ready {
+								fmt.Fprintln(os.Stderr, "Recovery did not succeed; no working rollback is currently confirmed. Both deployments are retained.")
+							}
+						}
+					}()
 				}
 
 				manifest, err := getManifest(app2kube.OutputAllForDeployment)
@@ -199,7 +237,7 @@ func NewCmdApply() *cobra.Command {
 				// Phase 1 deploys the new color; phase 2 (below) switches the
 				// Service/Ingress once it is ready. If either step fails the live
 				// color is unchanged — report that traffic was not switched and
-				// return; re-running replaces the stale target-color deployment (#60).
+				// return; re-running updates the target-color deployment.
 				if err := applyManifest(manifest, false); err != nil {
 					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
 					return err
@@ -208,9 +246,27 @@ func NewCmdApply() *cobra.Command {
 				// Honor --timeout for the phase-1 readiness wait (applyTimeout),
 				// not a hardcoded 15m: a long rollout must be able to raise the
 				// window it is allowed before reporting "not switched".
-				if err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now()); err != nil {
-					fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
-					return err
+				if dryRun == cmdutil.DryRunNone {
+					if err := trackReady(ctx, app.GetDeploymentName(), app.Namespace, applyTimeout, time.Now()); err != nil {
+						fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
+						return err
+					}
+					if err := waitBlueGreenHealthy(ctx, blueGreenWaitBudget(applyTimeout, stability), stability, 2*time.Second, func(ctx context.Context) (bool, error) {
+						return deploymentIsAvailable(ctx, kcs, app.Namespace, app.GetDeploymentName())
+					}); err != nil {
+						fmt.Fprintf(os.Stderr, "• %s\n", blueGreenNotSwitchedMsg(app.Deployment.BlueGreenColor))
+						return fmt.Errorf("candidate did not stay ready: %w", err)
+					}
+					// Refuse to overwrite a competing deploy's selector change.
+					for _, old := range previous {
+						current, err := kcs.CoreV1().Services(app.Namespace).Get(ctx, old.Name, metav1.GetOptions{})
+						if err != nil {
+							return err
+						}
+						if current.UID != old.UID || !reflect.DeepEqual(current.Spec.Selector, old.Spec.Selector) {
+							return fmt.Errorf("service %s changed during deployment; traffic was not switched", old.Name)
+						}
+					}
 				}
 
 				// The new color is deployed and ready, but the traffic-switching
@@ -227,14 +283,44 @@ func NewCmdApply() *cobra.Command {
 				// Unlike the pre-deploy phase, this final apply switches live
 				// traffic (Service selector, Ingress) and is NOT atomic: kubectl
 				// applies the objects sequentially with ContinueOnError, so a
-				// mid-apply failure can leave the Service pointing at the new color
-				// while the Ingress still lags. Warn that traffic may be partially
-				// switched (not "not switched" as in phase 1) so the operator knows
-				// to re-run to converge, instead of os.Exit()ing with no guidance.
-				if err := applyManifest(manifest, false); err != nil {
-					fmt.Fprintf(os.Stderr, "• WARNING: the final switch for [%s] failed partway; live traffic may be PARTIALLY switched. Re-run the blue-green deploy to converge.\n", colorize(app.Deployment.BlueGreenColor))
-					return err
+				// mid-apply failure can leave traffic partially switched. Restore
+				// Service selectors only after verifying the previous deployment.
+				if dryRun == cmdutil.DryRunNone {
+					ready, err := deploymentIsAvailable(ctx, kcs, app.Namespace, app.GetDeploymentName())
+					if err != nil {
+						return err
+					}
+					if !ready {
+						return fmt.Errorf("candidate lost readiness before switch; Service selectors unchanged")
+					}
 				}
+				switchErr := applyManifest(manifest, false)
+				if dryRun == cmdutil.DryRunNone && switchErr == nil {
+					switchErr = waitBlueGreenHealthy(ctx, blueGreenWaitBudget(applyTimeout, observe), observe, 2*time.Second, func(ctx context.Context) (bool, error) {
+						ready, err := deploymentIsAvailable(ctx, kcs, app.Namespace, app.GetDeploymentName())
+						if err != nil {
+							return false, err
+						}
+						if !ready {
+							return false, fmt.Errorf("candidate lost readiness after traffic switch")
+						}
+						return blueGreenEndpointsReady(ctx, kcs, app)
+					})
+				}
+				if switchErr != nil {
+					if dryRun != cmdutil.DryRunNone {
+						return switchErr
+					}
+					fmt.Fprintln(os.Stderr, "Traffic switch or post-switch verification failed; checking previous deployment before rollback.")
+					recoveryCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+					defer cancel()
+					if err := restoreBlueGreenServices(recoveryCtx, kcs, app.Namespace, previousName, app.Deployment.BlueGreenColor, previous); err != nil {
+						return fmt.Errorf("deploy failed: %w; rollback not completed: %v; inspect Service selectors (traffic may be partially switched)", switchErr, err)
+					}
+					fmt.Fprintln(os.Stderr, "Previous deployment was ready; previous Service selectors restored. Both deployments retained.")
+					return fmt.Errorf("deploy failed after switch; Service selectors rolled back: %w", switchErr)
+				}
+				succeeded = true
 			} else {
 				manifest, err := getManifest(app2kube.OutputAll)
 				if err != nil {
@@ -274,6 +360,8 @@ func NewCmdApply() *cobra.Command {
 		},
 	}
 
+	applyCmd.Flags().DurationVar(&stability, "blue-green-stability", 30*time.Second, "Continuous candidate readiness required before switching traffic")
+	applyCmd.Flags().DurationVar(&observe, "blue-green-observe", 60*time.Second, "Continuous deployment and ready Service backend availability required after switching traffic")
 	opts = addAppFlags(applyCmd)
 	addBlueGreenFlag(applyCmd, opts)
 	flags.PrintFlags.AddFlags(applyCmd)

@@ -141,7 +141,11 @@ Track deployment till ready:
 app2kube track ready
 ```
 
-`apply --track ready|follow` tracks the rollout after applying; its `--timeout` (minutes, `0` waits forever) is honored — it is no longer fixed at 15 minutes. The same `--timeout` also governs the `--blue-green` pre-deploy readiness wait (phase 1), so a long blue-green rollout can raise the window before it reports that traffic was not switched.
+`apply --track ready|follow` tracks the rollout after applying; its `--timeout` (minutes, `0` waits forever) is honored — it is no longer fixed at 15 minutes. For blue-green recovery, an unhealthy active color produces a warning and does not block deploying the other color. The candidate must complete its rollout and remain continuously ready for `--blue-green-stability` (default `30s`) before traffic switches. After switching, app2kube checks deployment readiness and ready EndpointSlice backends belonging to candidate pods for `--blue-green-observe` (default `60s`). Both durations must be positive. `--timeout` supplies each phase's readiness/endpoint propagation budget, with the stability or observation interval added; `0` waits indefinitely.
+
+If the candidate fails before switching, Service selectors remain unchanged. A failure during switching or observation attempts to restore the previous Service selectors only if the previous deployment is currently fully ready; readiness is rechecked before every Service patch. Concurrent selector edits are rejected. Both Deployments and their ReplicaSet history are retained, including on retry: target Deployments are updated in place. Failure diagnostics include deployment conditions, container states and warning event reasons. A failed attempt exits nonzero even if Service rollback succeeds. When neither version is ready, app2kube reports that no working rollback is confirmed.
+
+The post-switch observation ends when the command exits; this is not continuous monitoring or an HTTP/ingress smoke test. Automatic rollback restores Service selectors only, not Ingress, shared Secrets, ConfigMaps or other phase-two resources. Multiple Service updates are not atomic; failures can leave selectors partially switched and require reconciliation. The deploy identity needs read access to pods, deployments, Services and `discovery.k8s.io/v1` EndpointSlices, plus Service patch permission for rollback; reading events enables diagnostics. Dry-run does not wait, switch traffic or roll back.
 
 Delete application manifest from kubernetes:
 

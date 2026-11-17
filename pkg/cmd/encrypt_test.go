@@ -259,6 +259,49 @@ func TestEncryptSkipsEntireBlockScalarSecret(t *testing.T) {
 	}
 }
 
+// Regression: comment lines inside the secrets: block (even ones containing ':')
+// must be preserved verbatim and never encrypted, and must not end the section:
+// secrets after an unindented comment still get encrypted.
+func TestEncryptSkipsCommentLines(t *testing.T) {
+	t.Setenv(app2kube.EnvPassword, "pass")
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "secrets.yaml")
+	content := "name: example\nsecrets:\n  # Database credentials: production only\n  db: one\n# unindented note: still a comment\n  \t# tabbed: comment\n  token: two\nother: keep\n"
+	if err := os.WriteFile(file, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runEncrypt("", false, app2kube.ValueFiles{file}); err != nil {
+		t.Fatalf("encrypt: %v", err)
+	}
+
+	out, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(out)
+
+	for _, c := range []string{
+		"  # Database credentials: production only\n",
+		"# unindented note: still a comment\n",
+		"  \t# tabbed: comment\n",
+	} {
+		if !strings.Contains(s, c) {
+			t.Errorf("comment %q not preserved verbatim:\n%s", c, s)
+		}
+	}
+	if strings.Contains(s, "# Database credentials: AES#") || strings.Contains(s, "# unindented note: AES#") {
+		t.Errorf("comment was encrypted:\n%s", s)
+	}
+	if !strings.Contains(s, "  db: AES#") || !strings.Contains(s, "  token: AES#") {
+		t.Errorf("secrets around comments not encrypted:\n%s", s)
+	}
+	if !strings.Contains(s, "other: keep") {
+		t.Errorf("non-secret content not preserved:\n%s", s)
+	}
+}
+
 // Regression: the secrets file must be replaced atomically. An in-place
 // os.WriteFile truncates before writing, so an interruption between the two
 // (SIGINT, full disk, panic) left the file empty or half-written, destroying

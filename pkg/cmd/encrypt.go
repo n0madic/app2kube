@@ -170,6 +170,13 @@ func runEncrypt(encryptString string, stringSet bool, valueFiles app2kube.ValueF
 						newYAML += line + "\n"
 						continue
 					}
+					// YAML comment lines are not secrets, whatever they contain
+					// (including ':'); keep them verbatim. A comment never ends the
+					// section, even when it is not indented.
+					if strings.HasPrefix(strings.TrimSpace(line), "#") {
+						newYAML += line + "\n"
+						continue
+					}
 					// skip template lines
 					if strings.HasPrefix(strings.TrimSpace(line), "{{") {
 						newYAML += line + "\n"
